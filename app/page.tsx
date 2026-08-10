@@ -1,5 +1,5 @@
-import { ExperimentClient } from "./ExperimentClient";
+import { ExperimentV2 } from "./ExperimentV2";
 
 export default function Home() {
-  return <ExperimentClient />;
+  return <ExperimentV2 />;
 }

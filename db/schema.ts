@@ -42,8 +42,13 @@ export const stageDecisions = sqliteTable(
     boundary1Date: text("boundary_1_date").notNull(),
     boundary2Date: text("boundary_2_date").notNull(),
     confidence: integer("confidence").notNull(),
+    influenceRating: integer("influence_rating").notNull().default(0),
+    cueTags: text("cue_tags").notNull().default("[]"),
     rationale: text("rationale").notNull().default(""),
     elapsedMs: integer("elapsed_ms").notNull(),
+    revealReadMs: integer("reveal_read_ms").notNull().default(0),
+    firstMoveMs: integer("first_move_ms"),
+    adjustmentCount: integer("adjustment_count").notNull().default(0),
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   },
   (table) => [

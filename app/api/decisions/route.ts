@@ -6,10 +6,20 @@ function finiteNumber(value: unknown): value is number {
 }
 
 function message(error: unknown) {
-  if (error instanceof Error && error.message.includes("UNIQUE constraint failed")) {
+  const parts: string[] = [];
+  let current: unknown = error;
+  for (let depth = 0; depth < 6 && current; depth += 1) {
+    if (current instanceof Error) parts.push(current.message);
+    current =
+      typeof current === "object" && current !== null && "cause" in current
+        ? (current as { cause?: unknown }).cause
+        : null;
+  }
+  const combined = parts.join("\n");
+  if (/UNIQUE constraint failed|SQLITE_CONSTRAINT_UNIQUE/i.test(combined)) {
     return "This disclosure round has already been submitted.";
   }
-  return error instanceof Error ? error.message : "Unexpected database error";
+  return parts[0] ?? "Unexpected database error";
 }
 
 export async function POST(request: Request) {
@@ -26,8 +36,13 @@ export async function POST(request: Request) {
       boundary1Date?: string;
       boundary2Date?: string;
       confidence?: number;
+      influenceRating?: number;
+      cueTags?: unknown;
       rationale?: string;
       elapsedMs?: number;
+      revealReadMs?: number;
+      firstMoveMs?: number | null;
+      adjustmentCount?: number;
     };
 
     const requiredText = [
@@ -56,7 +71,21 @@ export async function POST(request: Request) {
       payload.confidence! < 1 ||
       payload.confidence! > 5 ||
       payload.disclosureLevel! < 0 ||
-      payload.disclosureLevel! > 5
+      payload.disclosureLevel! > 6 ||
+      (payload.influenceRating !== undefined &&
+        (!finiteNumber(payload.influenceRating) ||
+          payload.influenceRating < 0 ||
+          payload.influenceRating > 4)) ||
+      (payload.revealReadMs !== undefined &&
+        (!finiteNumber(payload.revealReadMs) || payload.revealReadMs < 0)) ||
+      (payload.firstMoveMs !== undefined &&
+        payload.firstMoveMs !== null &&
+        (!finiteNumber(payload.firstMoveMs) || payload.firstMoveMs < 0)) ||
+      (payload.adjustmentCount !== undefined &&
+        (!finiteNumber(payload.adjustmentCount) || payload.adjustmentCount < 0)) ||
+      (payload.cueTags !== undefined &&
+        (!Array.isArray(payload.cueTags) ||
+          payload.cueTags.some((tag) => typeof tag !== "string")))
     ) {
       return Response.json({ error: "Invalid boundary or confidence values" }, { status: 400 });
     }
@@ -76,8 +105,20 @@ export async function POST(request: Request) {
         boundary1Date: payload.boundary1Date!.slice(0, 20),
         boundary2Date: payload.boundary2Date!.slice(0, 20),
         confidence: Math.trunc(payload.confidence!),
+        influenceRating: Math.trunc(payload.influenceRating ?? 0),
+        cueTags: JSON.stringify(
+          Array.isArray(payload.cueTags)
+            ? payload.cueTags.slice(0, 16).map((tag) => String(tag).slice(0, 50))
+            : [],
+        ),
         rationale: (payload.rationale ?? "").trim().slice(0, 800),
         elapsedMs: Math.max(0, Math.trunc(payload.elapsedMs!)),
+        revealReadMs: Math.max(0, Math.trunc(payload.revealReadMs ?? 0)),
+        firstMoveMs:
+          payload.firstMoveMs === null || payload.firstMoveMs === undefined
+            ? null
+            : Math.max(0, Math.trunc(payload.firstMoveMs)),
+        adjustmentCount: Math.max(0, Math.trunc(payload.adjustmentCount ?? 0)),
       })
       .returning({ id: stageDecisions.id, createdAt: stageDecisions.createdAt });
     return Response.json({ decision }, { status: 201 });

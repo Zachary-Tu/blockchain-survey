@@ -54,8 +54,13 @@ export async function ensureExperimentSchema() {
           boundary_1_date TEXT NOT NULL,
           boundary_2_date TEXT NOT NULL,
           confidence INTEGER NOT NULL,
+          influence_rating INTEGER NOT NULL DEFAULT 0,
+          cue_tags TEXT NOT NULL DEFAULT '[]',
           rationale TEXT NOT NULL DEFAULT '',
           elapsed_ms INTEGER NOT NULL,
+          reveal_read_ms INTEGER NOT NULL DEFAULT 0,
+          first_move_ms INTEGER,
+          adjustment_count INTEGER NOT NULL DEFAULT 0,
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (session_id) REFERENCES experiment_sessions(id) ON DELETE CASCADE
         )`),
@@ -69,6 +74,24 @@ export async function ensureExperimentSchema() {
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_decisions_session_curve_layer ON stage_decisions(session_id, curve_id, disclosure_level)",
       ),
     ]);
+    const columnInfo = await d1
+      .prepare("PRAGMA table_info(stage_decisions)")
+      .all<{ name: string }>();
+    const existingColumns = new Set(
+      columnInfo.results.map((column) => column.name),
+    );
+    const additiveMigrations = [
+      ["influence_rating", "ALTER TABLE stage_decisions ADD COLUMN influence_rating INTEGER NOT NULL DEFAULT 0"],
+      ["cue_tags", "ALTER TABLE stage_decisions ADD COLUMN cue_tags TEXT NOT NULL DEFAULT '[]'"],
+      ["reveal_read_ms", "ALTER TABLE stage_decisions ADD COLUMN reveal_read_ms INTEGER NOT NULL DEFAULT 0"],
+      ["first_move_ms", "ALTER TABLE stage_decisions ADD COLUMN first_move_ms INTEGER"],
+      ["adjustment_count", "ALTER TABLE stage_decisions ADD COLUMN adjustment_count INTEGER NOT NULL DEFAULT 0"],
+    ] as const;
+    for (const [column, statement] of additiveMigrations) {
+      if (!existingColumns.has(column)) {
+        await d1.prepare(statement).run();
+      }
+    }
     await d1.prepare("PRAGMA optimize").run();
   })();
   return schemaReady;
