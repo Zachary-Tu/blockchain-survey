@@ -37,11 +37,13 @@ type Curve = {
     sourceFile: string;
     aggregation: string;
     window: { start: string; end: string };
+    contextWindow: { start: string; end: string };
     priceMin: number;
     priceMax: number;
     displayNormalization: string;
   };
   points: PricePoint[];
+  contextPoints: PricePoint[];
   events: MarketEvent[];
 };
 
@@ -84,9 +86,9 @@ const DISCLOSURES = [
   {
     key: "shape",
     short: "走势",
-    title: "先只看这段走势",
-    newInfo: "一条没有名称和背景信息的价格走势",
-    hidden: "坐标、币种、日期、价格和事件",
+    title: "只看一段没有任何信息的走势",
+    newInfo: "只有曲线形状，不提供坐标、时间、资产或事件信息",
+    hidden: "坐标、真实时间、资产身份、价格、长时间轴位置和事件",
     prompt: "请在曲线上选两个分界点，把整段走势分成三个阶段。",
   },
   {
@@ -94,48 +96,40 @@ const DISCLOSURES = [
     short: "坐标",
     title: "现在显示坐标信息",
     newInfo: "相对位置、标准化价格，以及每个点代表连续 7 日开盘价的平均值",
-    hidden: "币种、真实日期、美元价格和事件",
+    hidden: "真实时间、资产身份、美元价格、长时间轴位置和事件",
     prompt: "请再次判断两个分界点的位置；如果看法没变，可以保持不动。",
   },
   {
-    key: "identity",
-    short: "币种",
-    title: "现在告诉你这是什么资产",
-    newInfo: "币种名称和交易符号",
-    hidden: "真实日期、美元价格和事件",
-    prompt: "知道币种后，请再次判断两个分界点是否需要调整。",
-  },
-  {
     key: "dates",
-    short: "日期",
-    title: "现在显示真实日期",
+    short: "时间",
+    title: "现在告诉你真实的时间信息",
     newInfo: "这段走势对应的年份、日期和周度时间轴",
-    hidden: "美元价格和事件",
+    hidden: "资产身份、美元价格、长时间轴位置和事件",
     prompt: "看到真实日期后，请再次判断两个分界点的位置。",
   },
   {
-    key: "prices",
-    short: "价格",
-    title: "现在显示美元价格",
-    newInfo: "每周平均开盘价和 USD 纵轴；曲线形状保持不变",
-    hidden: "事件位置和事件名称",
-    prompt: "看到真实价格后，请再次判断两个分界点的位置。",
+    key: "identity_price",
+    short: "资产",
+    title: "现在告诉你是什么资产，以及真实价格",
+    newInfo: "资产名称、交易符号、每周平均开盘价和 USD 纵轴；曲线形状保持不变",
+    hidden: "这段走势在更长时间轴中的位置和重点事件",
+    prompt: "知道资产和真实价格后，请再次判断两个分界点的位置。",
   },
   {
-    key: "event_positions",
-    short: "位置",
-    title: "现在显示候选事件的位置",
-    newInfo: "六个编号位置；暂不显示事件名称",
-    hidden: "事件名称和内容",
-    prompt: "只看到这些位置标记时，请再次判断两个分界点的位置。",
+    key: "context_window",
+    short: "全貌",
+    title: "现在把这段走势放回更长的时间轴",
+    newInfo: "一张新的定位小图，显示当前截取区间在该资产更长历史中的位置",
+    hidden: "截取时间段内的重点事件",
+    prompt: "看到它在更长历史中的位置后，请再次判断两个分界点的位置。",
   },
   {
-    key: "event_labels",
+    key: "events",
     short: "事件",
-    title: "现在显示候选事件的名称",
-    newInfo: "六个事件的日期和中性描述",
+    title: "现在告诉你截取时间段内的重点事件",
+    newInfo: "六个重点事件的位置、日期和中性名称",
     hidden: "无",
-    prompt: "看到事件名称后，请完成这条走势的最后一次判断。",
+    prompt: "看到重点事件及其名称后，请完成这条走势的最后一次判断。",
   },
 ] as const;
 
@@ -146,10 +140,9 @@ const BASE_CUES = ["趋势方向", "涨跌速度", "高低点", "波动变化"];
 const LAYER_CUES = [
   [],
   ["坐标与频率"],
-  ["币种知识"],
   ["日期记忆"],
-  ["价格水平"],
-  ["事件位置"],
+  ["币种知识", "价格水平"],
+  ["长周期位置"],
   ["事件内容"],
 ];
 
@@ -204,7 +197,7 @@ function layerElasticity(current: Decision, previous: Decision) {
 
 export function ExperimentV2() {
   const [stimuli, setStimuli] = useState<StimulusSet | null>(null);
-  const [screen, setScreen] = useState<"welcome" | "experiment" | "between" | "complete">(
+  const [screen, setScreen] = useState<"welcome" | "experiment" | "reward" | "complete">(
     "welcome",
   );
   const [sessionId, setSessionId] = useState("");
@@ -216,7 +209,7 @@ export function ExperimentV2() {
   const [level, setLevel] = useState(0);
   const [boundaries, setBoundaries] = useState<BoundaryPair>([null, null]);
   const [confidence, setConfidence] = useState(3);
-  const [influenceRating, setInfluenceRating] = useState<number | null>(null);
+  const [influenceRating, setInfluenceRating] = useState(3);
   const [cueTags, setCueTags] = useState<string[]>([]);
   const [rationale, setRationale] = useState("");
   const [decisions, setDecisions] = useState<Decision[]>([]);
@@ -379,7 +372,7 @@ export function ExperimentV2() {
           actorType: "human",
           participantCode,
           expertise,
-          experimentalArm: "trajectory-four-asset",
+          experimentalArm: "trajectory-four-asset-context-window",
           protocolVersion: stimuli.protocolVersion,
         }),
       });
@@ -403,7 +396,7 @@ export function ExperimentV2() {
 
   function resetRoundInputs() {
     setConfidence(3);
-    setInfluenceRating(null);
+    setInfluenceRating(3);
     setCueTags([]);
     setRationale("");
     setHoverIndex(null);
@@ -414,8 +407,7 @@ export function ExperimentV2() {
       !curve ||
       !sessionId ||
       boundaries[0] === null ||
-      boundaries[1] === null ||
-      (level > 0 && influenceRating === null)
+      boundaries[1] === null
     ) {
       return;
     }
@@ -437,7 +429,7 @@ export function ExperimentV2() {
       boundary1Date: curve.points[boundary1Index].date,
       boundary2Date: curve.points[boundary2Index].date,
       confidence,
-      influenceRating: level === 0 ? 0 : influenceRating ?? 0,
+      influenceRating: level === 0 ? 0 : influenceRating,
       cueTags,
       rationale: rationale.trim(),
       elapsedMs,
@@ -464,20 +456,20 @@ export function ExperimentV2() {
         setLevel((current) => current + 1);
         resetRoundInputs();
         setTimeout(openReveal, 0);
-      } else if (curvePosition < orderedCurves.length - 1) {
-        resetRoundInputs();
-        setScreen("between");
       } else {
-        const completion = await fetch("/api/sessions", {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ sessionId }),
-        });
-        if (!completion.ok) {
-          console.error("The final decision was saved, but session completion was not acknowledged.");
+        resetRoundInputs();
+        if (curvePosition === orderedCurves.length - 1) {
+          const completion = await fetch("/api/sessions", {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ sessionId }),
+          });
+          if (!completion.ok) {
+            console.error("The final decision was saved, but session completion was not acknowledged.");
+          }
+          setSelectedResultCurveId(orderedCurves[0]?.id ?? curve.id);
         }
-        setSelectedResultCurveId(orderedCurves[0]?.id ?? curve.id);
-        setScreen("complete");
+        setScreen("reward");
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "本轮答案保存失败");
@@ -493,6 +485,14 @@ export function ExperimentV2() {
     resetRoundInputs();
     setScreen("experiment");
     setTimeout(openReveal, 0);
+  }
+
+  function continueAfterReward() {
+    if (curvePosition < orderedCurves.length - 1) {
+      beginNextCurve();
+      return;
+    }
+    setScreen("complete");
   }
 
   function resetToPrevious(event: ReactMouseEvent<HTMLButtonElement>) {
@@ -537,7 +537,7 @@ export function ExperimentV2() {
             <span className="v2-brand-icon" aria-hidden="true"><i /><i /></span>
             <span><strong>BOUNDARY LAB</strong><small>阶段判断与语境研究</small></span>
           </a>
-          <span className="v2-prototype-badge">预测试版本 · v2</span>
+          <span className="v2-prototype-badge">预测试版本 · v3</span>
         </header>
 
         <section className="v2-welcome-grid" id="top">
@@ -546,18 +546,18 @@ export function ExperimentV2() {
             <h1>你的分界点，<br /><em>会不会移动？</em></h1>
             <p className="v2-hero-copy">
               你会看到四条匿名的加密资产走势。每条走势都要用两个分界点分成三个阶段，
-              随后我们会逐步显示坐标、币种、日期、价格和事件。
+              随后我们会逐步显示坐标、真实时间、资产与价格、长时间轴位置和重点事件。
             </p>
 
             <div className="v2-facts" aria-label="实验概况">
               <div><strong>4</strong><span>条匿名走势</span></div>
               <div><strong>2</strong><span>个固定分界点</span></div>
-              <div><strong>7</strong><span>步信息变化</span></div>
+              <div><strong>{DISCLOSURES.length}</strong><span>步信息变化</span></div>
             </div>
 
             <div className="v2-protocol-card">
               <div className="v2-protocol-heading">
-                <span>每条走势的七个步骤</span>
+                <span>每条走势的六个步骤</span>
                 <small>每一步都可以保持原判断</small>
               </div>
               <ol>
@@ -569,7 +569,7 @@ export function ExperimentV2() {
           </div>
 
           <aside className="v2-start-card">
-            <div className="v2-start-topline"><span>匿名研究</span><small>约 20–25 分钟</small></div>
+            <div className="v2-start-topline"><span>匿名研究</span><small>约 18–22 分钟</small></div>
             <h2>准备好后开始</h2>
             <p>
               这里没有标准答案。你可以根据趋势、涨跌速度、波动或其他你认为重要的特征来划分阶段。
@@ -623,14 +623,34 @@ export function ExperimentV2() {
     );
   }
 
-  if (screen === "between") {
+  if (screen === "reward" && curve) {
+    const rewardDecisions = decisions.filter((decision) => decision.curveId === curve.id);
+    const movements = rewardDecisions.slice(1).map((decision, index) =>
+      layerElasticity(decision, rewardDecisions[index]),
+    );
+    const totalMovement = movements.reduce((sum, value) => sum + value, 0);
+    const strongestIndex = movements.indexOf(Math.max(...movements));
+    const finalDecision = rewardDecisions.at(-1);
+    const averageConfidence =
+      rewardDecisions.reduce((sum, decision) => sum + decision.confidence, 0) /
+      Math.max(rewardDecisions.length, 1);
+
     return (
-      <main className="v2-between">
-        <div className="v2-between-card">
-          <span className="v2-between-count">{curvePosition + 1} / {orderedCurves.length}</span>
-          <p className="v2-eyebrow">这条走势已经完成</p>
-          <h1>休息一下，<br />再看下一条。</h1>
-          <p>下一条会重新从匿名走势开始，仍然使用两个分界点。</p>
+      <main className="v2-reward">
+        <header className="v2-brandbar v2-brandbar-dark">
+          <div className="v2-brand">
+            <span className="v2-brand-icon" aria-hidden="true"><i /><i /></span>
+            <span><strong>BOUNDARY LAB</strong><small>单条走势回顾</small></span>
+          </div>
+          <span className="v2-session">{curvePosition + 1} / {orderedCurves.length}</span>
+        </header>
+
+        <section className="v2-reward-hero">
+          <div>
+            <p className="v2-eyebrow">这条走势已经完成</p>
+            <h1>这是你对<br /><em>{curve.asset.nameZh}</em> 的判断轨迹。</h1>
+            <p>没有标准答案。先看看信息一步步增加时，你的两个分界点发生了什么变化。</p>
+          </div>
           <div className="v2-curve-progress" aria-label="曲线完成进度">
             {orderedCurves.map((item, index) => (
               <span key={item.id} className={index <= curvePosition ? "done" : ""}>
@@ -638,10 +658,39 @@ export function ExperimentV2() {
               </span>
             ))}
           </div>
-          <button className="v2-primary" onClick={beginNextCurve}>
-            准备好了，看下一条 <span aria-hidden="true">→</span>
+        </section>
+
+        <section className="v2-reward-grid">
+          <section className="v2-reward-card v2-reward-overview">
+            <div className="v2-section-heading">
+              <div><p className="v2-kicker">第一次与最后一次</p><h2>两个分界点最终停在这里</h2></div>
+              <p>虚线是第一次只看走势时的位置，实线是看到全部信息后的最终位置。</p>
+            </div>
+            <RewardCurveOverview curve={curve} decisions={rewardDecisions} />
+          </section>
+
+          <aside className="v2-reward-stats">
+            <div><span>累计移动</span><strong>{(totalMovement * 100).toFixed(1)}<i>%</i></strong><small>两个分界点在整段时间轴上的累计平均位移</small></div>
+            <div><span>变化最大的一步</span><strong>{strongestIndex >= 0 ? DISCLOSURES[strongestIndex + 1].short : "—"}</strong><small>{strongestIndex >= 0 ? DISCLOSURES[strongestIndex + 1].title : "本次没有移动"}</small></div>
+            <div><span>平均信心</span><strong>{averageConfidence.toFixed(1)}<i>/ 5</i></strong><small>最终信心 {finalDecision?.confidence ?? 3} / 5</small></div>
+          </aside>
+
+          <section className="v2-reward-card v2-reward-trajectory">
+            <div className="v2-section-heading">
+              <div><p className="v2-kicker">六步变化</p><h2>每一步怎样推动了分界点</h2></div>
+              <p>线向右表示分界点被移到了更晚的位置，向左则表示移到了更早的位置。</p>
+            </div>
+            <BoundaryTrajectoryV2 decisions={rewardDecisions} />
+          </section>
+        </section>
+
+        <section className="v2-reward-action">
+          <div><strong>已完成 {curvePosition + 1} / {orderedCurves.length} 条走势</strong><span>{curvePosition < orderedCurves.length - 1 ? "下一条会重新从匿名走势开始。" : "四条走势都已完成，可以查看总结果。"}</span></div>
+          <button className="v2-primary" onClick={continueAfterReward}>
+            {curvePosition < orderedCurves.length - 1 ? "休息好了，看下一条" : "查看四条走势的总结果"}
+            <span aria-hidden="true">→</span>
           </button>
-        </div>
+        </section>
       </main>
     );
   }
@@ -681,7 +730,7 @@ export function ExperimentV2() {
         </header>
 
         <section className="v2-results-hero">
-          <p className="v2-eyebrow">四条走势 · 二十八次判断</p>
+          <p className="v2-eyebrow">四条走势 · 二十四次判断</p>
           <h1>信息增加时，<br />你的分界点这样移动。</h1>
           <p>这里展示的是判断变化，不是正确率，也不提供所谓的标准答案。</p>
         </section>
@@ -689,7 +738,7 @@ export function ExperimentV2() {
         <section className="v2-summary-strip">
           <div><span>每条走势的平均累计移动</span><strong>{meanTotal.toFixed(3)}</strong><small>研究指标：上下文弹性</small></div>
           <div><span>平均影响最大的一步</span><strong>{DISCLOSURES[strongestOffset + 1].short}</strong><small>{DISCLOSURES[strongestOffset + 1].title}</small></div>
-          <div><span>已保存的判断</span><strong>{decisions.length}</strong><small>4 条走势 × 7 个步骤</small></div>
+          <div><span>已保存的判断</span><strong>{decisions.length}</strong><small>4 条走势 × 6 个步骤</small></div>
         </section>
 
         <section className="v2-result-card">
@@ -745,7 +794,7 @@ export function ExperimentV2() {
     ? `${linePath} L${xForIndex(pointCount - 1)},${CHART.top + plotHeight} L${CHART.left},${CHART.top + plotHeight} Z`
     : "";
   const availableCues = [...BASE_CUES, ...LAYER_CUES.slice(0, level + 1).flat()];
-  const canSubmit = hasBoth && !busy && (level === 0 || influenceRating !== null);
+  const canSubmit = hasBoth && !busy;
 
   return (
     <main className="v2-experiment">
@@ -767,7 +816,7 @@ export function ExperimentV2() {
               </i>
             ))}
           </div>
-          <div className="v2-step-indicator" aria-label={`第 ${level + 1} 步，共 7 步`}>
+          <div className="v2-step-indicator" aria-label={`第 ${level + 1} 步，共 ${DISCLOSURES.length} 步`}>
             {DISCLOSURES.map((item, index) => (
               <div className={index < level ? "done" : index === level ? "active" : ""} key={item.key}>
                 <span>{index < level ? "✓" : index + 1}</span><small>{item.short}</small>
@@ -781,16 +830,17 @@ export function ExperimentV2() {
       <section className="v2-workspace">
         <div className="v2-chart-card">
           <div className="v2-chart-heading">
-            <div>
+            <div className="v2-title-block">
               <p className="v2-round-label">第 {curvePosition + 1} 条走势 · 第 {level + 1} 步</p>
-              <h1 className={level === 2 ? "v2-new-target" : ""}>
-                {level >= 2
+              <h1 className={level === 3 ? "v2-new-target" : ""}>
+                {level >= 3
                   ? `${curve.asset.nameZh}（${curve.asset.name}，${curve.asset.symbol}）`
                   : `匿名走势 ${String(curvePosition + 1).padStart(2, "0")}`}
-                {level === 2 && <span className="v2-new-tag">新增</span>}
+                {level === 3 && <span className="v2-new-tag">新增</span>}
               </h1>
               <p>{disclosure.prompt}</p>
             </div>
+            {level >= 4 && <ContextWindowChart curve={curve} isNew={level === 4} />}
             <div className="v2-boundary-status">
               <span className={hasBoth ? "ready" : "waiting"}>
                 {hasBoth ? "已选好两个分界点" : `还需选择 ${2 - boundaries.filter((item) => item !== null).length} 个`}
@@ -840,7 +890,7 @@ export function ExperimentV2() {
               <path d={linePath} className="v2-series-line" />
 
               {level >= 5 && eventPoints.map(({ event, point }, index) => (
-                <g className={`v2-event-marker ${level === 5 ? "v2-new-target-svg" : ""}`} key={event.date}>
+                <g className="v2-event-marker v2-new-target-svg" key={event.date}>
                   <line x1={xForIndex(point.index)} x2={xForIndex(point.index)} y1={CHART.top + 4} y2={CHART.top + plotHeight} />
                   <circle cx={xForIndex(point.index)} cy={yForPoint(point)} r="12" />
                   <text x={xForIndex(point.index)} y={yForPoint(point) + 4}>{index + 1}</text>
@@ -873,28 +923,28 @@ export function ExperimentV2() {
                 <g className="v2-axes">
                   <line x1={CHART.left} x2={CHART.left} y1={CHART.top} y2={CHART.top + plotHeight} />
                   <line x1={CHART.left} x2={CHART.left + plotWidth} y1={CHART.top + plotHeight} y2={CHART.top + plotHeight} />
-                  <g className={level === 1 || level === 4 ? "v2-new-target-svg" : ""}>
+                  <g className={level === 1 || level === 3 ? "v2-new-target-svg" : ""}>
                     {yTicks.map((tick) => (
                       <text key={`y-${tick}`} x={CHART.left - 14} y={CHART.top + (1 - tick) * plotHeight + 4} textAnchor="end">
-                        {level >= 4
+                        {level >= 3
                           ? formatPrice(curve.source.priceMin + tick * (curve.source.priceMax - curve.source.priceMin))
                           : tick.toFixed(2)}
                       </text>
                     ))}
                     <text className="v2-axis-title" transform={`translate(19 ${CHART.top + plotHeight / 2}) rotate(-90)`} textAnchor="middle">
-                      {level >= 4 ? "每周平均开盘价（USD）" : "标准化价格"}
+                      {level >= 3 ? "每周平均开盘价（USD）" : "标准化价格"}
                     </text>
                   </g>
-                  <g className={level === 1 || level === 3 ? "v2-new-target-svg" : ""}>
+                  <g className={level === 1 || level === 2 ? "v2-new-target-svg" : ""}>
                     {xTicks.map((index) => (
                       <text key={`x-${index}`} x={xForIndex(index)} y={CHART.top + plotHeight + 30} textAnchor="middle">
-                        {level >= 3
+                        {level >= 2
                           ? new Date(`${curve.points[index].date}T00:00:00Z`).getUTCFullYear()
                           : `${Math.round((index / (pointCount - 1)) * 100)}%`}
                       </text>
                     ))}
                     <text className="v2-axis-title" x={CHART.left + plotWidth / 2} y={CHART.height - 10} textAnchor="middle">
-                      {level >= 3 ? "真实时间（周）" : "在整段走势中的相对位置"}
+                      {level >= 2 ? "真实时间（周）" : "在整段走势中的相对位置"}
                     </text>
                   </g>
                 </g>
@@ -905,8 +955,8 @@ export function ExperimentV2() {
               {hoverPoint ? (
                 <>
                   {level >= 1 && <span>相对位置 {Math.round((hoverPoint.index / (pointCount - 1)) * 100)}%</span>}
-                  {level >= 3 && <span>{formatDate(hoverPoint.date)}</span>}
-                  {level >= 4
+                  {level >= 2 && <span>{formatDate(hoverPoint.date)}</span>}
+                  {level >= 3
                     ? <strong>{formatPrice(hoverPoint.price)}</strong>
                     : level >= 1
                       ? <strong>标准化价格 {hoverPoint.normalized.toFixed(3)}</strong>
@@ -932,7 +982,7 @@ export function ExperimentV2() {
                 onKeyDown={(event) => markAdjustment(event.timeStamp)}
                 onChange={(event) => moveBoundary(0, Number(event.target.value))}
               />
-              <output>{firstBoundary === null ? "尚未选择" : level >= 3 ? formatDate(curve.points[firstBoundary].date) : `相对位置 ${Math.round((firstBoundary / (pointCount - 1)) * 100)}%`}</output>
+              <output>{firstBoundary === null ? "尚未选择" : level >= 2 ? formatDate(curve.points[firstBoundary].date) : `相对位置 ${Math.round((firstBoundary / (pointCount - 1)) * 100)}%`}</output>
             </div>
             <div>
               <label htmlFor="v2-boundary-two">分界点 2</label>
@@ -947,7 +997,7 @@ export function ExperimentV2() {
                 onKeyDown={(event) => markAdjustment(event.timeStamp)}
                 onChange={(event) => moveBoundary(1, Number(event.target.value))}
               />
-              <output>{secondBoundary === null ? "尚未选择" : level >= 3 ? formatDate(curve.points[secondBoundary].date) : `相对位置 ${Math.round((secondBoundary / (pointCount - 1)) * 100)}%`}</output>
+              <output>{secondBoundary === null ? "尚未选择" : level >= 2 ? formatDate(curve.points[secondBoundary].date) : `相对位置 ${Math.round((secondBoundary / (pointCount - 1)) * 100)}%`}</output>
             </div>
             <button className="v2-text-button" onClick={resetToPrevious} disabled={showReveal}>
               {level ? "恢复为上一轮位置" : "清空重新选择"}
@@ -963,15 +1013,7 @@ export function ExperimentV2() {
             <div><span>暂未显示</span><strong>{disclosure.hidden}</strong></div>
           </section>
 
-          {level === 5 && (
-            <section className="v2-marker-note v2-new-target">
-              <span className="v2-new-tag">新增</span>
-              <strong>图中出现了 6 个编号位置</strong>
-              <p>这一轮只显示位置，下一轮才会告诉你对应的事件。</p>
-            </section>
-          )}
-
-          {level >= 6 && (
+          {level >= 5 && (
             <section className="v2-event-list v2-new-target">
               <span className="v2-new-tag">新增</span>
               {eventPoints.map(({ event }, index) => (
@@ -1004,7 +1046,7 @@ export function ExperimentV2() {
               <fieldset>
                 <legend>这一步新增的信息，对你的判断影响有多大？</legend>
                 <div className="v2-influence-scale">
-                  {[0, 1, 2, 3, 4].map((value) => (
+                  {[1, 2, 3, 4, 5].map((value) => (
                     <button
                       type="button"
                       key={value}
@@ -1013,7 +1055,7 @@ export function ExperimentV2() {
                     >{value}</button>
                   ))}
                 </div>
-                <div className="v2-scale-labels"><span>没有影响</span><span>影响很大</span></div>
+                <div className="v2-scale-labels"><span>几乎没有影响</span><span>影响很大</span></div>
               </fieldset>
             )}
 
@@ -1060,7 +1102,7 @@ export function ExperimentV2() {
       {showReveal && (
         <div className="v2-reveal-backdrop" role="presentation">
           <section className="v2-reveal-dialog" role="dialog" aria-modal="true" aria-labelledby="v2-reveal-title">
-            <div className="v2-reveal-step"><span>{curvePosition + 1}</span> / 4 条走势 · <span>{level + 1}</span> / 7 步</div>
+            <div className="v2-reveal-step"><span>{curvePosition + 1}</span> / 4 条走势 · <span>{level + 1}</span> / {DISCLOSURES.length} 步</div>
             <p className="v2-kicker">{level === 0 ? "开始一条新的匿名走势" : "请留意这一步新增的信息"}</p>
             <h2 id="v2-reveal-title">{disclosure.title}</h2>
             <p>{disclosure.newInfo}</p>
@@ -1072,6 +1114,98 @@ export function ExperimentV2() {
         </div>
       )}
     </main>
+  );
+}
+
+function ContextWindowChart({ curve, isNew }: { curve: Curve; isNew: boolean }) {
+  const width = 560;
+  const height = 148;
+  const left = 16;
+  const right = 16;
+  const top = 25;
+  const bottom = 29;
+  const points = curve.contextPoints;
+  const x = (index: number) =>
+    left + (index / Math.max(points.length - 1, 1)) * (width - left - right);
+  const y = (point: PricePoint) =>
+    top + (1 - point.normalized) * (height - top - bottom);
+  const path = points
+    .map((point, index) => `${index ? "L" : "M"}${x(index).toFixed(2)},${y(point).toFixed(2)}`)
+    .join(" ");
+  const excerptStart = Math.max(
+    0,
+    points.findIndex((point) => point.weekEnd >= curve.source.window.start),
+  );
+  let excerptEnd = points.length - 1;
+  for (let index = points.length - 1; index >= 0; index -= 1) {
+    if (points[index].date <= curve.source.window.end) {
+      excerptEnd = index;
+      break;
+    }
+  }
+  const excerptPath = points
+    .slice(excerptStart, excerptEnd + 1)
+    .map((point, offset) => {
+      const index = excerptStart + offset;
+      return `${offset ? "L" : "M"}${x(index).toFixed(2)},${y(point).toFixed(2)}`;
+    })
+    .join(" ");
+  const firstYear = new Date(`${curve.source.contextWindow.start}T00:00:00Z`).getUTCFullYear();
+  const lastYear = new Date(`${curve.source.contextWindow.end}T00:00:00Z`).getUTCFullYear();
+  const excerptStartYear = new Date(`${curve.source.window.start}T00:00:00Z`).getUTCFullYear();
+  const excerptEndYear = new Date(`${curve.source.window.end}T00:00:00Z`).getUTCFullYear();
+
+  return (
+    <section className={`v2-context-window ${isNew ? "v2-new-target" : ""}`} aria-label={`当前截取区间位于 ${curve.asset.nameZh} 更长价格历史中的位置`}>
+      <div><strong>这段走势在完整时间轴中的位置</strong><span>{firstYear}–{lastYear} 可用历史</span>{isNew && <small>新增</small>}</div>
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${excerptStartYear} 至 ${excerptEndYear} 的实验区间在 ${firstYear} 至 ${lastYear} 完整时间轴中被高亮`}>
+        <rect className="context-selection" x={x(excerptStart)} y={top - 8} width={Math.max(2, x(excerptEnd) - x(excerptStart))} height={height - top - bottom + 16} rx="5" />
+        <line className="context-baseline" x1={left} x2={width - right} y1={height - bottom} y2={height - bottom} />
+        <path className="context-path" d={path} />
+        <path className="context-path-highlight" d={excerptPath} />
+        <line className="context-edge" x1={x(excerptStart)} x2={x(excerptStart)} y1={top - 5} y2={height - bottom + 5} />
+        <line className="context-edge" x1={x(excerptEnd)} x2={x(excerptEnd)} y1={top - 5} y2={height - bottom + 5} />
+        <text x={left} y={height - 8}>{firstYear}</text>
+        <text className="context-highlight-label" x={(x(excerptStart) + x(excerptEnd)) / 2} y={17} textAnchor="middle">本实验截取 {excerptStartYear}–{excerptEndYear}</text>
+        <text x={width - right} y={height - 8} textAnchor="end">{lastYear}</text>
+      </svg>
+    </section>
+  );
+}
+
+function RewardCurveOverview({ curve, decisions }: { curve: Curve; decisions: Decision[] }) {
+  const width = 1000;
+  const height = 300;
+  const left = 38;
+  const right = 28;
+  const top = 30;
+  const bottom = 36;
+  const first = decisions[0];
+  const final = decisions.at(-1);
+  const x = (ratio: number) => left + ratio * (width - left - right);
+  const y = (point: PricePoint) => top + (1 - point.normalized) * (height - top - bottom);
+  const path = curve.points
+    .map((point, index) => `${index ? "L" : "M"}${x(index / Math.max(curve.points.length - 1, 1)).toFixed(2)},${y(point).toFixed(2)}`)
+    .join(" ");
+  if (!first || !final) return null;
+
+  return (
+    <div className="v2-reward-curve">
+      <div className="v2-reward-curve-legend"><span className="initial">第一次判断</span><span className="final">最终判断</span></div>
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="第一次与最终两个分界点在价格走势上的位置比较">
+        <rect className="reward-stage-one" x={left} y={top} width={x(final.boundary1Ratio) - left} height={height - top - bottom} />
+        <rect className="reward-stage-two" x={x(final.boundary1Ratio)} y={top} width={x(final.boundary2Ratio) - x(final.boundary1Ratio)} height={height - top - bottom} />
+        <rect className="reward-stage-three" x={x(final.boundary2Ratio)} y={top} width={width - right - x(final.boundary2Ratio)} height={height - top - bottom} />
+        <path className="reward-curve-halo" d={path} />
+        <path className="reward-curve-line" d={path} />
+        {[first.boundary1Ratio, first.boundary2Ratio].map((ratio, index) => (
+          <g className="reward-boundary-initial" key={`initial-${index}`}><line x1={x(ratio)} x2={x(ratio)} y1={top} y2={height - bottom} /><text x={x(ratio)} y={height - 12} textAnchor="middle">最初 {index + 1}</text></g>
+        ))}
+        {[final.boundary1Ratio, final.boundary2Ratio].map((ratio, index) => (
+          <g className="reward-boundary-final" key={`final-${index}`}><line x1={x(ratio)} x2={x(ratio)} y1={top} y2={height - bottom} /><circle cx={x(ratio)} cy={top + 18} r="12" /><text x={x(ratio)} y={top + 22} textAnchor="middle">{index + 1}</text></g>
+        ))}
+      </svg>
+    </div>
   );
 }
 
@@ -1115,7 +1249,7 @@ function BoundaryTrajectoryV2({ decisions }: { decisions: Decision[] }) {
   return (
     <div className="v2-trajectory-wrap">
       <div className="v2-trajectory-legend"><span className="one">分界点 1</span><span className="two">分界点 2</span></div>
-      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="两个分界点随七步信息增加而移动的轨迹">
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="两个分界点随六步信息增加而移动的轨迹">
         {[0, 0.25, 0.5, 0.75, 1].map((ratio) => (
           <g key={ratio}><line className="grid" x1={x(ratio)} x2={x(ratio)} y1={top} y2={height - bottom} /><text x={x(ratio)} y={height - 15} textAnchor="middle">{Math.round(ratio * 100)}%</text></g>
         ))}
@@ -1148,7 +1282,7 @@ function DecisionReview({ curve, decisions }: { curve: Curve; decisions: Decisio
                 <td>{formatDate(decision.boundary2Date)}</td>
                 <td>{movement === null ? "基线" : movement.toFixed(3)}</td>
                 <td>{decision.confidence}/5</td>
-                <td>{index ? `${decision.influenceRating}/4` : "—"}</td>
+                <td>{index ? `${decision.influenceRating}/5` : "—"}</td>
               </tr>
             );
           })}

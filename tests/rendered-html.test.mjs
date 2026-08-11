@@ -23,7 +23,7 @@ async function render(pathname = "/") {
   );
 }
 
-test("server-renders the four-curve, seven-step Chinese experiment", async () => {
+test("server-renders the four-curve, six-step Chinese experiment", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
@@ -34,13 +34,13 @@ test("server-renders the four-curve, seven-step Chinese experiment", async () =>
   assert.match(html, /你的分界点/);
   assert.match(html, /4[^<]*<\/strong><span>条匿名走势/);
   assert.match(html, /2[^<]*<\/strong><span>个固定分界点/);
-  assert.match(html, /7[^<]*<\/strong><span>步信息变化/);
+  assert.match(html, /6[^<]*<\/strong><span>步信息变化/);
   assert.match(html, /走势/);
   assert.match(html, /坐标/);
-  assert.match(html, /币种/);
-  assert.match(html, /日期/);
+  assert.match(html, /资产/);
+  assert.match(html, /时间/);
   assert.match(html, /价格/);
-  assert.match(html, /位置/);
+  assert.match(html, /全貌/);
   assert.match(html, /事件/);
   assert.doesNotMatch(html, /codex-preview|starter loading skeleton/i);
 });
@@ -60,7 +60,7 @@ test("ships four comparable weekly pilot curves", async () => {
   );
   const stimulus = JSON.parse(raw);
 
-  assert.equal(stimulus.protocolVersion, "context-elasticity-four-asset-v2");
+  assert.equal(stimulus.protocolVersion, "context-elasticity-four-asset-v3");
   assert.equal(stimulus.dataset.pilotCurveCount, 4);
   assert.deepEqual(
     stimulus.curves.map((curve) => curve.asset.symbol),
@@ -69,12 +69,21 @@ test("ships four comparable weekly pilot curves", async () => {
   assert.ok(stimulus.curves.every((curve) => curve.points.length >= 229));
   assert.ok(stimulus.curves.every((curve) => curve.points.length <= 230));
   assert.ok(stimulus.curves.every((curve) => curve.events.length === 6));
+  assert.ok(stimulus.curves.every((curve) => curve.contextPoints.length > curve.points.length));
+  assert.ok(stimulus.curves.every((curve) =>
+    curve.source.contextWindow.start < curve.source.window.start &&
+    curve.source.contextWindow.end > curve.source.window.end,
+  ));
   assert.ok(stimulus.curves.every((curve) =>
     curve.points.every((point) => point.normalized >= 0 && point.normalized <= 1),
   ));
   assert.ok(stimulus.curves.every((curve) =>
     Math.min(...curve.points.map((point) => point.normalized)) === 0 &&
     Math.max(...curve.points.map((point) => point.normalized)) === 1,
+  ));
+  assert.ok(stimulus.curves.every((curve) =>
+    Math.min(...curve.contextPoints.map((point) => point.normalized)) === 0 &&
+    Math.max(...curve.contextPoints.map((point) => point.normalized)) === 1,
   ));
 });
 

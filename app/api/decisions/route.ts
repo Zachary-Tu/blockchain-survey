@@ -75,7 +75,7 @@ export async function POST(request: Request) {
       (payload.influenceRating !== undefined &&
         (!finiteNumber(payload.influenceRating) ||
           payload.influenceRating < 0 ||
-          payload.influenceRating > 4)) ||
+          payload.influenceRating > 5)) ||
       (payload.revealReadMs !== undefined &&
         (!finiteNumber(payload.revealReadMs) || payload.revealReadMs < 0)) ||
       (payload.firstMoveMs !== undefined &&

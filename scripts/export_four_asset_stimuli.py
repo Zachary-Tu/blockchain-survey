@@ -1,9 +1,11 @@
-"""Build the four-asset stimulus set for Boundary Lab v2.
+"""Build the four-asset stimulus set for Boundary Lab v3.
 
 The Li Blockchain TSV files are read-only inputs. Weekly values reproduce the
 project convention: sort daily observations in ascending order and average
 Open over consecutive seven-observation blocks anchored at each file's first
-available date. All four curves use the common 2020-08 through 2024-12 window.
+available date. All four experiment curves use the common 2020-08 through
+2024-12 window. A second 2018-2026 context series locates that excerpt inside
+the asset's longer available history; Solana starts at its actual first record.
 
 Event labels are a traceable pilot set, not a preregistered causal annotation.
 Formal data collection must freeze wording and selection independently.
@@ -26,6 +28,8 @@ OUTPUT = Path(__file__).resolve().parents[1] / "public" / "data" / "asset-stimul
 
 WINDOW_START = datetime(2020, 8, 1)
 WINDOW_END = datetime(2024, 12, 31)
+CONTEXT_START = datetime(2018, 1, 1)
+CONTEXT_END = datetime(2026, 4, 11)
 
 ASSETS = [
     {
@@ -123,10 +127,16 @@ def weekly_blocks(
 def build_curve(asset: dict[str, object]) -> dict[str, object]:
     slug = str(asset["slug"])
     source_file = TSV_ROOT / f"{slug}.tsv"
+    weekly = weekly_blocks(read_daily_open(source_file))
     selected = [
         record
-        for record in weekly_blocks(read_daily_open(source_file))
+        for record in weekly
         if WINDOW_START <= record[0] and record[1] <= WINDOW_END
+    ]
+    context = [
+        record
+        for record in weekly
+        if CONTEXT_START <= record[0] and record[1] <= CONTEXT_END
     ]
     minimum = min(price for _, _, price in selected)
     maximum = max(price for _, _, price in selected)
@@ -142,6 +152,19 @@ def build_curve(asset: dict[str, object]) -> dict[str, object]:
         }
         for index, (start, end, price) in enumerate(selected)
     ]
+    context_minimum = min(price for _, _, price in context)
+    context_maximum = max(price for _, _, price in context)
+    context_spread = context_maximum - context_minimum
+    context_points = [
+        {
+            "index": index,
+            "date": start.date().isoformat(),
+            "weekEnd": end.date().isoformat(),
+            "price": round(price, 6),
+            "normalized": round((price - context_minimum) / context_spread, 8),
+        }
+        for index, (start, end, price) in enumerate(context)
+    ]
     events = [
         {
             "date": date,
@@ -153,7 +176,7 @@ def build_curve(asset: dict[str, object]) -> dict[str, object]:
     ]
 
     return {
-        "id": f"li-{str(asset['symbol']).lower()}-weekly-2020-2024-v2",
+        "id": f"li-{str(asset['symbol']).lower()}-weekly-2020-2024-v3",
         "asset": {
             "name": asset["name"],
             "nameZh": asset["nameZh"],
@@ -165,11 +188,16 @@ def build_curve(asset: dict[str, object]) -> dict[str, object]:
             "sourceFile": f"cmc_original_price_data/tsv2026/{slug}.tsv",
             "aggregation": "Mean daily Open over consecutive 7-observation blocks",
             "window": {"start": points[0]["date"], "end": points[-1]["weekEnd"]},
+            "contextWindow": {
+                "start": context_points[0]["date"],
+                "end": context_points[-1]["weekEnd"],
+            },
             "priceMin": round(minimum, 6),
             "priceMax": round(maximum, 6),
             "displayNormalization": "min-max within each displayed window",
         },
         "points": points,
+        "contextPoints": context_points,
         "events": events,
     }
 
@@ -177,7 +205,7 @@ def build_curve(asset: dict[str, object]) -> dict[str, object]:
 def main() -> None:
     curves = [build_curve(asset) for asset in ASSETS]
     payload = {
-        "protocolVersion": "context-elasticity-four-asset-v2",
+        "protocolVersion": "context-elasticity-four-asset-v3",
         "dataset": {
             "project": "Li Blockchain",
             "frozenCohortCount": 678,
@@ -201,6 +229,7 @@ def main() -> None:
                     {
                         "symbol": curve["asset"]["symbol"],  # type: ignore[index]
                         "points": len(curve["points"]),  # type: ignore[arg-type]
+                        "contextPoints": len(curve["contextPoints"]),  # type: ignore[arg-type]
                         "first": curve["points"][0],  # type: ignore[index]
                         "last": curve["points"][-1],  # type: ignore[index]
                         "events": len(curve["events"]),  # type: ignore[arg-type]

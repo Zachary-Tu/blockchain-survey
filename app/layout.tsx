@@ -16,10 +16,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Boundary Lab｜你的分界点，会不会移动？",
   description:
-    "在四条加密资产走势上固定选择两个分界点，逐步披露坐标、币种、日期、价格、事件位置和事件名称，测量判断如何改变。",
+    "在四条加密资产走势上固定选择两个分界点，逐步披露坐标、真实时间、资产与价格、长时间轴位置和重点事件，测量判断如何改变。",
   openGraph: {
     title: "Boundary Lab｜你的分界点，会不会移动？",
-    description: "四条走势、两个分界点、七步信息变化：比较人类与多模态 Agent 的上下文弹性。",
+    description: "四条走势、两个分界点、六步信息变化：比较人类与多模态 Agent 的上下文弹性。",
     type: "website",
     locale: "zh_CN",
     images: [
@@ -27,14 +27,14 @@ export const metadata: Metadata = {
         url: "/og.png",
         width: 1672,
         height: 941,
-        alt: "一条价格走势被两个分界点分成三段，并逐步增加七项信息",
+        alt: "一条价格走势被两个分界点分成三段，并逐步增加六项信息",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
     title: "Boundary Lab｜你的分界点，会不会移动？",
-    description: "四条走势、两个分界点、七步信息变化，测量人类与 Agent 的上下文弹性。",
+    description: "四条走势、两个分界点、六步信息变化，测量人类与 Agent 的上下文弹性。",
     images: ["/og.png"],
   },
 };
