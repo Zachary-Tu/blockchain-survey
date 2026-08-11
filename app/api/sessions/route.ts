@@ -18,6 +18,7 @@ export async function POST(request: Request) {
       experimentalArm?: string;
       protocolVersion?: string;
       modelName?: string | null;
+      studyConfig?: unknown;
     };
     const actorType = payload.actorType ?? "human";
     const expertise = payload.expertise ?? "none";
@@ -27,6 +28,10 @@ export async function POST(request: Request) {
     }
 
     await ensureExperimentSchema();
+    const studyConfigJson = JSON.stringify(payload.studyConfig ?? {});
+    if (studyConfigJson.length > 12000) {
+      return Response.json({ error: "Study configuration is too large" }, { status: 400 });
+    }
     const sessionId = crypto.randomUUID();
     const [session] = await getDb()
       .insert(experimentSessions)
@@ -37,6 +42,7 @@ export async function POST(request: Request) {
         expertise,
         experimentalArm: (payload.experimentalArm ?? "trajectory").slice(0, 40),
         protocolVersion: protocolVersion.slice(0, 80),
+        studyConfigJson,
         modelName: payload.modelName?.trim().slice(0, 120) || null,
       })
       .returning({ id: experimentSessions.id, startedAt: experimentSessions.startedAt });

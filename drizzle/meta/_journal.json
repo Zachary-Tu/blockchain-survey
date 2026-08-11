@@ -15,6 +15,13 @@
       "when": 1786390174440,
       "tag": "0001_wakeful_absorbing_man",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786459218018,
+      "tag": "0002_pale_turbo",
+      "breakpoints": true
     }
   ]
 }

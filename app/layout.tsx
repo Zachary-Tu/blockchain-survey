@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import "./v2.css";
+import "./v3.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,27 +15,29 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Boundary Lab｜你的分界点，会不会移动？",
+  title: "Boundary Lab｜阶段判断的上下文弹性研究",
   description:
-    "在四条加密资产走势上固定选择两个分界点，逐步披露坐标、真实时间、资产与价格、长时间轴位置和重点事件，测量判断如何改变。",
+    "比较人类与多模态 Agent 在价格、活跃地址和 Google 搜索热度曲线上的阶段判断，并测量四级语义披露如何改变阶段边界。",
   openGraph: {
-    title: "Boundary Lab｜你的分界点，会不会移动？",
-    description: "四条走势、两个分界点、六步信息变化：比较人类与多模态 Agent 的上下文弹性。",
+    title: "Boundary Lab｜阶段判断的上下文弹性研究",
+    description:
+      "三类曲线、三种任务、四级信息披露：比较人类与 Agent 的阶段判断如何随语义而改变。",
     type: "website",
     locale: "zh_CN",
     images: [
       {
         url: "/og.png",
-        width: 1672,
-        height: 941,
-        alt: "一条价格走势被两个分界点分成三段，并逐步增加六项信息",
+        width: 1536,
+        height: 1024,
+        alt: "Boundary Lab 多指标阶段判断与四级信息披露研究界面",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Boundary Lab｜你的分界点，会不会移动？",
-    description: "四条走势、两个分界点、六步信息变化，测量人类与 Agent 的上下文弹性。",
+    title: "Boundary Lab｜阶段判断的上下文弹性研究",
+    description:
+      "三类曲线、三种任务、四级信息披露，测量人类与 Agent 的上下文弹性。",
     images: ["/og.png"],
   },
 };

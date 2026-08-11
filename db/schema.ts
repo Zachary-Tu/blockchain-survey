@@ -17,12 +17,68 @@ export const experimentSessions = sqliteTable(
     expertise: text("expertise").notNull().default("none"),
     experimentalArm: text("experimental_arm").notNull().default("trajectory"),
     protocolVersion: text("protocol_version").notNull(),
+    studyConfigJson: text("study_config_json").notNull().default("{}"),
     modelName: text("model_name"),
     status: text("status").notNull().default("active"),
     startedAt: text("started_at").notNull().default(sql`CURRENT_TIMESTAMP`),
     completedAt: text("completed_at"),
   },
   (table) => [index("idx_sessions_status").on(table.status)],
+);
+
+export const researchResponses = sqliteTable(
+  "research_responses",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => experimentSessions.id, { onDelete: "cascade" }),
+    stimulusId: text("stimulus_id").notNull(),
+    assetId: text("asset_id").notNull(),
+    assetOrder: integer("asset_order").notNull(),
+    metricType: text("metric_type").notNull(),
+    taskMode: text("task_mode").notNull(),
+    resolution: text("resolution").notNull(),
+    scaleMode: text("scale_mode").notNull().default("linear"),
+    disclosureLevel: integer("disclosure_level").notNull(),
+    disclosureKey: text("disclosure_key").notNull(),
+    boundaryCount: integer("boundary_count").notNull().default(0),
+    boundariesJson: text("boundaries_json").notNull().default("[]"),
+    referenceBoundariesJson: text("reference_boundaries_json").notNull().default("[]"),
+    reasonablenessRating: integer("reasonableness_rating"),
+    confidence: integer("confidence").notNull(),
+    influenceRating: integer("influence_rating"),
+    confidenceTouched: integer("confidence_touched", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    influenceTouched: integer("influence_touched", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    noChangeConfirmed: integer("no_change_confirmed", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    cueTags: text("cue_tags").notNull().default("[]"),
+    rationale: text("rationale").notNull().default(""),
+    elapsedMs: integer("elapsed_ms").notNull(),
+    revealReadMs: integer("reveal_read_ms").notNull().default(0),
+    firstMoveMs: integer("first_move_ms"),
+    adjustmentCount: integer("adjustment_count").notNull().default(0),
+    scaleSwitchCount: integer("scale_switch_count").notNull().default(0),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    index("idx_research_responses_session_id").on(table.sessionId),
+    index("idx_research_responses_condition").on(
+      table.metricType,
+      table.taskMode,
+      table.resolution,
+    ),
+    uniqueIndex("idx_research_response_session_stimulus_layer").on(
+      table.sessionId,
+      table.stimulusId,
+      table.disclosureLevel,
+    ),
+  ],
 );
 
 export const stageDecisions = sqliteTable(

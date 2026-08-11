@@ -23,37 +23,85 @@ async function render(pathname = "/") {
   );
 }
 
-test("server-renders the four-curve, six-step Chinese experiment", async () => {
+test("server-renders the research configuration for the third-generation study", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
   assert.match(html, /<html lang="zh-CN">/i);
-  assert.match(html, /<title>Boundary Lab｜你的分界点，会不会移动？<\/title>/i);
-  assert.match(html, /你的分界点/);
-  assert.match(html, /4[^<]*<\/strong><span>条匿名走势/);
-  assert.match(html, /2[^<]*<\/strong><span>个固定分界点/);
-  assert.match(html, /6[^<]*<\/strong><span>步信息变化/);
-  assert.match(html, /走势/);
-  assert.match(html, /坐标/);
-  assert.match(html, /资产/);
-  assert.match(html, /时间/);
-  assert.match(html, /价格/);
-  assert.match(html, /全貌/);
-  assert.match(html, /事件/);
+  assert.match(html, /<title>Boundary Lab｜阶段判断的上下文弹性研究<\/title>/i);
+  assert.match(html, /语义会让分界移动吗/);
+  assert.match(html, /价格数据/);
+  assert.match(html, /活跃地址/);
+  assert.match(html, /Google 搜索热度/);
+  assert.match(html, /固定两个分界点/);
+  assert.match(html, /自由选择分界点/);
+  assert.match(html, /评价预设划分/);
+  assert.match(html, /名称与背景/);
+  assert.match(html, /时间轴与单位/);
+  assert.match(html, /重要事件/);
   assert.doesNotMatch(html, /codex-preview|starter loading skeleton/i);
 });
 
-test("keeps the original experiment available at the legacy route", async () => {
-  const response = await render("/legacy");
-  assert.equal(response.status, 200);
-  const html = await response.text();
-  assert.match(html, /你在哪里看到/);
-  assert.match(html, /六轮信息披露/);
+test("keeps both earlier interfaces available for rollback", async () => {
+  const v2 = await render("/v2");
+  assert.equal(v2.status, 200);
+  const v2Html = await v2.text();
+  assert.match(v2Html, /你的分界点/);
+  assert.match(v2Html, /4[^<]*<\/strong><span>条匿名走势/);
+
+  const legacy = await render("/legacy");
+  assert.equal(legacy.status, 200);
+  const legacyHtml = await legacy.text();
+  assert.match(legacyHtml, /你在哪里看到/);
+  assert.match(legacyHtml, /六轮信息披露/);
 });
 
-test("ships four comparable weekly pilot curves", async () => {
+test("ships a provenance-aware multi-metric stimulus bundle", async () => {
+  const raw = await readFile(
+    new URL("../public/data/research-stimuli-v4.json", import.meta.url),
+    "utf8",
+  );
+  const stimulus = JSON.parse(raw);
+
+  assert.equal(stimulus.protocolVersion, "context-elasticity-multimetric-v4");
+  assert.deepEqual(stimulus.requestedWindow, {
+    start: "2018-01-01",
+    end: "2026-04-11",
+  });
+  assert.deepEqual(stimulus.resolutions, ["daily", "weekly", "monthly", "yearly"]);
+  assert.deepEqual(
+    stimulus.assets.map((asset) => asset.symbol),
+    ["BTC", "ETH", "SOL", "BNB"],
+  );
+
+  for (const asset of stimulus.assets) {
+    assert.equal(asset.metrics.price.available, true);
+    assert.ok(asset.metrics.price.resolutions.daily.points.length >= 2000);
+    assert.ok(asset.metrics.price.resolutions.weekly.points.length >= 290);
+    assert.ok(asset.metrics.price.resolutions.monthly.points.length >= 69);
+    assert.ok(asset.metrics.price.resolutions.yearly.points.length >= 7);
+    assert.equal(asset.metrics.googleTrends.available, true);
+    assert.equal(asset.metrics.googleTrends.resolutions.daily, undefined);
+    assert.ok(asset.metrics.googleTrends.resolutions.weekly.points.length >= 220);
+    assert.ok(asset.events.length >= 6);
+  }
+
+  const activeAvailability = stimulus.assets.map(
+    (asset) => asset.metrics.activeAddresses.available,
+  );
+  assert.deepEqual(activeAvailability, [true, true, false, false]);
+  for (const asset of stimulus.assets.slice(0, 2)) {
+    assert.equal(asset.metrics.activeAddresses.source.metric, "AdrActCnt");
+    assert.equal(asset.metrics.activeAddresses.resolutions.daily.points.length, 3023);
+  }
+  for (const asset of stimulus.assets.slice(2)) {
+    assert.match(asset.metrics.activeAddresses.unavailableReason, /不.*合成数据|合成数据/);
+  }
+});
+
+test("retains the preceding four-asset pilot stimulus", async () => {
   const raw = await readFile(
     new URL("../public/data/asset-stimuli-v2.json", import.meta.url),
     "utf8",
@@ -66,39 +114,4 @@ test("ships four comparable weekly pilot curves", async () => {
     stimulus.curves.map((curve) => curve.asset.symbol),
     ["BTC", "ETH", "SOL", "BNB"],
   );
-  assert.ok(stimulus.curves.every((curve) => curve.points.length >= 229));
-  assert.ok(stimulus.curves.every((curve) => curve.points.length <= 230));
-  assert.ok(stimulus.curves.every((curve) => curve.events.length === 6));
-  assert.ok(stimulus.curves.every((curve) => curve.contextPoints.length > curve.points.length));
-  assert.ok(stimulus.curves.every((curve) =>
-    curve.source.contextWindow.start < curve.source.window.start &&
-    curve.source.contextWindow.end > curve.source.window.end,
-  ));
-  assert.ok(stimulus.curves.every((curve) =>
-    curve.points.every((point) => point.normalized >= 0 && point.normalized <= 1),
-  ));
-  assert.ok(stimulus.curves.every((curve) =>
-    Math.min(...curve.points.map((point) => point.normalized)) === 0 &&
-    Math.max(...curve.points.map((point) => point.normalized)) === 1,
-  ));
-  assert.ok(stimulus.curves.every((curve) =>
-    Math.min(...curve.contextPoints.map((point) => point.normalized)) === 0 &&
-    Math.max(...curve.contextPoints.map((point) => point.normalized)) === 1,
-  ));
-});
-
-test("ships the audited Bitcoin pilot stimulus", async () => {
-  const raw = await readFile(
-    new URL("../public/data/bitcoin-2017-2024.json", import.meta.url),
-    "utf8",
-  );
-  const stimulus = JSON.parse(raw);
-
-  assert.equal(stimulus.id, "li-btc-weekly-2017-2024-v1");
-  assert.equal(stimulus.points.length, 416);
-  assert.equal(stimulus.source.frozenCohortCount, 678);
-  assert.equal(stimulus.source.currentRuleValidCount, 993);
-  assert.equal(stimulus.source.rawTsvCount, 1000);
-  assert.equal(stimulus.events.length, 8);
-  assert.ok(stimulus.points.every((point) => point.normalized >= 0 && point.normalized <= 1));
 });

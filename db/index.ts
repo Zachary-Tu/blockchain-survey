@@ -35,10 +35,43 @@ export async function ensureExperimentSchema() {
           expertise TEXT NOT NULL DEFAULT 'none',
           experimental_arm TEXT NOT NULL DEFAULT 'trajectory',
           protocol_version TEXT NOT NULL,
+          study_config_json TEXT NOT NULL DEFAULT '{}',
           model_name TEXT,
           status TEXT NOT NULL DEFAULT 'active',
           started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           completed_at TEXT
+        )`),
+      d1
+        .prepare(`CREATE TABLE IF NOT EXISTS research_responses (
+          id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+          session_id TEXT NOT NULL,
+          stimulus_id TEXT NOT NULL,
+          asset_id TEXT NOT NULL,
+          asset_order INTEGER NOT NULL,
+          metric_type TEXT NOT NULL,
+          task_mode TEXT NOT NULL,
+          resolution TEXT NOT NULL,
+          scale_mode TEXT NOT NULL DEFAULT 'linear',
+          disclosure_level INTEGER NOT NULL,
+          disclosure_key TEXT NOT NULL,
+          boundary_count INTEGER NOT NULL DEFAULT 0,
+          boundaries_json TEXT NOT NULL DEFAULT '[]',
+          reference_boundaries_json TEXT NOT NULL DEFAULT '[]',
+          reasonableness_rating INTEGER,
+          confidence INTEGER NOT NULL,
+          influence_rating INTEGER,
+          confidence_touched INTEGER NOT NULL DEFAULT 0,
+          influence_touched INTEGER NOT NULL DEFAULT 0,
+          no_change_confirmed INTEGER NOT NULL DEFAULT 0,
+          cue_tags TEXT NOT NULL DEFAULT '[]',
+          rationale TEXT NOT NULL DEFAULT '',
+          elapsed_ms INTEGER NOT NULL,
+          reveal_read_ms INTEGER NOT NULL DEFAULT 0,
+          first_move_ms INTEGER,
+          adjustment_count INTEGER NOT NULL DEFAULT 0,
+          scale_switch_count INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (session_id) REFERENCES experiment_sessions(id) ON DELETE CASCADE
         )`),
       d1
         .prepare(`CREATE TABLE IF NOT EXISTS stage_decisions (
@@ -73,7 +106,29 @@ export async function ensureExperimentSchema() {
       d1.prepare(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_decisions_session_curve_layer ON stage_decisions(session_id, curve_id, disclosure_level)",
       ),
+      d1.prepare(
+        "CREATE INDEX IF NOT EXISTS idx_research_responses_session_id ON research_responses(session_id)",
+      ),
+      d1.prepare(
+        "CREATE INDEX IF NOT EXISTS idx_research_responses_condition ON research_responses(metric_type, task_mode, resolution)",
+      ),
+      d1.prepare(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_research_response_session_stimulus_layer ON research_responses(session_id, stimulus_id, disclosure_level)",
+      ),
     ]);
+    const sessionColumnInfo = await d1
+      .prepare("PRAGMA table_info(experiment_sessions)")
+      .all<{ name: string }>();
+    const existingSessionColumns = new Set(
+      sessionColumnInfo.results.map((column) => column.name),
+    );
+    if (!existingSessionColumns.has("study_config_json")) {
+      await d1
+        .prepare(
+          "ALTER TABLE experiment_sessions ADD COLUMN study_config_json TEXT NOT NULL DEFAULT '{}'",
+        )
+        .run();
+    }
     const columnInfo = await d1
       .prepare("PRAGMA table_info(stage_decisions)")
       .all<{ name: string }>();
