@@ -11,7 +11,11 @@ import {
 import Link from "next/link";
 
 type MetricKey = "price" | "activeAddresses" | "googleTrends";
-type TaskMode = "fixed" | "flexible" | "evaluation";
+type BoundaryCount = 1 | 2 | 3;
+type PlacementTaskMode = "placement-1" | "placement-2" | "placement-3";
+type EvaluationTaskMode = "evaluation-1" | "evaluation-2" | "evaluation-3";
+type TaskMode = PlacementTaskMode | EvaluationTaskMode;
+type TaskFamily = "placement" | "evaluation";
 type Resolution = "daily" | "weekly" | "monthly" | "yearly";
 type ScaleMode = "linear" | "log";
 type Phase = "setup" | "experiment" | "reward" | "complete";
@@ -20,6 +24,7 @@ type Point = { date: string; value: number };
 type ResolutionData = {
   points: Point[];
   referenceBoundaries: number[];
+  referenceBoundariesByCount?: Partial<Record<`${BoundaryCount}`, number[]>>;
 };
 type MetricData = {
   name: string;
@@ -56,6 +61,18 @@ type StimulusBundle = {
   assets: Asset[];
 };
 type BoundaryRecord = { index: number; ratio: number; date: string };
+type BoundaryIntervalRecord = {
+  boundaryIndex: number;
+  centerRatio: number;
+  halfWidthRatio: number;
+  widthRatio: number;
+  lowerRatio: number;
+  upperRatio: number;
+  lowerIndex: number;
+  upperIndex: number;
+  lowerDate: string;
+  upperDate: string;
+};
 type LocalAnswer = {
   stimulusId: string;
   assetId: string;
@@ -64,7 +81,9 @@ type LocalAnswer = {
   disclosureLevel: number;
   disclosureKey: string;
   boundaries: BoundaryRecord[];
+  previousBoundaries: BoundaryRecord[];
   referenceBoundaries: BoundaryRecord[];
+  boundaryIntervals: BoundaryIntervalRecord[];
   reasonablenessRating: number | null;
   confidence: number;
   influenceRating: number | null;
@@ -72,6 +91,7 @@ type LocalAnswer = {
   scaleMode: ScaleMode;
   elapsedMs: number;
   adjustmentCount: number;
+  uncertaintyAdjustmentCount: number;
   scaleSwitchCount: number;
 };
 
@@ -105,35 +125,51 @@ const METRIC_OPTIONS: Array<{
   },
 ];
 
-const TASK_OPTIONS: Array<{
-  key: TaskMode;
-  index: string;
+const TASK_GROUPS: Array<{
+  family: TaskFamily;
+  index: "A" | "B";
   title: string;
-  subtitle: string;
   description: string;
+  options: Array<{
+    key: TaskMode;
+    count: BoundaryCount;
+    title: string;
+    subtitle: string;
+  }>;
 }> = [
   {
-    key: "fixed",
+    family: "placement",
     index: "A",
-    title: "固定两个分界点",
-    subtitle: "三阶段划分",
-    description: "始终移动两个分界点，把曲线划分为三个阶段。",
+    title: "自主选择分界点",
+    description: "测试者亲自移动固定数量的分界线，并为每条线给出一个可能范围。",
+    options: ([1, 2, 3] as BoundaryCount[]).map((count) => ({
+      key: `placement-${count}` as TaskMode,
+      count,
+      title: `${count} 个分界点`,
+      subtitle: `划分为 ${count + 1} 个阶段`,
+    })),
   },
   {
-    key: "flexible",
+    family: "evaluation",
     index: "B",
-    title: "自由选择分界点",
-    subtitle: "1–5 个分界点",
-    description: "由测试者决定阶段数量，可添加、删除并移动 1–5 个分界点。",
-  },
-  {
-    key: "evaluation",
-    index: "C",
-    title: "评价预设划分",
-    subtitle: "判断是否合理",
-    description: "面对一套固定的三阶段方案，评价其合理程度，不修改分界点。",
+    title: "评价预设阶段",
+    description: "系统给出固定数量的分界线，测试者只评价这套阶段划分是否合理。",
+    options: ([1, 2, 3] as BoundaryCount[]).map((count) => ({
+      key: `evaluation-${count}` as TaskMode,
+      count,
+      title: `${count} 个预设分界点`,
+      subtitle: `评价 ${count + 1} 阶段方案`,
+    })),
   },
 ];
+
+const UNCERTAINTY_WIDTH_OPTIONS = [
+  { halfWidth: 0.01, label: "很窄", widthLabel: "约 2%" },
+  { halfWidth: 0.025, label: "较窄", widthLabel: "约 5%" },
+  { halfWidth: 0.05, label: "中等", widthLabel: "约 10%" },
+  { halfWidth: 0.08, label: "较宽", widthLabel: "约 16%" },
+  { halfWidth: 0.12, label: "很宽", widthLabel: "约 24%" },
+] as const;
 
 const RESOLUTION_COPY: Record<Resolution, { zh: string; en: string }> = {
   daily: { zh: "日", en: "DAILY" },
@@ -191,13 +227,28 @@ const METRIC_LABEL: Record<MetricKey, string> = {
 };
 
 const TASK_LABEL: Record<TaskMode, string> = {
-  fixed: "固定双分界点",
-  flexible: "自由分界点",
-  evaluation: "评价预设划分",
+  "placement-1": "A1 · 自主选择 1 个分界点",
+  "placement-2": "A2 · 自主选择 2 个分界点",
+  "placement-3": "A3 · 自主选择 3 个分界点",
+  "evaluation-1": "B1 · 评价 1 个预设分界点",
+  "evaluation-2": "B2 · 评价 2 个预设分界点",
+  "evaluation-3": "B3 · 评价 3 个预设分界点",
 };
 
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(maximum, Math.max(minimum, value));
+}
+
+function taskFamily(taskMode: TaskMode): TaskFamily {
+  return taskMode.startsWith("placement-") ? "placement" : "evaluation";
+}
+
+function taskBoundaryCount(taskMode: TaskMode): BoundaryCount {
+  return Number(taskMode.at(-1)) as BoundaryCount;
+}
+
+function initialBoundaries(count: BoundaryCount) {
+  return Array.from({ length: count }, (_, index) => (index + 1) / (count + 1));
 }
 
 function shuffled<T>(items: T[]) {
@@ -265,18 +316,67 @@ function boundariesToRecords(ratios: number[], points: Point[]): BoundaryRecord[
     });
 }
 
+function intervalsToRecords(
+  boundaries: number[],
+  halfWidths: Array<number | null>,
+  points: Point[],
+): BoundaryIntervalRecord[] {
+  return boundaries.flatMap((centerRatio, boundaryIndex) => {
+    const halfWidthRatio = halfWidths[boundaryIndex];
+    if (halfWidthRatio === null || halfWidthRatio === undefined) return [];
+    const lowerRatio = clamp(centerRatio - halfWidthRatio, 0, 1);
+    const upperRatio = clamp(centerRatio + halfWidthRatio, 0, 1);
+    const lowerIndex = clamp(
+      Math.round(lowerRatio * (points.length - 1)),
+      0,
+      points.length - 1,
+    );
+    const upperIndex = clamp(
+      Math.round(upperRatio * (points.length - 1)),
+      0,
+      points.length - 1,
+    );
+    return [
+      {
+        boundaryIndex,
+        centerRatio: Number(centerRatio.toFixed(6)),
+        halfWidthRatio: Number(halfWidthRatio.toFixed(6)),
+        widthRatio: Number((upperRatio - lowerRatio).toFixed(6)),
+        lowerRatio: Number(lowerRatio.toFixed(6)),
+        upperRatio: Number(upperRatio.toFixed(6)),
+        lowerIndex,
+        upperIndex,
+        lowerDate: points[lowerIndex].date,
+        upperDate: points[upperIndex].date,
+      },
+    ];
+  });
+}
+
 function samePrimaryResponse(
   taskMode: TaskMode,
   boundaries: number[],
+  halfWidths: Array<number | null>,
   rating: number | null,
   previous?: LocalAnswer,
 ) {
   if (!previous) return false;
-  if (taskMode === "evaluation") return rating === previous.reasonablenessRating;
+  if (taskFamily(taskMode) === "evaluation") {
+    return rating === previous.reasonablenessRating;
+  }
   if (boundaries.length !== previous.boundaries.length) return false;
-  return boundaries.every(
+  const sameCenters = boundaries.every(
     (ratio, index) => Math.abs(ratio - previous.boundaries[index].ratio) < 0.001,
   );
+  const sameIntervals = halfWidths.every((halfWidth, index) => {
+    const previousHalfWidth = previous.boundaryIntervals[index]?.halfWidthRatio;
+    return (
+      halfWidth !== null &&
+      previousHalfWidth !== undefined &&
+      Math.abs(halfWidth - previousHalfWidth) < 0.001
+    );
+  });
+  return sameCenters && sameIntervals;
 }
 
 function RatingScale({
@@ -323,6 +423,8 @@ function TrendChart({
   scaleMode,
   disclosureLevel,
   boundaries,
+  boundaryHalfWidths,
+  previousBoundaries,
   referenceBoundaries,
   taskMode,
   events,
@@ -335,6 +437,8 @@ function TrendChart({
   scaleMode: ScaleMode;
   disclosureLevel: number;
   boundaries: number[];
+  boundaryHalfWidths: Array<number | null>;
+  previousBoundaries: number[];
   referenceBoundaries: number[];
   taskMode: TaskMode;
   events: EventAnnotation[];
@@ -375,8 +479,8 @@ function TrendChart({
       return `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
     })
     .join(" ");
-  const activeBoundaries =
-    taskMode === "evaluation" ? referenceBoundaries : boundaries;
+  const isEvaluation = taskFamily(taskMode) === "evaluation";
+  const activeBoundaries = isEvaluation ? referenceBoundaries : boundaries;
   const stageEdges = [0, ...activeBoundaries, 1];
   const visibleEvents = disclosureLevel >= 3 ? events : [];
 
@@ -406,31 +510,24 @@ function TrendChart({
     setHoverIndex(
       clamp(Math.round(ratio * (points.length - 1)), 0, points.length - 1),
     );
-    if (dragging !== null && taskMode !== "evaluation") {
+    if (dragging !== null && !isEvaluation) {
       dragMoved.current = true;
       moveBoundary(dragging, ratio);
     }
   };
 
   const handleChartClick = (event: ReactPointerEvent<SVGSVGElement>) => {
-    if (taskMode === "evaluation" || dragMoved.current) {
+    if (isEvaluation || dragMoved.current) {
       dragMoved.current = false;
       return;
     }
     const ratio = pointerRatio(event);
-    if (taskMode === "fixed") {
-      const nearest = boundaries.reduce(
-        (best, value, index) =>
-          Math.abs(value - ratio) < Math.abs(boundaries[best] - ratio) ? index : best,
-        0,
-      );
-      moveBoundary(nearest, ratio);
-      return;
-    }
-    if (boundaries.length < 5) {
-      onBoundariesChange([...boundaries, ratio].sort((a, b) => a - b));
-      onInteraction();
-    }
+    const nearest = boundaries.reduce(
+      (best, value, index) =>
+        Math.abs(value - ratio) < Math.abs(boundaries[best] - ratio) ? index : best,
+      0,
+    );
+    moveBoundary(nearest, ratio);
   };
 
   const inverseTransform = (value: number) =>
@@ -485,6 +582,24 @@ function TrendChart({
             </g>
           );
         })}
+
+        {!isEvaluation &&
+          boundaries.map((ratio, index) => {
+            const halfWidth = boundaryHalfWidths[index];
+            if (halfWidth === null || halfWidth === undefined) return null;
+            const lower = clamp(ratio - halfWidth, 0, 1);
+            const upper = clamp(ratio + halfWidth, 0, 1);
+            return (
+              <rect
+                key={`uncertainty-band-${index}`}
+                className={`research-boundary-band band-${index}`}
+                x={xAt(lower)}
+                y={margin.top}
+                width={Math.max(2, xAt(upper) - xAt(lower))}
+                height={plotHeight}
+              />
+            );
+          })}
 
         {axesVisible &&
           [0, 0.25, 0.5, 0.75, 1].map((ratio) => (
@@ -549,12 +664,43 @@ function TrendChart({
           );
         })}
 
+
+        {!isEvaluation &&
+          previousBoundaries.map((ratio, index) => (
+            <g
+              key={`previous-boundary-${index}-${ratio}`}
+              className="research-previous-boundary"
+              pointerEvents="none"
+            >
+              <line
+                x1={xAt(ratio)}
+                x2={xAt(ratio)}
+                y1={margin.top}
+                y2={height - margin.bottom}
+              />
+              <rect
+                x={xAt(ratio) - 31}
+                y={height - margin.bottom - 24}
+                width="62"
+                height="19"
+                rx="9.5"
+              />
+              <text
+                x={xAt(ratio)}
+                y={height - margin.bottom - 11}
+                textAnchor="middle"
+              >
+                上一层 {index + 1}
+              </text>
+            </g>
+          ))}
+
         {activeBoundaries.map((ratio, index) => (
           <g
             key={`boundary-${index}-${ratio}`}
-            className={`research-boundary ${taskMode === "evaluation" ? "is-reference" : ""}`}
+            className={`research-boundary ${isEvaluation ? "is-reference" : ""}`}
             onPointerDown={(event) => {
-              if (taskMode === "evaluation") return;
+              if (isEvaluation) return;
               event.stopPropagation();
               dragMoved.current = false;
               setDragging(index);
@@ -563,10 +709,6 @@ function TrendChart({
             }}
             onDoubleClick={(event) => {
               event.stopPropagation();
-              if (taskMode === "flexible" && boundaries.length > 1) {
-                onBoundariesChange(boundaries.filter((_, itemIndex) => itemIndex !== index));
-                onInteraction();
-              }
             }}
           >
             <line
@@ -577,9 +719,9 @@ function TrendChart({
             />
             <rect x={xAt(ratio) - 38} y={margin.top - 17} width="76" height="30" rx="15" />
             <text x={xAt(ratio)} y={margin.top + 3} textAnchor="middle">
-              {taskMode === "evaluation" ? `预设 ${index + 1}` : `分界点 ${index + 1}`}
+              {isEvaluation ? `预设 ${index + 1}` : `分界点 ${index + 1}`}
             </text>
-            {taskMode !== "evaluation" && (
+            {!isEvaluation && (
               <circle cx={xAt(ratio)} cy={margin.top + plotHeight * 0.52} r="16" />
             )}
           </g>
@@ -657,11 +799,11 @@ function TrendChart({
       </svg>
       <div className="research-chart-caption">
         <span>
-          {taskMode === "evaluation"
+          {isEvaluation
             ? "预设分界点不可移动，请在右侧评价方案。"
-            : taskMode === "fixed"
-              ? "拖动圆形手柄或点击曲线，调整两个分界点。"
-              : "点击曲线添加分界点；拖动调整；双击分界点可删除。"}
+            : previousBoundaries.length
+              ? "橙色虚线是上一层的位置；拖动深绿色手柄，决定本层是否需要移动。"
+              : `拖动圆形手柄或点击曲线，调整 ${boundaries.length} 个分界点。`}
         </span>
         <span>{points.length.toLocaleString("zh-CN")} 个观测点</span>
       </div>
@@ -671,20 +813,28 @@ function TrendChart({
 
 function BoundaryControls({
   boundaries,
+  boundaryHalfWidths,
   taskMode,
   points,
   resolution,
+  disclosureLevel,
   onChange,
+  onHalfWidthsChange,
   onInteraction,
+  onUncertaintyInteraction,
 }: {
   boundaries: number[];
+  boundaryHalfWidths: Array<number | null>;
   taskMode: TaskMode;
   points: Point[];
   resolution: Resolution;
+  disclosureLevel: number;
   onChange: (values: number[]) => void;
+  onHalfWidthsChange: (values: Array<number | null>) => void;
   onInteraction: () => void;
+  onUncertaintyInteraction: () => void;
 }) {
-  if (taskMode === "evaluation") return null;
+  if (taskFamily(taskMode) === "evaluation") return null;
   const update = (index: number, ratio: number) => {
     const copy = [...boundaries];
     const lower = index === 0 ? 0.02 : copy[index - 1] + 0.02;
@@ -698,84 +848,37 @@ function BoundaryControls({
       <div className="research-boundary-controls-head">
         <div>
           <span className="research-eyebrow">阶段分界</span>
-          <strong>
-            {taskMode === "fixed"
-              ? "固定两个分界点"
-              : boundaries.length
-                ? `已选择 ${boundaries.length} 个分界点`
-                : "尚未添加分界点"}
-          </strong>
+          <strong>{`本任务固定 ${boundaries.length} 个分界点，形成 ${boundaries.length + 1} 个阶段`}</strong>
         </div>
-        {taskMode === "flexible" && (
-          <div className="research-inline-actions">
-            <button
-              type="button"
-              disabled={boundaries.length <= 1}
-              onClick={() => {
-                onChange(boundaries.slice(0, -1));
-                onInteraction();
-              }}
-            >
-              − 删除
-            </button>
-            <button
-              type="button"
-              disabled={boundaries.length >= 5}
-              onClick={() => {
-                const next =
-                  boundaries.length === 0
-                    ? 0.5
-                    : Math.max(
-                        ...Array.from({ length: boundaries.length + 1 }, (_, index) => {
-                          const edges = [0, ...boundaries, 1];
-                          return (edges[index] + edges[index + 1]) / 2;
-                        }),
-                      );
-                const edges = [0, ...boundaries, 1];
-                let widestIndex = 0;
-                for (let index = 1; index < edges.length - 1; index += 1) {
-                  if (edges[index + 1] - edges[index] > edges[widestIndex + 1] - edges[widestIndex]) {
-                    widestIndex = index;
-                  }
-                }
-                const ratio = boundaries.length === 0 ? next : (edges[widestIndex] + edges[widestIndex + 1]) / 2;
-                onChange([...boundaries, ratio].sort((a, b) => a - b));
-                onInteraction();
-              }}
-            >
-              ＋ 添加
-            </button>
-          </div>
-        )}
+        <span className="research-range-legend"><i /> 半透明色带 = 你认为可能的范围</span>
       </div>
-      {boundaries.length === 0 ? (
-        <button
-          className="research-add-first"
-          type="button"
-          onClick={() => {
-            onChange([0.5]);
-            onInteraction();
-          }}
-        >
-          ＋ 添加第一个分界点
-        </button>
-      ) : (
-        <div className="research-slider-grid">
-          {boundaries.map((ratio, index) => {
-            const pointIndex = clamp(
-              Math.round(ratio * (points.length - 1)),
-              0,
-              points.length - 1,
-            );
-            return (
-              <div key={`slider-${index}`} className="research-boundary-slider">
+      <div className="research-estimate-grid">
+        {boundaries.map((ratio, index) => {
+          const pointIndex = clamp(
+            Math.round(ratio * (points.length - 1)),
+            0,
+            points.length - 1,
+          );
+          const selectedHalfWidth = boundaryHalfWidths[index];
+          const interval = intervalsToRecords(
+            [ratio],
+            [selectedHalfWidth ?? null],
+            points,
+          )[0];
+          return (
+            <section key={`slider-${index}`} className="research-boundary-estimate">
+              <div className="research-boundary-slider">
                 <span>
-                  <strong>分界点 {index + 1}</strong>
-                  <em>{formatDate(points[pointIndex].date, resolution)}</em>
+                  <strong>分界点 {index + 1} · 最佳位置</strong>
+                  <em>
+                    {disclosureLevel >= 2
+                      ? formatDate(points[pointIndex].date, resolution)
+                      : `曲线位置 ${(ratio * 100).toFixed(1)}%`}
+                  </em>
                 </span>
                 <input
                   id={`boundary-slider-${index}`}
-                  aria-label={`分界点 ${index + 1} 的位置`}
+                  aria-label={`分界点 ${index + 1} 的最佳位置`}
                   type="range"
                   min="2"
                   max="98"
@@ -784,13 +887,46 @@ function BoundaryControls({
                   onChange={(event) => update(index, Number(event.target.value) / 100)}
                 />
               </div>
-            );
-          })}
-        </div>
-      )}
-      {taskMode === "flexible" && (
-        <p className="research-control-note">至少 1 个、最多 5 个；阶段数 = 分界点数 + 1。</p>
-      )}
+
+              <fieldset className="research-uncertainty-picker">
+                <legend>你认为最佳分界线大致落在哪个范围内？</legend>
+                <p>请选择线外色带的宽度；中心仍是上面的最佳位置。</p>
+                <div role="radiogroup" aria-label={`分界点 ${index + 1} 的可能范围宽度`}>
+                  {UNCERTAINTY_WIDTH_OPTIONS.map((option, optionIndex) => (
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={selectedHalfWidth === option.halfWidth}
+                      className={selectedHalfWidth === option.halfWidth ? "is-selected" : ""}
+                      key={option.halfWidth}
+                      onClick={() => {
+                        const next = [...boundaryHalfWidths];
+                        next[index] = option.halfWidth;
+                        onHalfWidthsChange(next);
+                        onUncertaintyInteraction();
+                      }}
+                    >
+                      <span className="research-width-icon">
+                        <i style={{ width: `${14 + optionIndex * 8}px` }} />
+                        <b />
+                      </span>
+                      <strong>{option.label}</strong>
+                      <small>{option.widthLabel}</small>
+                    </button>
+                  ))}
+                </div>
+                <output className={interval ? "is-complete" : ""}>
+                  {interval
+                    ? disclosureLevel >= 2
+                      ? `可能范围：${formatDate(interval.lowerDate, resolution)} — ${formatDate(interval.upperDate, resolution)}`
+                      : `可能范围宽度：约占整条曲线的 ${(interval.widthRatio * 100).toFixed(0)}%`
+                    : "尚未选择范围（本轮必答）"}
+                </output>
+              </fieldset>
+            </section>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -801,12 +937,12 @@ function ProtocolRail({ level }: { level: number }) {
       {DISCLOSURES.map((item, index) => (
         <div
           key={item.key}
-          className={`${index === level ? "is-current" : ""} ${index < level ? "is-complete" : ""}`}
+          className={`${index === level ? "is-current" : ""} ${index < level ? "is-complete" : ""} ${index > level ? "is-hidden" : ""}`}
         >
-          <span>{index < level ? "✓" : item.step}</span>
+          <span>{index < level ? "✓" : index > level ? "?" : item.step}</span>
           <div>
-            <strong>{item.short}</strong>
-            <small>{item.title}</small>
+            <strong>{index > level ? "？" : item.short}</strong>
+            <small>{index > level ? "？" : item.title}</small>
           </div>
         </div>
       ))}
@@ -819,7 +955,7 @@ export function ExperimentV3() {
   const [loadError, setLoadError] = useState("");
   const [phase, setPhase] = useState<Phase>("setup");
   const [metric, setMetric] = useState<MetricKey>("price");
-  const [taskMode, setTaskMode] = useState<TaskMode>("fixed");
+  const [taskMode, setTaskMode] = useState<TaskMode>("placement-2");
   const [resolution, setResolution] = useState<Resolution>("weekly");
   const [actorType, setActorType] = useState<"human" | "agent">("human");
   const [participantCode, setParticipantCode] = useState("");
@@ -832,6 +968,10 @@ export function ExperimentV3() {
   const [level, setLevel] = useState(0);
   const [pendingLevel, setPendingLevel] = useState<number | null>(null);
   const [boundaries, setBoundaries] = useState<number[]>([1 / 3, 2 / 3]);
+  const [boundaryHalfWidths, setBoundaryHalfWidths] = useState<Array<number | null>>([
+    null,
+    null,
+  ]);
   const [scaleMode, setScaleMode] = useState<ScaleMode>("linear");
   const [scaleSwitchCount, setScaleSwitchCount] = useState(0);
   const [reasonableness, setReasonableness] = useState<number | null>(null);
@@ -845,13 +985,15 @@ export function ExperimentV3() {
   const [startError, setStartError] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [adjustmentCount, setAdjustmentCount] = useState(0);
+  const [uncertaintyAdjustmentCount, setUncertaintyAdjustmentCount] = useState(0);
   const [firstMoveAt, setFirstMoveAt] = useState<number | null>(null);
+  const [firstUncertaintyAt, setFirstUncertaintyAt] = useState<number | null>(null);
   const [firstInteractionAt, setFirstInteractionAt] = useState<number | null>(null);
   const stepStartedAt = useRef<number>(0);
 
   useEffect(() => {
     let active = true;
-    fetch("/data/research-stimuli-v4.json")
+    fetch("/data/research-stimuli-v5.json")
       .then((response) => {
         if (!response.ok) throw new Error("研究刺激数据加载失败");
         return response.json() as Promise<StimulusBundle>;
@@ -899,7 +1041,14 @@ export function ExperimentV3() {
   const currentMetric = currentAsset?.metrics[metric];
   const resolutionData = currentMetric?.resolutions[resolution];
   const points = resolutionData?.points ?? [];
-  const referenceBoundaries = resolutionData?.referenceBoundaries ?? [1 / 3, 2 / 3];
+  const targetBoundaryCount = taskBoundaryCount(taskMode);
+  const isEvaluationTask = taskFamily(taskMode) === "evaluation";
+  const referenceBoundaries =
+    resolutionData?.referenceBoundariesByCount?.[String(targetBoundaryCount) as `${BoundaryCount}`] ??
+    (targetBoundaryCount === 2
+      ? resolutionData?.referenceBoundaries
+      : undefined) ??
+    initialBoundaries(targetBoundaryCount);
   const stimulusId = currentAsset
     ? `${currentAsset.id}-${metric}-${resolution}-${taskMode}`
     : "";
@@ -907,16 +1056,23 @@ export function ExperimentV3() {
     (answer) =>
       answer.stimulusId === stimulusId && answer.disclosureLevel === level - 1,
   );
+  const previousBoundaryRatios = previousAnswer?.boundaries.map((boundary) => boundary.ratio) ?? [];
   const primaryComplete =
-    taskMode === "evaluation"
+    isEvaluationTask
       ? reasonableness !== null
-      : taskMode === "fixed"
-        ? boundaries.length === 2
-        : boundaries.length >= 1 && boundaries.length <= 5;
+      : boundaries.length === targetBoundaryCount &&
+        boundaryHalfWidths.length === targetBoundaryCount &&
+        boundaryHalfWidths.every((halfWidth) => halfWidth !== null);
   const unchanged =
     level > 0 &&
     primaryComplete &&
-    samePrimaryResponse(taskMode, boundaries, reasonableness, previousAnswer);
+    samePrimaryResponse(
+      taskMode,
+      boundaries,
+      boundaryHalfWidths,
+      reasonableness,
+      previousAnswer,
+    );
   const responseComplete =
     primaryComplete &&
     confidence !== null &&
@@ -932,6 +1088,13 @@ export function ExperimentV3() {
     }
   }, []);
 
+  const markUncertaintyInteraction = useCallback(() => {
+    const now = Date.now();
+    setFirstInteractionAt((previous) => previous ?? now);
+    setFirstUncertaintyAt((previous) => previous ?? now);
+    setUncertaintyAdjustmentCount((value) => value + 1);
+  }, []);
+
   const resetStepFields = useCallback(() => {
     setConfidence(null);
     setInfluence(null);
@@ -940,8 +1103,10 @@ export function ExperimentV3() {
     setRationale("");
     setNoChangeConfirmed(false);
     setAdjustmentCount(0);
+    setUncertaintyAdjustmentCount(0);
     setScaleSwitchCount(0);
     setFirstMoveAt(null);
+    setFirstUncertaintyAt(null);
     setFirstInteractionAt(null);
     setSubmitError("");
     stepStartedAt.current = Date.now();
@@ -977,12 +1142,18 @@ export function ExperimentV3() {
           studyConfig: {
             metric,
             taskMode,
+            taskFamily: taskFamily(taskMode),
+            targetBoundaryCount,
             resolution,
             requestedWindow: bundle.requestedWindow,
             assetOrder: order.map((asset) => asset.id),
             scalePolicy: metric === "price" ? "participant-choice-from-level-3" : "linear-only",
             disclosureOrder: DISCLOSURES.map((item) => item.key),
             responseDefaults: "none",
+            uncertaintyPolicy:
+              taskFamily(taskMode) === "placement"
+                ? "symmetric-band-required-per-boundary; five frozen width choices"
+                : "not-applicable",
           },
         }),
       });
@@ -998,7 +1169,16 @@ export function ExperimentV3() {
       setAssetOrder(order);
       setAssetCursor(0);
       setLevel(0);
-      setBoundaries(taskMode === "fixed" ? [1 / 3, 2 / 3] : []);
+      setBoundaries(
+        taskFamily(taskMode) === "placement"
+          ? initialBoundaries(targetBoundaryCount)
+          : [],
+      );
+      setBoundaryHalfWidths(
+        taskFamily(taskMode) === "placement"
+          ? Array.from({ length: targetBoundaryCount }, () => null)
+          : [],
+      );
       setScaleMode("linear");
       setAnswers([]);
       resetStepFields();
@@ -1021,9 +1201,13 @@ export function ExperimentV3() {
     setSubmitting(true);
     setSubmitError("");
     const now = Date.now();
-    const chosenRatios = taskMode === "evaluation" ? referenceBoundaries : boundaries;
+    const chosenRatios = isEvaluationTask ? referenceBoundaries : boundaries;
     const boundaryRecords = boundariesToRecords(chosenRatios, points);
+    const previousBoundaryRecords = previousAnswer?.boundaries ?? [];
     const referenceRecords = boundariesToRecords(referenceBoundaries, points);
+    const intervalRecords = isEvaluationTask
+      ? []
+      : intervalsToRecords(boundaries, boundaryHalfWidths, points);
     const localAnswer: LocalAnswer = {
       stimulusId,
       assetId: currentAsset.id,
@@ -1032,7 +1216,9 @@ export function ExperimentV3() {
       disclosureLevel: level,
       disclosureKey: DISCLOSURES[level].key,
       boundaries: boundaryRecords,
+      previousBoundaries: previousBoundaryRecords,
       referenceBoundaries: referenceRecords,
+      boundaryIntervals: intervalRecords,
       reasonablenessRating: reasonableness,
       confidence,
       influenceRating: level === 0 ? null : influence,
@@ -1040,6 +1226,7 @@ export function ExperimentV3() {
       scaleMode,
       elapsedMs: now - stepStartedAt.current,
       adjustmentCount,
+      uncertaintyAdjustmentCount,
       scaleSwitchCount,
     };
     try {
@@ -1053,12 +1240,15 @@ export function ExperimentV3() {
           assetOrder: assetCursor,
           metricType: metric,
           taskMode,
+          taskFamily: taskFamily(taskMode),
           resolution,
           scaleMode,
           disclosureLevel: level,
           disclosureKey: DISCLOSURES[level].key,
           boundaries: boundaryRecords,
+          previousBoundaries: previousBoundaryRecords,
           referenceBoundaries: referenceRecords,
+          boundaryIntervals: intervalRecords,
           reasonablenessRating: reasonableness,
           confidence,
           influenceRating: level === 0 ? null : influence,
@@ -1070,7 +1260,11 @@ export function ExperimentV3() {
           elapsedMs: localAnswer.elapsedMs,
           revealReadMs: (firstInteractionAt ?? now) - stepStartedAt.current,
           firstMoveMs: firstMoveAt ? firstMoveAt - stepStartedAt.current : null,
+          firstUncertaintyMs: firstUncertaintyAt
+            ? firstUncertaintyAt - stepStartedAt.current
+            : null,
           adjustmentCount,
+          uncertaintyAdjustmentCount,
           scaleSwitchCount,
         }),
       });
@@ -1100,7 +1294,14 @@ export function ExperimentV3() {
     if (assetCursor + 1 < assetOrder.length) {
       setAssetCursor((value) => value + 1);
       setLevel(0);
-      setBoundaries(taskMode === "fixed" ? [1 / 3, 2 / 3] : []);
+      setBoundaries(
+        isEvaluationTask ? [] : initialBoundaries(targetBoundaryCount),
+      );
+      setBoundaryHalfWidths(
+        isEvaluationTask
+          ? []
+          : Array.from({ length: targetBoundaryCount }, () => null),
+      );
       setScaleMode("linear");
       resetStepFields();
       setPhase("experiment");
@@ -1123,7 +1324,16 @@ export function ExperimentV3() {
       protocolVersion: bundle.protocolVersion,
       sessionId,
       participantCode,
-      config: { metric, taskMode, resolution, actorType, expertise, modelName },
+      config: {
+        metric,
+        taskMode,
+        taskFamily: taskFamily(taskMode),
+        targetBoundaryCount,
+        resolution,
+        actorType,
+        expertise,
+        modelName,
+      },
       assetOrder: assetOrder.map((asset) => asset.id),
       answers,
       exportedAt: new Date().toISOString(),
@@ -1166,11 +1376,11 @@ export function ExperimentV3() {
               <span>语义会让分界移动吗？</span>
             </h1>
             <p>
-              逐层加入名称、背景、真实坐标与历史事件，记录同一个判断主体如何修正阶段边界；再系统比较人类与多模态 Agent 的“上下文弹性”。
+              在同一条曲线上逐层加入新的语义信息，记录同一个判断主体如何修正阶段边界；再系统比较人类与多模态 Agent 的“上下文弹性”。
             </p>
             <div className="research-hero-stats">
               <div><strong>3</strong><span>类曲线指标</span></div>
-              <div><strong>3</strong><span>种判断任务</span></div>
+              <div><strong>6</strong><span>种判断条件</span></div>
               <div><strong>4</strong><span>级信息披露</span></div>
               <div><strong>2018–26</strong><span>最长观察期</span></div>
             </div>
@@ -1180,18 +1390,18 @@ export function ExperimentV3() {
             <h2>信息一层层增加，曲线本身不变</h2>
             <div className="research-disclosure-preview">
               {DISCLOSURES.map((item, index) => (
-                <div key={item.key}>
-                  <span>{item.step}</span>
+                <div key={item.key} className={index > 0 ? "is-hidden" : ""}>
+                  <span>{index === 0 ? item.step : "?"}</span>
                   <div>
-                    <strong>{item.title}</strong>
-                    <small>{item.description}</small>
+                    <strong>{index === 0 ? item.title : "？"}</strong>
+                    <small>{index === 0 ? item.description : "完成前一步后揭示"}</small>
                   </div>
                   {index < DISCLOSURES.length - 1 && <b>→</b>}
                 </div>
               ))}
             </div>
             <p className="research-method-note">
-              每一步都重新作答；量表不预选默认值。若分界未移动，需主动确认“维持上一判断”。
+              后续披露的主题会保持隐藏，直到上一轮提交。量表和分界范围均不预选默认值。
             </p>
           </div>
         </section>
@@ -1243,19 +1453,35 @@ export function ExperimentV3() {
 
           <div className="research-config-block">
             <div className="research-config-index"><span>02</span><strong>选择判断任务</strong></div>
-            <div className="research-option-grid task-options">
-              {TASK_OPTIONS.map((option) => (
-                <button
-                  type="button"
-                  key={option.key}
-                  className={taskMode === option.key ? "is-selected" : ""}
-                  onClick={() => setTaskMode(option.key)}
-                >
-                  <span className="research-option-number">{option.index}</span>
-                  <small>{option.subtitle}</small>
-                  <strong>{option.title}</strong>
-                  <p>{option.description}</p>
-                </button>
+            <div className="research-task-matrix">
+              {TASK_GROUPS.map((group) => (
+                <section key={group.family} className="research-task-row">
+                  <div className="research-task-family">
+                    <span>{group.index}</span>
+                    <div>
+                      <strong>{group.index} 类 · {group.title}</strong>
+                      <small>{group.description}</small>
+                    </div>
+                  </div>
+                  <div className="research-task-options" role="radiogroup" aria-label={`${group.index} 类任务`}>
+                    {group.options.map((option) => (
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={taskMode === option.key}
+                        key={option.key}
+                        className={taskMode === option.key ? "is-selected" : ""}
+                        onClick={() => setTaskMode(option.key)}
+                      >
+                        <span>{group.index}{option.count}</span>
+                        <div>
+                          <strong>{option.title}</strong>
+                          <small>{option.subtitle}</small>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </section>
               ))}
             </div>
           </div>
@@ -1340,7 +1566,7 @@ export function ExperimentV3() {
                 {METRIC_LABEL[metric]} · {TASK_LABEL[taskMode]} · {RESOLUTION_COPY[resolution].zh}频
               </strong>
               <p>
-                {availability?.[metric][resolution] ?? 0} 条曲线，随机顺序；每条曲线作答 4 次。价格条件在第三级解锁线性 / 对数刻度，并记录每次切换。
+                {availability?.[metric][resolution] ?? 0} 条曲线，随机顺序；每条曲线作答 4 次。后续信息与可用控件只会在对应层级揭示。
               </p>
             </div>
             <label className="research-consent">
@@ -1381,7 +1607,7 @@ export function ExperimentV3() {
     const first = assetAnswers[0];
     const last = assetAnswers[assetAnswers.length - 1];
     const boundaryMovement =
-      first && last && taskMode !== "evaluation"
+      first && last && !isEvaluationTask
         ? first.boundaries.reduce((total, boundary, index) => {
             const target = last.boundaries[index];
             return total + (target ? Math.abs(target.ratio - boundary.ratio) : 0);
@@ -1399,7 +1625,7 @@ export function ExperimentV3() {
             <h1>{currentAsset.nameZh}：你的判断轨迹</h1>
             <p>这张图只反馈你刚才的选择，不评价对错。短暂查看后再进入下一条曲线。</p>
           </div>
-          {taskMode === "evaluation" ? (
+          {isEvaluationTask ? (
             <div className="research-score-trajectory">
               <div className="research-score-axis"><span>5 合理</span><span>3 中间</span><span>1 不合理</span></div>
               <svg viewBox="0 0 800 260" role="img" aria-label="四级披露下的合理性评分轨迹">
@@ -1439,7 +1665,7 @@ export function ExperimentV3() {
           )}
           <div className="research-reward-stats">
             <div><span>最终信心</span><strong>{last?.confidence ?? "—"}<small>/5</small></strong></div>
-            <div><span>{taskMode === "evaluation" ? "合理性变化" : "累计边界位移"}</span><strong>{taskMode === "evaluation" ? `${(last?.reasonablenessRating ?? 0) - (first?.reasonablenessRating ?? 0) >= 0 ? "+" : ""}${(last?.reasonablenessRating ?? 0) - (first?.reasonablenessRating ?? 0)}` : `${(boundaryMovement * 100).toFixed(1)}%`}</strong></div>
+            <div><span>{isEvaluationTask ? "合理性变化" : "累计边界位移"}</span><strong>{isEvaluationTask ? `${(last?.reasonablenessRating ?? 0) - (first?.reasonablenessRating ?? 0) >= 0 ? "+" : ""}${(last?.reasonablenessRating ?? 0) - (first?.reasonablenessRating ?? 0)}` : `${(boundaryMovement * 100).toFixed(1)}%`}</strong></div>
             <div><span>刻度切换</span><strong>{assetAnswers.reduce((sum, answer) => sum + answer.scaleSwitchCount, 0)}<small> 次</small></strong></div>
             <div><span>四步总用时</span><strong>{Math.round(assetAnswers.reduce((sum, answer) => sum + answer.elapsedMs, 0) / 1000)}<small> 秒</small></strong></div>
           </div>
@@ -1488,7 +1714,11 @@ export function ExperimentV3() {
       <header className="research-topbar compact experiment-topbar">
         <div className="research-brand"><span>BL</span><div><strong>Boundary Lab</strong><small>LIVE RESEARCH SESSION</small></div></div>
         <div className="research-condition-strip">
-          <span>{METRIC_LABEL[metric]}</span><b>·</b><span>{TASK_LABEL[taskMode]}</span><b>·</b><span>{RESOLUTION_COPY[resolution].zh}频 🔒</span>
+          <span>{level >= 1 ? METRIC_LABEL[metric] : "指标：？"}</span>
+          <b>·</b>
+          <span>{TASK_LABEL[taskMode]}</span>
+          <b>·</b>
+          <span>{level >= 2 ? `${RESOLUTION_COPY[resolution].zh}频 🔒` : "分辨率：？"}</span>
         </div>
         <div className="research-session-progress">曲线 {assetCursor + 1}/{assetOrder.length} · 披露 {level + 1}/4</div>
       </header>
@@ -1514,7 +1744,7 @@ export function ExperimentV3() {
               </p>
             </div>
             <div className="research-chart-status">
-              <span>{taskMode === "evaluation" ? "预设三阶段" : `已选 ${boundaries.length} 个分界点`}</span>
+              <span>{isEvaluationTask ? `预设 ${targetBoundaryCount} 个分界点 · ${targetBoundaryCount + 1} 阶段` : `固定 ${targetBoundaryCount} 个分界点`}</span>
               <small>{level >= 2 ? `${currentMetric.unit} · ${scaleMode === "log" ? "Log" : "Linear"}` : "数值暂未披露"}</small>
             </div>
           </div>
@@ -1564,6 +1794,8 @@ export function ExperimentV3() {
             scaleMode={scaleMode}
             disclosureLevel={level}
             boundaries={boundaries}
+            boundaryHalfWidths={boundaryHalfWidths}
+            previousBoundaries={level > 0 && !isEvaluationTask ? previousBoundaryRatios : []}
             referenceBoundaries={referenceBoundaries}
             taskMode={taskMode}
             events={currentAsset.events}
@@ -1576,14 +1808,21 @@ export function ExperimentV3() {
 
           <BoundaryControls
             boundaries={boundaries}
+            boundaryHalfWidths={boundaryHalfWidths}
             taskMode={taskMode}
             points={points}
             resolution={resolution}
+            disclosureLevel={level}
             onChange={(values) => {
               setBoundaries(values);
               setNoChangeConfirmed(false);
             }}
+            onHalfWidthsChange={(values) => {
+              setBoundaryHalfWidths(values);
+              setNoChangeConfirmed(false);
+            }}
             onInteraction={() => markInteraction(true)}
+            onUncertaintyInteraction={markUncertaintyInteraction}
           />
         </section>
 
@@ -1620,9 +1859,9 @@ export function ExperimentV3() {
           </section>
 
           <section className="research-response-card">
-            {taskMode === "evaluation" && (
+            {isEvaluationTask && (
               <div className="research-question-block">
-                <h3>你认为这套三阶段划分合理吗？</h3>
+                <h3>你认为这套{targetBoundaryCount + 1}阶段划分合理吗？</h3>
                 <RatingScale
                   value={reasonableness}
                   onChange={(value) => {
@@ -1675,7 +1914,7 @@ export function ExperimentV3() {
                   onChange={(event) => setNoChangeConfirmed(event.target.checked)}
                 />
                 <span>
-                  我确认本步仍维持上一轮的{taskMode === "evaluation" ? "合理性判断" : "阶段分界"}，并非漏答。
+                  我确认本步仍维持上一轮的{isEvaluationTask ? "合理性判断" : "分界点与可能范围"}，并非漏答。
                 </span>
               </label>
             )}

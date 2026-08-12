@@ -17,11 +17,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Boundary Lab｜阶段判断的上下文弹性研究",
   description:
-    "比较人类与多模态 Agent 在价格、活跃地址和 Google 搜索热度曲线上的阶段判断，并测量四级语义披露如何改变阶段边界。",
+    "比较人类与多模态 Agent 在三类时间序列上的阶段判断，并测量四级语义披露如何改变分界点及其不确定范围。",
   openGraph: {
     title: "Boundary Lab｜阶段判断的上下文弹性研究",
     description:
-      "三类曲线、三种任务、四级信息披露：比较人类与 Agent 的阶段判断如何随语义而改变。",
+      "三类曲线、六个配对任务条件、四级信息披露：比较人类与 Agent 的分界点和不确定范围如何随语义而改变。",
     type: "website",
     locale: "zh_CN",
     images: [
@@ -37,7 +37,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Boundary Lab｜阶段判断的上下文弹性研究",
     description:
-      "三类曲线、三种任务、四级信息披露，测量人类与 Agent 的上下文弹性。",
+      "三类曲线、六个配对任务条件与四级信息披露，测量人类与 Agent 的上下文弹性。",
     images: ["/og.png"],
   },
 };

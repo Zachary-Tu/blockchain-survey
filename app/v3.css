@@ -285,6 +285,16 @@ a {
   display: none;
 }
 
+.research-disclosure-preview > div.is-hidden {
+  color: #9ca6a3;
+  background: linear-gradient(90deg, rgba(236, 238, 233, 0.58), transparent);
+}
+
+.research-disclosure-preview > div.is-hidden > span,
+.research-disclosure-preview > div.is-hidden strong {
+  color: #8f9a97;
+}
+
 .research-method-note {
   margin: 22px 0 0;
   padding: 16px 18px;
@@ -451,6 +461,129 @@ a {
 .research-option-grid button > em.is-limited {
   color: #985233;
   background: var(--research-orange-soft);
+}
+
+.research-task-matrix {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.research-task-row {
+  padding: 18px;
+  display: grid;
+  grid-template-columns: minmax(230px, 0.62fr) minmax(0, 1.8fr);
+  gap: 18px;
+  align-items: stretch;
+  border: 1px solid #dddcd4;
+  border-radius: 17px;
+  background: #fbfaf6;
+}
+
+.research-task-family {
+  padding: 9px 14px 9px 4px;
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  border-right: 1px solid #dddcd4;
+}
+
+.research-task-family > span {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  border-radius: 11px;
+  background: var(--research-green);
+  font-family: Georgia, serif;
+  font-size: 18px;
+}
+
+.research-task-family div {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.research-task-family strong {
+  font-size: 15px;
+}
+
+.research-task-family small {
+  color: #74827f;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.research-task-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.research-task-options button {
+  position: relative;
+  min-height: 94px;
+  padding: 16px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  text-align: left;
+  color: inherit;
+  border: 1px solid #d5d8d2;
+  border-radius: 13px;
+  background: #fff;
+  cursor: pointer;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.research-task-options button:hover {
+  transform: translateY(-2px);
+  border-color: rgba(33, 76, 71, 0.5);
+}
+
+.research-task-options button.is-selected {
+  color: var(--research-green);
+  border: 2px solid var(--research-green);
+  padding: 15px;
+  background: #edf6f3;
+  box-shadow: 0 8px 20px rgba(33, 76, 71, 0.09);
+}
+
+.research-task-options button > span {
+  flex: 0 0 auto;
+  width: 31px;
+  height: 31px;
+  display: grid;
+  place-items: center;
+  color: var(--research-orange);
+  border-radius: 50%;
+  background: var(--research-orange-soft);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.research-task-options button.is-selected > span {
+  color: #fff;
+  background: var(--research-green);
+}
+
+.research-task-options button div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.research-task-options button strong {
+  font-size: 13px;
+}
+
+.research-task-options button small {
+  color: #7d8986;
+  font-size: 10px;
 }
 
 .research-data-warning {
@@ -779,6 +912,24 @@ a {
   background: var(--research-green-bright);
 }
 
+.research-protocol-rail > div.is-hidden {
+  color: #a7afac;
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(232, 233, 228, 0.62),
+    rgba(232, 233, 228, 0.62) 7px,
+    rgba(248, 247, 242, 0.62) 7px,
+    rgba(248, 247, 242, 0.62) 14px
+  );
+}
+
+.research-protocol-rail > div.is-hidden > span {
+  color: #7f8a87;
+  background: rgba(255, 255, 255, 0.58);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .research-workspace {
   width: calc(100% - 42px);
   margin: 14px auto 0;
@@ -970,14 +1121,48 @@ a {
   stroke-linecap: round;
 }
 
+.research-boundary-band {
+  fill: rgba(47, 107, 99, 0.15);
+  stroke: rgba(47, 107, 99, 0.35);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  pointer-events: none;
+}
+
+.research-boundary-band.band-1 {
+  fill: rgba(190, 141, 66, 0.13);
+  stroke: rgba(173, 112, 37, 0.34);
+}
+
+.research-boundary-band.band-2 {
+  fill: rgba(129, 94, 143, 0.12);
+  stroke: rgba(111, 75, 128, 0.32);
+}
+
+.research-previous-boundary line {
+  stroke: var(--research-orange);
+  stroke-width: 4.5;
+  stroke-dasharray: 8 7;
+  opacity: 0.9;
+}
+
+.research-previous-boundary rect {
+  fill: rgba(198, 104, 63, 0.92);
+}
+
+.research-previous-boundary text {
+  fill: #fff;
+  font-size: 7.5px;
+  font-weight: 750;
+}
+
 .research-boundary {
   cursor: ew-resize;
 }
 
 .research-boundary line {
   stroke: #18332f;
-  stroke-width: 2;
-  stroke-dasharray: 6 5;
+  stroke-width: 2.2;
 }
 
 .research-boundary rect {
@@ -1077,6 +1262,21 @@ a {
   font-size: 13px;
 }
 
+.research-range-legend {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: #71817d;
+  font-size: 9px;
+}
+
+.research-range-legend i {
+  width: 26px;
+  height: 15px;
+  border: 1px dashed rgba(47, 107, 99, 0.45);
+  background: rgba(47, 107, 99, 0.14);
+}
+
 .research-inline-actions {
   display: flex;
   gap: 7px;
@@ -1107,11 +1307,24 @@ a {
   border-style: dashed;
 }
 
-.research-slider-grid {
+.research-slider-grid,
+.research-estimate-grid {
   margin-top: 14px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px 24px;
+}
+
+.research-estimate-grid {
+  gap: 14px;
+}
+
+.research-boundary-estimate {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #dde0da;
+  border-radius: 13px;
+  background: #fbfcf9;
 }
 
 .research-boundary-slider > span {
@@ -1136,6 +1349,110 @@ a {
   width: 100%;
   margin-top: 7px;
   accent-color: var(--research-green-bright);
+}
+
+.research-uncertainty-picker {
+  min-width: 0;
+  margin: 16px 0 0;
+  padding: 14px 0 0;
+  border: 0;
+  border-top: 1px solid #e2e3dd;
+}
+
+.research-uncertainty-picker legend {
+  padding: 0;
+  color: #334d48;
+  font-size: 11px;
+  font-weight: 720;
+}
+
+.research-uncertainty-picker > p {
+  margin: 6px 0 11px;
+  color: #81908c;
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.research-uncertainty-picker > div {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.research-uncertainty-picker button {
+  min-width: 0;
+  min-height: 68px;
+  padding: 7px 3px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: #61736e;
+  border: 1px solid #d6dad4;
+  border-radius: 9px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.research-uncertainty-picker button:hover {
+  border-color: rgba(47, 107, 99, 0.56);
+}
+
+.research-uncertainty-picker button.is-selected {
+  color: var(--research-green);
+  border: 2px solid var(--research-green);
+  padding: 6px 2px;
+  background: #edf6f3;
+}
+
+.research-width-icon {
+  position: relative;
+  width: 42px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+}
+
+.research-width-icon i {
+  height: 20px;
+  display: block;
+  border: 1px solid rgba(47, 107, 99, 0.45);
+  background: rgba(47, 107, 99, 0.14);
+}
+
+.research-width-icon b {
+  position: absolute;
+  left: 50%;
+  top: 1px;
+  width: 2px;
+  height: 20px;
+  background: var(--research-green);
+  transform: translateX(-50%);
+}
+
+.research-uncertainty-picker button strong {
+  font-size: 8px;
+}
+
+.research-uncertainty-picker button small {
+  color: #8a9692;
+  font-size: 7px;
+}
+
+.research-uncertainty-picker output {
+  margin-top: 9px;
+  padding: 8px 10px;
+  display: block;
+  color: #9a573c;
+  border-radius: 8px;
+  background: #fbeee8;
+  font-size: 9px;
+}
+
+.research-uncertainty-picker output.is-complete {
+  color: #3c685f;
+  background: #e8f2ef;
 }
 
 .research-response-panel {
@@ -1792,6 +2109,19 @@ a {
     grid-template-columns: 1fr;
   }
 
+  .research-task-row {
+    grid-template-columns: 1fr;
+  }
+
+  .research-task-family {
+    border-right: 0;
+    border-bottom: 1px solid #dddcd4;
+  }
+
+  .research-task-options {
+    grid-template-columns: 1fr;
+  }
+
   .research-config-block {
     padding: 22px;
   }
@@ -1855,8 +2185,14 @@ a {
     gap: 12px;
   }
 
-  .research-slider-grid {
+  .research-slider-grid,
+  .research-estimate-grid {
     grid-template-columns: 1fr;
+  }
+
+  .research-boundary-controls-head {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .research-new-info-card,

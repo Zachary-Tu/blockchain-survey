@@ -2,9 +2,17 @@ import { ensureExperimentSchema, getDb } from "@/db";
 import { researchResponses } from "@/db/schema";
 
 const METRICS = new Set(["price", "activeAddresses", "googleTrends"]);
-const TASKS = new Set(["fixed", "flexible", "evaluation"]);
+const TASKS: Map<string, { family: "placement" | "evaluation"; count: number }> = new Map([
+  ["placement-1", { family: "placement", count: 1 }],
+  ["placement-2", { family: "placement", count: 2 }],
+  ["placement-3", { family: "placement", count: 3 }],
+  ["evaluation-1", { family: "evaluation", count: 1 }],
+  ["evaluation-2", { family: "evaluation", count: 2 }],
+  ["evaluation-3", { family: "evaluation", count: 3 }],
+]);
 const RESOLUTIONS = new Set(["daily", "weekly", "monthly", "yearly"]);
 const SCALES = new Set(["linear", "log"]);
+const UNCERTAINTY_HALF_WIDTHS = [0.01, 0.025, 0.05, 0.08, 0.12];
 
 function finiteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -33,6 +41,19 @@ type Boundary = {
   date?: string;
 };
 
+type BoundaryInterval = {
+  boundaryIndex?: number;
+  centerRatio?: number;
+  halfWidthRatio?: number;
+  widthRatio?: number;
+  lowerRatio?: number;
+  upperRatio?: number;
+  lowerIndex?: number;
+  upperIndex?: number;
+  lowerDate?: string;
+  upperDate?: string;
+};
+
 function validBoundaries(value: unknown): value is Boundary[] {
   if (!Array.isArray(value)) return false;
   let previousRatio = -1;
@@ -54,6 +75,47 @@ function validBoundaries(value: unknown): value is Boundary[] {
   });
 }
 
+function validBoundaryIntervals(
+  value: unknown,
+  boundaries: Boundary[],
+): value is BoundaryInterval[] {
+  if (!Array.isArray(value) || value.length !== boundaries.length) return false;
+  return value.every((item, index) => {
+    if (!item || typeof item !== "object") return false;
+    const interval = item as BoundaryInterval;
+    const center = boundaries[index]?.ratio;
+    if (
+      !finiteNumber(interval.boundaryIndex) ||
+      interval.boundaryIndex !== index ||
+      !finiteNumber(interval.centerRatio) ||
+      !finiteNumber(interval.halfWidthRatio) ||
+      !finiteNumber(interval.widthRatio) ||
+      !finiteNumber(interval.lowerRatio) ||
+      !finiteNumber(interval.upperRatio) ||
+      !finiteNumber(interval.lowerIndex) ||
+      !finiteNumber(interval.upperIndex) ||
+      typeof interval.lowerDate !== "string" ||
+      typeof interval.upperDate !== "string" ||
+      !finiteNumber(center) ||
+      Math.abs(interval.centerRatio - center) > 0.002 ||
+      interval.halfWidthRatio <= 0 ||
+      interval.halfWidthRatio > 0.2 ||
+      !UNCERTAINTY_HALF_WIDTHS.some(
+        (option) => Math.abs(option - interval.halfWidthRatio!) < 0.0001,
+      ) ||
+      interval.lowerRatio < 0 ||
+      interval.upperRatio > 1 ||
+      interval.lowerRatio > interval.centerRatio ||
+      interval.upperRatio < interval.centerRatio ||
+      interval.widthRatio <= 0 ||
+      Math.abs(interval.widthRatio - (interval.upperRatio - interval.lowerRatio)) > 0.002
+    ) {
+      return false;
+    }
+    return true;
+  });
+}
+
 export async function POST(request: Request) {
   try {
     const payload = (await request.json()) as {
@@ -63,12 +125,15 @@ export async function POST(request: Request) {
       assetOrder?: number;
       metricType?: string;
       taskMode?: string;
+      taskFamily?: string;
       resolution?: string;
       scaleMode?: string;
       disclosureLevel?: number;
       disclosureKey?: string;
       boundaries?: unknown;
+      previousBoundaries?: unknown;
       referenceBoundaries?: unknown;
+      boundaryIntervals?: unknown;
       reasonablenessRating?: number | null;
       confidence?: number;
       influenceRating?: number | null;
@@ -80,7 +145,9 @@ export async function POST(request: Request) {
       elapsedMs?: number;
       revealReadMs?: number;
       firstMoveMs?: number | null;
+      firstUncertaintyMs?: number | null;
       adjustmentCount?: number;
+      uncertaintyAdjustmentCount?: number;
       scaleSwitchCount?: number;
     };
 
@@ -106,15 +173,32 @@ export async function POST(request: Request) {
     }
 
     const boundaries = payload.boundaries ?? [];
+    const previousBoundaries = payload.previousBoundaries ?? [];
     const referenceBoundaries = payload.referenceBoundaries ?? [];
-    if (!validBoundaries(boundaries) || !validBoundaries(referenceBoundaries)) {
+    const boundaryIntervals = payload.boundaryIntervals ?? [];
+    if (
+      !validBoundaries(boundaries) ||
+      !validBoundaries(previousBoundaries) ||
+      !validBoundaries(referenceBoundaries)
+    ) {
       return Response.json({ error: "Invalid boundary list" }, { status: 400 });
+    }
+    const task = TASKS.get(payload.taskMode);
+    if (!task) {
+      return Response.json({ error: "Invalid task condition" }, { status: 400 });
     }
     const count = boundaries.length;
     if (
-      (payload.taskMode === "fixed" && count !== 2) ||
-      (payload.taskMode === "flexible" && (count < 1 || count > 5)) ||
-      (payload.taskMode === "evaluation" &&
+      count !== task.count ||
+      referenceBoundaries.length !== task.count ||
+      (payload.disclosureLevel === 0 && previousBoundaries.length !== 0) ||
+      (payload.disclosureLevel > 0 && previousBoundaries.length !== task.count) ||
+      (payload.taskFamily !== undefined && payload.taskFamily !== task.family) ||
+      (task.family === "placement" &&
+        !validBoundaryIntervals(boundaryIntervals, boundaries)) ||
+      (task.family === "evaluation" &&
+        (!Array.isArray(boundaryIntervals) || boundaryIntervals.length !== 0)) ||
+      (task.family === "evaluation" &&
         (!finiteNumber(payload.reasonablenessRating) ||
           payload.reasonablenessRating < 1 ||
           payload.reasonablenessRating > 5)) ||
@@ -144,13 +228,16 @@ export async function POST(request: Request) {
         assetOrder: Math.trunc(payload.assetOrder),
         metricType: payload.metricType,
         taskMode: payload.taskMode,
+        taskFamily: task.family,
         resolution: payload.resolution,
         scaleMode: payload.scaleMode,
         disclosureLevel: Math.trunc(payload.disclosureLevel),
         disclosureKey: payload.disclosureKey.slice(0, 60),
         boundaryCount: count,
         boundariesJson: JSON.stringify(boundaries),
+        previousBoundariesJson: JSON.stringify(previousBoundaries),
         referenceBoundariesJson: JSON.stringify(referenceBoundaries),
+        boundaryIntervalsJson: JSON.stringify(boundaryIntervals),
         reasonablenessRating:
           payload.reasonablenessRating === null ||
           payload.reasonablenessRating === undefined
@@ -177,7 +264,16 @@ export async function POST(request: Request) {
           payload.firstMoveMs === null || payload.firstMoveMs === undefined
             ? null
             : Math.max(0, Math.trunc(payload.firstMoveMs)),
+        firstUncertaintyMs:
+          payload.firstUncertaintyMs === null ||
+          payload.firstUncertaintyMs === undefined
+            ? null
+            : Math.max(0, Math.trunc(payload.firstUncertaintyMs)),
         adjustmentCount: Math.max(0, Math.trunc(payload.adjustmentCount ?? 0)),
+        uncertaintyAdjustmentCount: Math.max(
+          0,
+          Math.trunc(payload.uncertaintyAdjustmentCount ?? 0),
+        ),
         scaleSwitchCount: Math.max(0, Math.trunc(payload.scaleSwitchCount ?? 0)),
       })
       .returning({ id: researchResponses.id, createdAt: researchResponses.createdAt });

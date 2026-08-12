@@ -50,13 +50,16 @@ export async function ensureExperimentSchema() {
           asset_order INTEGER NOT NULL,
           metric_type TEXT NOT NULL,
           task_mode TEXT NOT NULL,
+          task_family TEXT NOT NULL DEFAULT 'placement',
           resolution TEXT NOT NULL,
           scale_mode TEXT NOT NULL DEFAULT 'linear',
           disclosure_level INTEGER NOT NULL,
           disclosure_key TEXT NOT NULL,
           boundary_count INTEGER NOT NULL DEFAULT 0,
           boundaries_json TEXT NOT NULL DEFAULT '[]',
+          previous_boundaries_json TEXT NOT NULL DEFAULT '[]',
           reference_boundaries_json TEXT NOT NULL DEFAULT '[]',
+          boundary_intervals_json TEXT NOT NULL DEFAULT '[]',
           reasonableness_rating INTEGER,
           confidence INTEGER NOT NULL,
           influence_rating INTEGER,
@@ -68,7 +71,9 @@ export async function ensureExperimentSchema() {
           elapsed_ms INTEGER NOT NULL,
           reveal_read_ms INTEGER NOT NULL DEFAULT 0,
           first_move_ms INTEGER,
+          first_uncertainty_ms INTEGER,
           adjustment_count INTEGER NOT NULL DEFAULT 0,
+          uncertainty_adjustment_count INTEGER NOT NULL DEFAULT 0,
           scale_switch_count INTEGER NOT NULL DEFAULT 0,
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (session_id) REFERENCES experiment_sessions(id) ON DELETE CASCADE
@@ -144,6 +149,24 @@ export async function ensureExperimentSchema() {
     ] as const;
     for (const [column, statement] of additiveMigrations) {
       if (!existingColumns.has(column)) {
+        await d1.prepare(statement).run();
+      }
+    }
+    const researchColumnInfo = await d1
+      .prepare("PRAGMA table_info(research_responses)")
+      .all<{ name: string }>();
+    const existingResearchColumns = new Set(
+      researchColumnInfo.results.map((column) => column.name),
+    );
+    const researchAdditiveMigrations = [
+      ["task_family", "ALTER TABLE research_responses ADD COLUMN task_family TEXT NOT NULL DEFAULT 'placement'"],
+      ["previous_boundaries_json", "ALTER TABLE research_responses ADD COLUMN previous_boundaries_json TEXT NOT NULL DEFAULT '[]'"],
+      ["boundary_intervals_json", "ALTER TABLE research_responses ADD COLUMN boundary_intervals_json TEXT NOT NULL DEFAULT '[]'"],
+      ["first_uncertainty_ms", "ALTER TABLE research_responses ADD COLUMN first_uncertainty_ms INTEGER"],
+      ["uncertainty_adjustment_count", "ALTER TABLE research_responses ADD COLUMN uncertainty_adjustment_count INTEGER NOT NULL DEFAULT 0"],
+    ] as const;
+    for (const [column, statement] of researchAdditiveMigrations) {
+      if (!existingResearchColumns.has(column)) {
         await d1.prepare(statement).run();
       }
     }

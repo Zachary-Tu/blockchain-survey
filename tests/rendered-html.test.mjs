@@ -35,12 +35,13 @@ test("server-renders the research configuration for the third-generation study",
   assert.match(html, /价格数据/);
   assert.match(html, /活跃地址/);
   assert.match(html, /Google 搜索热度/);
-  assert.match(html, /固定两个分界点/);
-  assert.match(html, /自由选择分界点/);
-  assert.match(html, /评价预设划分/);
-  assert.match(html, /名称与背景/);
-  assert.match(html, /时间轴与单位/);
-  assert.match(html, /重要事件/);
+  assert.match(html, /自主选择分界点/);
+  assert.match(html, /评价预设阶段/);
+  assert.match(html, /1 个分界点/);
+  assert.match(html, /2 个分界点/);
+  assert.match(html, /3 个分界点/);
+  assert.match(html, /3 个预设分界点/);
+  assert.match(html, /完成前一步后揭示/);
   assert.doesNotMatch(html, /codex-preview|starter loading skeleton/i);
 });
 
@@ -60,12 +61,12 @@ test("keeps both earlier interfaces available for rollback", async () => {
 
 test("ships a provenance-aware multi-metric stimulus bundle", async () => {
   const raw = await readFile(
-    new URL("../public/data/research-stimuli-v4.json", import.meta.url),
+    new URL("../public/data/research-stimuli-v5.json", import.meta.url),
     "utf8",
   );
   const stimulus = JSON.parse(raw);
 
-  assert.equal(stimulus.protocolVersion, "context-elasticity-multimetric-v4");
+  assert.equal(stimulus.protocolVersion, "context-elasticity-multimetric-v5");
   assert.deepEqual(stimulus.requestedWindow, {
     start: "2018-01-01",
     end: "2026-04-11",
@@ -86,6 +87,20 @@ test("ships a provenance-aware multi-metric stimulus bundle", async () => {
     assert.equal(asset.metrics.googleTrends.resolutions.daily, undefined);
     assert.ok(asset.metrics.googleTrends.resolutions.weekly.points.length >= 220);
     assert.ok(asset.events.length >= 6);
+    for (const metric of Object.values(asset.metrics)) {
+      for (const resolution of Object.values(metric.resolutions ?? {})) {
+        assert.deepEqual(
+          Object.keys(resolution.referenceBoundariesByCount),
+          ["1", "2", "3"],
+        );
+        for (const count of [1, 2, 3]) {
+          const boundaries = resolution.referenceBoundariesByCount[String(count)];
+          assert.equal(boundaries.length, count);
+          assert.ok(boundaries.every((ratio) => ratio > 0 && ratio < 1));
+          assert.deepEqual(boundaries, [...boundaries].sort((a, b) => a - b));
+        }
+      }
+    }
   }
 
   const activeAvailability = stimulus.assets.map(
@@ -99,6 +114,15 @@ test("ships a provenance-aware multi-metric stimulus bundle", async () => {
   for (const asset of stimulus.assets.slice(2)) {
     assert.match(asset.metrics.activeAddresses.unavailableReason, /不.*合成数据|合成数据/);
   }
+});
+
+test("retains the v4 multi-metric stimulus for protocol rollback", async () => {
+  const raw = await readFile(
+    new URL("../public/data/research-stimuli-v4.json", import.meta.url),
+    "utf8",
+  );
+  const stimulus = JSON.parse(raw);
+  assert.equal(stimulus.protocolVersion, "context-elasticity-multimetric-v4");
 });
 
 test("retains the preceding four-asset pilot stimulus", async () => {

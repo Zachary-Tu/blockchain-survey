@@ -7,7 +7,7 @@ Boundary Lab 是一个可运行的研究采集平台，用于比较人类与多�
 研究者在测试开始前锁定三个条件：
 
 1. 曲线指标：价格、活跃地址或 Google 搜索热度；
-2. 判断任务：固定两个分界点、自由选择 1–5 个分界点，或评价一套预设三阶段划分；
+2. 判断任务：A 类自主选择 1、2 或 3 个分界点；B 类评价对应的 1、2 或 3 个预设分界点，共六个配对条件；
 3. 时间分辨率：日、周、月或年。不可用的“指标 × 分辨率”组合会直接禁用，不插值伪造观测。
 
 每条曲线经历四级固定披露：
@@ -17,7 +17,9 @@ Boundary Lab 是一个可运行的研究采集平台，用于比较人类与多�
 3. 显示真实时间轴和数值单位，价格条件同时解锁线性 / 对数刻度；
 4. 在轴上显示重点事件、日期与中性说明。
 
-量表不预选默认值。若阶段边界或合理性评分与上一步相同，测试者必须主动确认“维持上一判断”。系统记录分界点数组、预设分界、合理性评分、信心、主观影响、判断依据、理由、阅读时间、首次移动时间、调整次数与刻度切换次数。每条曲线结束后展示个人回答轨迹作为非评价性反馈。
+测试过程中，尚未到达的披露主题统一显示“？”，避免参与者预判后续信息。从第二层起，橙色虚线保留上一层已经提交的分界位置，深绿色实线表示本层当前判断。
+
+A 类任务还要求参与者为每个分界点选择一个对称可能范围。第一次没有默认范围，之后可随新增信息收窄、放宽或保持。系统同时记录中心点、区间宽度与起止位置、上一层参照、合理性评分、信心、主观影响、判断依据、理由、阅读时间、首次移动时间、首次范围选择时间、调整次数与刻度切换次数。每条曲线结束后展示个人回答轨迹作为非评价性反馈。
 
 当前研究版位于 `/`；第二版保留在 `/v2`；最早的单曲线原型保留在 `/legacy`。
 
@@ -30,7 +32,7 @@ Boundary Lab 是一个可运行的研究采集平台，用于比较人类与多�
 
 最长请求窗口为 2018-01-01 至 2026-04-11。Solana 价格从其真实上线后数据起点开始，BNB Google Trends 主题也只保留来源实际返回的可用期；不向前填充。
 
-详细实验设计、指标与分析建议见 [`docs/RESEARCH_PROTOCOL_V4_ZH.md`](docs/RESEARCH_PROTOCOL_V4_ZH.md)。
+基础数据与实验设计见 [`docs/RESEARCH_PROTOCOL_V4_ZH.md`](docs/RESEARCH_PROTOCOL_V4_ZH.md)；六条件、未来主题盲化和边界不确定区间的修订见 [`docs/RESEARCH_PROTOCOL_V5_ZH.md`](docs/RESEARCH_PROTOCOL_V5_ZH.md)。
 
 ## 本地运行
 
@@ -49,20 +51,23 @@ npm run lint
 npm test
 ```
 
-重新生成冻结刺激（需要项目本地 Li Blockchain 路径、Python `requests`，并会访问 Coin Metrics / Google Trends）：
+重新生成基础刺激（需要项目本地 Li Blockchain 路径、Python `requests`，并会访问 Coin Metrics / Google Trends），再生成 v5 的 1/2/3 分界参考方案：
 
 ```bash
 python scripts/export_research_stimuli_v4.py
+python scripts/export_research_stimuli_v5.py
 ```
 
 ## 关键文件
 
-- `app/ExperimentV3.tsx`：研究配置、三种任务、四级披露、奖励页与会话导出；
+- `app/ExperimentV3.tsx`：研究配置、六个配对任务条件、四级披露、边界范围、奖励页与会话导出；
 - `app/api/research-responses/route.ts`：新版逐层响应校验与写入；
 - `db/schema.ts`：D1 会话、旧版决策与新版研究响应结构；
-- `public/data/research-stimuli-v4.json`：冻结的多指标、多分辨率刺激；
-- `scripts/export_research_stimuli_v4.py`：来源获取、聚合、参考分界与数据审计；
+- `public/data/research-stimuli-v5.json`：冻结的多指标、多分辨率刺激与 1/2/3 分界参考方案；
+- `scripts/export_research_stimuli_v4.py`：来源获取、聚合与数据审计；
+- `scripts/export_research_stimuli_v5.py`：从冻结观测生成六条件共用的参考分界；
 - `docs/RESEARCH_PROTOCOL_V4_ZH.md`：研究设计与正式实验前检查清单；
+- `docs/RESEARCH_PROTOCOL_V5_ZH.md`：任务配对、信息盲化与边界区间修订；
 - `drizzle/`：数据库迁移。
 
 ## 研究状态
