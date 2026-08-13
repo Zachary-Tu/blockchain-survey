@@ -73,7 +73,10 @@ type ControlSeries = {
 };
 type Bundle = {
   protocolVersion: string;
+  datasetVersion?: string;
   requestedWindow: { start: string; end: string };
+  curatedWindow?: { start: string; end: string; rule: string; rationale?: string };
+  sourceWindows?: Record<string, { start: string; end: string }>;
   assets: Asset[];
   controls: ControlSeries[];
 };
@@ -116,10 +119,14 @@ type ModularAnswer = {
   previousBoundaries: BoundaryRecord[];
   boundaryIntervals: IntervalRecord[];
   singleStageConfirmed: boolean;
-  confidence: number;
+  confidence?: number;
   influenceRating: number | null;
   elapsedMs: number;
 };
+
+type ProtocolVariant = "v4" | "pre-v4";
+type CueOption = { code: string; label: string };
+type CueGroup = { key: string; title: string; options: CueOption[] };
 
 const MODULES: Array<{
   key: ModuleKey;
@@ -213,7 +220,44 @@ const RESOLUTION_LABEL: Record<Resolution, string> = {
   monthly: "月频",
   yearly: "年频",
 };
-const CUES = ["趋势方向", "均值变化", "波动结构", "持续时间", "序列类型", "资产知识", "历史事件", "其他"];
+const LEGACY_CUES = ["趋势方向", "均值变化", "波动结构", "持续时间", "序列类型", "资产知识", "历史事件", "其他"];
+const CUE_SCHEMA_VERSION = "visual-cpd-event-segmentation-v1";
+const CUE_GROUPS: CueGroup[] = [
+  {
+    key: "curve",
+    title: "曲线结构",
+    options: [
+      { code: "curve_trend_slope", label: "趋势方向或斜率改变" },
+      { code: "curve_level_shift", label: "平均水平或基线跳变" },
+      { code: "curve_variance", label: "波动幅度或噪声改变" },
+      { code: "curve_abrupt_jump", label: "突发跳跃或明显断点" },
+      { code: "curve_extrema_reversal", label: "高低点或方向反转" },
+      { code: "curve_persistence", label: "新状态是否持续稳定" },
+      { code: "curve_periodicity", label: "周期或重复模式" },
+      { code: "curve_signal_noise", label: "变化相对噪声是否明显" },
+    ],
+  },
+  {
+    key: "display",
+    title: "时序与图表呈现",
+    options: [
+      { code: "display_temporal_location", label: "变化发生在序列中的位置" },
+      { code: "display_window_points", label: "可见时间窗口或观测数量" },
+      { code: "display_resolution", label: "数据频率或时间分辨率" },
+      { code: "display_axis_scale", label: "坐标刻度（线性/对数）" },
+    ],
+  },
+  {
+    key: "context",
+    title: "语义、知识与预期",
+    options: [
+      { code: "context_asset_knowledge", label: "资产身份或领域知识" },
+      { code: "context_events_news", label: "历史事件或新闻信息" },
+      { code: "context_prior_expectation", label: "既有预期或上一轮判断" },
+      { code: "context_other", label: "其他线索" },
+    ],
+  },
+];
 const WIDTHS = [
   { value: 0.01, label: "很窄", width: "2%" },
   { value: 0.025, label: "较窄", width: "5%" },
@@ -346,6 +390,7 @@ function makeTrialPlan(
     snapshot: DisclosureKey;
     assetId: string;
     robustnessFactor: RobustnessFactor;
+    windowMode: WindowMode;
   },
 ): TrialPlan[] {
   const rows: Omit<TrialPlan, "id" | "order">[] = [];
@@ -359,7 +404,7 @@ function makeTrialPlan(
         metric: config.metric,
         resolution: config.resolution,
         scaleMode: config.metric === "price" ? config.scaleMode : "linear",
-        windowMode: "whole",
+        windowMode: config.windowMode,
         disclosures: DISCLOSURE_PATHS[config.disclosurePath],
         variantLabel: `${asset.symbol} · ${DISCLOSURE_PATHS[config.disclosurePath].length} 层披露`,
       });
@@ -377,7 +422,7 @@ function makeTrialPlan(
         metric: config.metric,
         resolution: config.resolution,
         scaleMode: config.metric === "price" ? config.scaleMode : "linear",
-        windowMode: "whole",
+        windowMode: config.windowMode,
         disclosures: [config.snapshot],
         variantLabel: `${taskType} · ${TASKS[taskType].short}`,
       });
@@ -393,7 +438,7 @@ function makeTrialPlan(
         metric,
         resolution: config.resolution,
         scaleMode: metric === "price" ? config.scaleMode : "linear",
-        windowMode: "whole",
+        windowMode: config.windowMode,
         disclosures: [config.snapshot],
         variantLabel: METRIC_LABEL[metric],
       });
@@ -410,7 +455,7 @@ function makeTrialPlan(
           metric: "price",
           resolution,
           scaleMode: "linear",
-          windowMode: "whole",
+          windowMode: config.windowMode,
           disclosures: [config.snapshot],
           variantLabel: RESOLUTION_LABEL[resolution],
         });
@@ -425,7 +470,7 @@ function makeTrialPlan(
           metric: "price",
           resolution: "weekly",
           scaleMode,
-          windowMode: "whole",
+          windowMode: config.windowMode,
           disclosures: [config.snapshot],
           variantLabel: scaleMode === "linear" ? "线性刻度" : "对数刻度",
         });
@@ -469,7 +514,7 @@ function makeTrialPlan(
           metric: "price",
           resolution: "weekly",
           scaleMode: "linear",
-          windowMode: "whole",
+          windowMode: config.windowMode,
           disclosures: [config.snapshot],
           variantLabel: stimulus.label,
         });
@@ -946,7 +991,28 @@ function sameNumbers(first: number[], second: number[]) {
   return first.length === second.length && first.every((value, index) => Math.abs(value - second[index]) < 0.00001);
 }
 
-export function ExperimentModular() {
+function participantVariantLabel(
+  trial: TrialPlan,
+  visibility: ReturnType<typeof disclosureVisibility>,
+) {
+  if (trial.module === "framing") return `${trial.taskType} · ${TASKS[trial.taskType].short}`;
+  if (trial.module === "cross-series") {
+    return visibility.metric ? METRIC_LABEL[trial.metric] : `序列 ${trial.order + 1}`;
+  }
+  if (trial.module === "robustness") {
+    if (trial.controlId) return visibility.asset ? "对照序列" : `实验条件 ${trial.order + 1}`;
+    return visibility.axes ? trial.variantLabel : `实验条件 ${trial.order + 1}`;
+  }
+  return `曲线 ${trial.order + 1}`;
+}
+
+export function ExperimentModular({
+  protocolVariant = "v4",
+}: {
+  protocolVariant?: ProtocolVariant;
+}) {
+  const isV4 = protocolVariant === "v4";
+  const editionMark = isV4 ? "04" : "06";
   const [bundle, setBundle] = useState<Bundle | null>(null);
   const [loadError, setLoadError] = useState("");
   const [phase, setPhase] = useState<Phase>("setup");
@@ -955,6 +1021,7 @@ export function ExperimentModular() {
   const [metric, setMetric] = useState<MetricKey>("price");
   const [resolution, setResolution] = useState<Resolution>("weekly");
   const [scaleMode, setScaleMode] = useState<ScaleMode>("linear");
+  const [windowMode, setWindowMode] = useState<WindowMode>("whole");
   const [disclosurePath, setDisclosurePath] = useState<DisclosurePath>("combined");
   const [snapshot, setSnapshot] = useState<DisclosureKey>("GI2");
   const [assetId, setAssetId] = useState("bitcoin");
@@ -989,7 +1056,7 @@ export function ExperimentModular() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/data/research-stimuli-modular-v6.json")
+    fetch(isV4 ? "/data/research-stimuli-modular-v7.json" : "/data/research-stimuli-modular-v6.json")
       .then((response) => {
         if (!response.ok) throw new Error("研究刺激数据加载失败");
         return response.json() as Promise<Bundle>;
@@ -1003,7 +1070,7 @@ export function ExperimentModular() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isV4]);
 
   useEffect(() => {
     if (phase !== "experiment") return;
@@ -1026,11 +1093,17 @@ export function ExperimentModular() {
     : currentAsset?.metrics[currentTrial?.metric ?? "price"];
   const fullResolutionData = currentMetric?.resolutions[currentTrial?.resolution ?? "weekly"];
   const sourcePoints = fullResolutionData?.points ?? [];
-  const truncatedStart = Math.floor(sourcePoints.length * 0.27);
-  const truncatedEnd = Math.max(truncatedStart + 4, Math.ceil(sourcePoints.length * 0.78));
+  const curatedStart = bundle?.curatedWindow?.start ?? "2020-01-01";
+  const curatedEnd = bundle?.curatedWindow?.end ?? "2024-12-31";
   const points = currentTrial?.windowMode === "truncated"
-    ? sourcePoints.slice(truncatedStart, truncatedEnd)
+    ? sourcePoints.filter((point) => point.date >= curatedStart && point.date <= curatedEnd)
     : sourcePoints;
+  const sourceWindow = sourcePoints.length
+    ? { start: sourcePoints[0].date, end: sourcePoints[sourcePoints.length - 1].date, observationCount: sourcePoints.length }
+    : null;
+  const displayedWindow = points.length
+    ? { start: points[0].date, end: points[points.length - 1].date, observationCount: points.length }
+    : null;
   const previousAnswer = answers
     .filter((answer) => answer.trialId === currentTrial?.id)
     .sort((a, b) => b.disclosureIndex - a.disclosureIndex)[0];
@@ -1069,8 +1142,10 @@ export function ExperimentModular() {
     setBoundaries(nextBoundaries);
     setWidths(preserve ? widths : Array(nextBoundaries.length).fill(null));
     setSingleStageConfirmed(preserve ? singleStageConfirmed : false);
-    setConfidence(3);
-    setConfidenceTouched(false);
+    if (!isV4) {
+      setConfidence(3);
+      setConfidenceTouched(false);
+    }
     setInfluence(3);
     setInfluenceTouched(false);
     setNoChangeConfirmed(false);
@@ -1098,6 +1173,7 @@ export function ExperimentModular() {
         snapshot,
         assetId,
         robustnessFactor,
+        windowMode: isV4 ? windowMode : "whole",
       });
       if (!nextPlan.length) throw new Error("当前条件没有可用曲线，请调整研究配置。");
       const response = await fetch("/api/sessions", {
@@ -1120,6 +1196,10 @@ export function ExperimentModular() {
             snapshot,
             assetId,
             robustnessFactor,
+            windowMode: isV4 ? windowMode : "whole",
+            windowProtocol: isV4 ? bundle.curatedWindow ?? null : null,
+            cueSchemaVersion: isV4 ? CUE_SCHEMA_VERSION : "legacy-cues-v1",
+            cueTaxonomyUrl: isV4 ? "/data/cue-taxonomy-v4.json" : null,
             randomizedPlan: nextPlan,
           },
         }),
@@ -1182,6 +1262,10 @@ export function ExperimentModular() {
       key: currentDisclosure,
       path: currentTrial.module === "disclosure" ? disclosurePath : "snapshot",
       visibility,
+      cueSchemaVersion: isV4 ? CUE_SCHEMA_VERSION : "legacy-cues-v1",
+      sourceWindow,
+      displayedWindow,
+      curatedWindow: currentTrial.windowMode === "truncated" ? bundle.curatedWindow ?? { start: curatedStart, end: curatedEnd } : null,
       visibleEventPriorities: [
         ...(visibility.highEvents ? ["high"] : []),
         ...(visibility.lowEvents ? ["low"] : []),
@@ -1206,12 +1290,20 @@ export function ExperimentModular() {
           disclosureIndex,
           disclosureKey: currentDisclosure,
           disclosureState,
+          responseVersion: isV4 ? "v4" : "pre-v4",
+          stimulusWindow: {
+            mode: currentTrial.windowMode,
+            source: sourceWindow,
+            displayed: displayedWindow,
+            curatedRule: currentTrial.windowMode === "truncated" ? bundle.curatedWindow ?? { start: curatedStart, end: curatedEnd } : null,
+          },
+          cueSchemaVersion: isV4 ? CUE_SCHEMA_VERSION : "legacy-cues-v1",
           boundaries: currentBoundaryRecords,
           previousBoundaries: previousAnswer?.boundaries ?? [],
           boundaryIntervals: currentIntervalRecords,
           singleStageConfirmed,
-          confidence,
-          confidenceTouched,
+          confidence: isV4 ? undefined : confidence,
+          confidenceTouched: isV4 ? false : confidenceTouched,
           influenceRating: currentTrial.module === "disclosure" && disclosureIndex > 0 ? influence : null,
           influenceTouched: currentTrial.module === "disclosure" && disclosureIndex > 0 ? influenceTouched : false,
           noChangeConfirmed,
@@ -1239,7 +1331,7 @@ export function ExperimentModular() {
         previousBoundaries: previousAnswer?.boundaries ?? [],
         boundaryIntervals: currentIntervalRecords,
         singleStageConfirmed,
-        confidence,
+        confidence: isV4 ? undefined : confidence,
         influenceRating: currentTrial.module === "disclosure" && disclosureIndex > 0 ? influence : null,
         elapsedMs,
       };
@@ -1286,17 +1378,18 @@ export function ExperimentModular() {
     return (
       <main className="mod-site">
         <header className="mod-topbar">
-          <Link href="/" className="mod-wordmark"><span>BOUNDARY</span> LAB <b>06</b></Link>
+          <Link href="/" className="mod-wordmark"><span>BOUNDARY</span> LAB <b>{editionMark}</b></Link>
           <nav aria-label="版本入口">
             <a href="#modules">实验模块</a>
             <a href="#configure">配置研究</a>
+            {isV4 && <Link href="/v4-predecessor">上一模块版</Link>}
             <Link href="/v3-revised">保留的 V3 修订版</Link>
           </nav>
         </header>
 
         <section className="mod-hero">
           <div className="mod-hero-copy">
-            <span className="mod-eyebrow">MODULAR EXPERIMENT PLATFORM · 2026</span>
+            <span className="mod-eyebrow">FOURTH EDITION · MODULAR EXPERIMENT PLATFORM · 2026</span>
             <h1>把一个问题，<br />拆成四组可检验的实验。</h1>
             <p>研究人类与 Agent 如何理解时间序列中的“阶段”，以及这种判断会如何被上下文、任务定义、指标类型和图表形式改变。</p>
             <a className="mod-primary-link" href="#modules">选择实验模块 <span>↓</span></a>
@@ -1426,6 +1519,26 @@ export function ExperimentModular() {
                 </>
               )}
 
+              {isV4 && robustnessFactor === "window" && moduleKey === "robustness" ? (
+                <div className="mod-protocol-note">
+                  <span>WHOLE ↔ CUT</span>
+                  <div><strong>数据窗口由 M4 自动配对</strong><p>同一价格序列分别显示全部可用观测与 2020-01-01—2024-12-31 预设窗口；不插值、不补齐。</p></div>
+                </div>
+              ) : isV4 ? (
+                <div className="mod-fieldset">
+                  <div className="mod-field-label"><span>03</span><div><strong>数据截断</strong><small>把观察窗口作为会话级实验条件；所有试次使用同一规则</small></div></div>
+                  <SetupChoice
+                    label="数据截断"
+                    value={windowMode}
+                    onChange={setWindowMode}
+                    options={[
+                      { value: "whole", title: "完整可用数据", description: "显示每条序列在当前数据源中的全部真实观测；不同资产与指标的起始日可以不同。" },
+                      { value: "truncated", title: "预设截断窗口", description: "统一筛选 2020-01-01—2024-12-31；不插值、不按点数比例裁切。" },
+                    ]}
+                  />
+                </div>
+              ) : null}
+
               {moduleKey === "disclosure" && (
                 <div className="mod-fieldset">
                   <div className="mod-field-label"><span>03</span><div><strong>披露路径</strong><small>同一曲线内逐层累积，不提前显示后续内容</small></div></div>
@@ -1471,10 +1584,10 @@ export function ExperimentModular() {
               <dl>
                 <div><dt>主要比较</dt><dd>{moduleInfo.design}</dd></div>
                 <div><dt>预计试次</dt><dd>{moduleKey === "disclosure" ? `${eligibleAssets(bundle ?? { assets: [], controls: [], protocolVersion: "", requestedWindow: { start: "", end: "" } }, metric, resolution).length} 条曲线 × ${DISCLOSURE_PATHS[disclosurePath].length} 层` : moduleKey === "framing" || moduleKey === "cross-series" ? "3 条曲线" : robustnessFactor === "scale" || robustnessFactor === "window" ? "2 条曲线" : "4 条曲线"}</dd></div>
-                <div><dt>时间范围</dt><dd>2018—2026</dd></div>
+                <div><dt>数据窗口</dt><dd>{isV4 ? moduleKey === "robustness" && robustnessFactor === "window" ? "完整 vs 2020—2024" : windowMode === "truncated" ? "2020—2024（固定）" : "各序列全部可用观测" : "2018—2026"}</dd></div>
                 <div><dt>提交规则</dt><dd>每个判断单独写入数据库</dd></div>
               </dl>
-              <p>系统会把随机顺序、信息状态、分界点、范围、评分和交互时间完整写入会话配置与响应表。</p>
+              <p>系统会把随机顺序、信息状态、实际显示窗口、分界点、不确定范围、线索编码和交互时间完整写入会话配置与响应表。</p>
             </aside>
           </div>
 
@@ -1495,7 +1608,7 @@ export function ExperimentModular() {
           </section>
         </section>
 
-        <footer className="mod-footer"><span>BOUNDARY LAB · MODULAR PROTOCOL V6</span><span>V3 修订版已保留，可随时回退</span></footer>
+        <footer className="mod-footer"><span>BOUNDARY LAB · {isV4 ? "FOURTH EDITION" : "MODULAR PROTOCOL V6"}</span><span>{isV4 ? "上一模块版与 V3 修订版均已保留" : "V3 修订版已保留，可随时回退"}</span></footer>
       </main>
     );
   }
@@ -1522,7 +1635,7 @@ export function ExperimentModular() {
     const last = trialAnswers[trialAnswers.length - 1];
     return (
       <main className="mod-site mod-review-page">
-        <header className="mod-topbar"><span className="mod-wordmark"><span>BOUNDARY</span> LAB <b>06</b></span><span>{currentModule.number} · 试次 {trialIndex + 1}/{plan.length}</span></header>
+        <header className="mod-topbar"><span className="mod-wordmark"><span>BOUNDARY</span> LAB <b>{editionMark}</b></span><span>{currentModule.number} · 试次 {trialIndex + 1}/{plan.length}</span></header>
         <section className="mod-review-hero">
           <span className="mod-eyebrow">MICRO REWARD · 本轮反馈</span>
           <h1>你刚刚留下了一条<br />可测量的判断轨迹。</h1>
@@ -1571,11 +1684,17 @@ export function ExperimentModular() {
       widths.length === previousAnswer.boundaryIntervals.length &&
       widths.every((value, index) => value === previousAnswer.boundaryIntervals[index]?.halfWidthRatio)
     : false;
+  const responseShapeReady = currentTrial.taskType === "T1"
+    ? (boundaries.length === 0 ? singleStageConfirmed : widths.length === boundaries.length && widths.every((value) => value !== null))
+    : boundaries.length === 2 && widths.length === 2 && widths.every((value) => value !== null);
+  const runnerVariantLabel = isV4
+    ? participantVariantLabel(currentTrial, visibility)
+    : currentTrial.variantLabel;
 
   return (
     <main className="mod-site mod-runner">
       <header className="mod-topbar">
-        <span className="mod-wordmark"><span>BOUNDARY</span> LAB <b>06</b></span>
+        <span className="mod-wordmark"><span>BOUNDARY</span> LAB <b>{editionMark}</b></span>
         <div className="mod-run-progress"><span>{currentModule.number} · {currentModule.title}</span><strong>曲线 {trialIndex + 1}/{plan.length}</strong><i><b style={{ width: `${((trialIndex + disclosureIndex / currentTrial.disclosures.length) / plan.length) * 100}%` }} /></i></div>
         <span className="mod-session-mini">ID {sessionId.slice(0, 8)}</span>
       </header>
@@ -1586,7 +1705,7 @@ export function ExperimentModular() {
         <div className="mod-run-main">
           <div className="mod-stimulus-heading">
             <div>
-              <span className="mod-eyebrow">{currentTrial.variantLabel} · {TASKS[currentTrial.taskType].short}</span>
+              <span className="mod-eyebrow">{runnerVariantLabel} · {TASKS[currentTrial.taskType].short}</span>
               <h1>{visibility.asset ? `${displayName}（${displaySymbol}）` : visibility.metric ? currentMetric.name : "一段未命名的走势"}</h1>
               <p>{visibility.intro ? displayIntro : visibility.metric ? currentMetric.definition : "请只根据当前可见的信息判断阶段结构。"}</p>
             </div>
@@ -1650,10 +1769,12 @@ export function ExperimentModular() {
             onUncertaintyInteraction={markUncertaintyInteraction}
           />
 
-          <section className="mod-question-block">
-            <h3>你对这次划分有多大信心？</h3>
-            <Rating value={confidence} onChange={(value) => { setConfidence(value); setConfidenceTouched(true); }} left="很不确定" right="非常确定" label="判断信心" />
-          </section>
+          {!isV4 && (
+            <section className="mod-question-block">
+              <h3>你对这次划分有多大信心？</h3>
+              <Rating value={confidence} onChange={(value) => { setConfidence(value); setConfidenceTouched(true); }} left="很不确定" right="非常确定" label="判断信心" />
+            </section>
+          )}
 
           {currentTrial.module === "disclosure" && disclosureIndex > 0 && (
             <section className="mod-question-block is-new">
@@ -1666,11 +1787,41 @@ export function ExperimentModular() {
             </section>
           )}
 
-          <section className="mod-question-block">
-            <h3>这次判断主要参考了什么？<small>可多选</small></h3>
-            <div className="mod-cue-list">{CUES.map((cue) => <button type="button" key={cue} className={cueTags.includes(cue) ? "is-selected" : ""} onClick={() => setCueTags((value) => value.includes(cue) ? value.filter((item) => item !== cue) : [...value, cue])}>{cue}</button>)}</div>
-            <label className="mod-rationale"><span>还想补充什么？<small>可不填</small></span><textarea value={rationale} maxLength={1000} onChange={(event) => setRationale(event.target.value)} placeholder="例如：这里开始由持续上涨转为高位震荡……" /><i>{rationale.length}/1000</i></label>
-          </section>
+          {(!isV4 || responseShapeReady) ? (
+            <section className="mod-question-block">
+              <h3>{isV4 ? "这次判断主要依据了哪些线索？" : "这次判断主要参考了什么？"}<small>可多选</small></h3>
+              {isV4 ? (
+                <div className="mod-cue-groups">
+                  {CUE_GROUPS.map((group) => (
+                    <div className="mod-cue-group" key={group.key}>
+                      <span>{group.title}</span>
+                      <div className="mod-cue-list">
+                        {group.options.map((cue) => (
+                          <button
+                            type="button"
+                            key={cue.code}
+                            className={cueTags.includes(cue.code) ? "is-selected" : ""}
+                            aria-pressed={cueTags.includes(cue.code)}
+                            onClick={() => setCueTags((value) => value.includes(cue.code) ? value.filter((item) => item !== cue.code) : [...value, cue.code])}
+                          >{cue.label}</button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  <p className="mod-cue-note">请只选择本轮实际使用的线索；这些类别用于比较人类与 Agent 的判断机制。</p>
+                </div>
+              ) : (
+                <div className="mod-cue-list">{LEGACY_CUES.map((cue) => <button type="button" key={cue} className={cueTags.includes(cue) ? "is-selected" : ""} onClick={() => setCueTags((value) => value.includes(cue) ? value.filter((item) => item !== cue) : [...value, cue])}>{cue}</button>)}</div>
+              )}
+              <label className="mod-rationale"><span>还想补充什么？<small>可不填</small></span><textarea value={rationale} maxLength={1000} onChange={(event) => setRationale(event.target.value)} placeholder="例如：这里开始由持续上涨转为高位震荡……" /><i>{rationale.length}/1000</i></label>
+            </section>
+          ) : (
+            <section className="mod-question-block mod-cue-awaiting">
+              <span className="mod-kicker">完成分界判断后出现</span>
+              <h3>判断依据</h3>
+              <p>先确定分界点及其大致范围，随后再记录你实际使用的线索，避免选项提前影响分界。</p>
+            </section>
+          )}
 
           {error && <p className="mod-error" role="alert">{error}</p>}
           <button className="mod-submit" type="button" onClick={(event) => submitResponse(event.timeStamp)} disabled={busy}>{busy ? "正在安全记录…" : disclosureIndex < currentTrial.disclosures.length - 1 ? "提交本步，揭示下一项信息" : "提交本轮，查看反馈"}<span>→</span></button>

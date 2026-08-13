@@ -1,0 +1,92 @@
+{
+  "schemaVersion": "visual-cpd-event-segmentation-v1",
+  "language": "zh-CN",
+  "prompt": "这次判断主要依据了哪些线索？",
+  "responseType": "multi-select",
+  "administration": "Only reveal after the participant has placed every boundary and supplied every uncertainty interval, to reduce option-induced priming.",
+  "groups": [
+    {
+      "code": "curve",
+      "label": "曲线结构",
+      "options": [
+        { "code": "curve_trend_slope", "label": "趋势方向或斜率改变" },
+        { "code": "curve_level_shift", "label": "平均水平或基线跳变" },
+        { "code": "curve_variance", "label": "波动幅度或噪声改变" },
+        { "code": "curve_abrupt_jump", "label": "突发跳跃或明显断点" },
+        { "code": "curve_extrema_reversal", "label": "高低点或方向反转" },
+        { "code": "curve_persistence", "label": "新状态是否持续稳定" },
+        { "code": "curve_periodicity", "label": "周期或重复模式" },
+        { "code": "curve_signal_noise", "label": "变化相对噪声是否明显" }
+      ]
+    },
+    {
+      "code": "display",
+      "label": "时序与图表呈现",
+      "options": [
+        { "code": "display_temporal_location", "label": "变化发生在序列中的位置" },
+        { "code": "display_window_points", "label": "可见时间窗口或观测数量" },
+        { "code": "display_resolution", "label": "数据频率或时间分辨率" },
+        { "code": "display_axis_scale", "label": "坐标刻度（线性/对数）" }
+      ]
+    },
+    {
+      "code": "context",
+      "label": "语义、知识与预期",
+      "options": [
+        { "code": "context_asset_knowledge", "label": "资产身份或领域知识" },
+        { "code": "context_events_news", "label": "历史事件或新闻信息" },
+        { "code": "context_prior_expectation", "label": "既有预期或上一轮判断" },
+        { "code": "context_other", "label": "其他线索" }
+      ]
+    }
+  ],
+  "evidenceMap": [
+    {
+      "source": "Fudolig, Robinson, and VanderPlas (2025), Can You See The Change? Change Point Detection Using Visual Inference",
+      "doi": "10.1080/10618600.2025.2485278",
+      "url": "https://www.tandfonline.com/doi/abs/10.1080/10618600.2025.2485278",
+      "supports": ["curve_level_shift", "curve_variance", "curve_signal_noise", "display_temporal_location"]
+    },
+    {
+      "source": "Ciccione et al. (2023), Trend judgment as a perceptual building block of graphicacy and mathematics, across age, education, and culture",
+      "doi": "10.1038/s41598-023-37172-3",
+      "url": "https://www.nature.com/articles/s41598-023-37172-3",
+      "supports": ["curve_trend_slope", "curve_variance", "curve_signal_noise", "display_window_points"]
+    },
+    {
+      "source": "Pauly and Schwan (2024), How Do People Parse Dynamic Maps? Insights from Event Segmentation Experiments",
+      "doi": "10.4230/LIPIcs.COSIT.2024.14",
+      "url": "https://drops.dagstuhl.de/entities/document/10.4230/LIPIcs.COSIT.2024.14",
+      "supports": ["curve_trend_slope", "context_prior_expectation"]
+    },
+    {
+      "source": "Predictive event segmentation and representation with neural networks (2024)",
+      "doi": "10.1016/j.cogsys.2023.101167",
+      "url": "https://www.sciencedirect.com/science/article/pii/S1389041723001018",
+      "supports": ["curve_abrupt_jump", "curve_persistence", "context_prior_expectation"]
+    },
+    {
+      "source": "Berg and Moon (2023), A characterization of chemistry learners' engagement in data analysis and interpretation",
+      "doi": "10.1039/D2RP00154C",
+      "url": "https://pubs.rsc.org/en/content/articlehtml/2023/rp/d2rp00154c",
+      "supports": ["context_asset_knowledge", "context_events_news", "context_prior_expectation"]
+    },
+    {
+      "source": "Ryan and Evers (2020), Graphs with logarithmic axes distort lay judgments",
+      "doi": "10.1177/237946152000600203",
+      "url": "https://journals.sagepub.com/doi/10.1177/237946152000600203",
+      "supports": ["display_axis_scale"]
+    },
+    {
+      "source": "Melnik-Leroy et al. (2023), Is my visualization better than yours? Analyzing factors modulating exponential growth bias in graphs",
+      "doi": "10.3389/fpsyg.2023.1125810",
+      "url": "https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2023.1125810/full",
+      "supports": ["display_axis_scale", "display_resolution", "curve_variance"]
+    }
+  ],
+  "notes": [
+    "Options operationalize self-reported cues; they are not assumed to be exhaustive or causally diagnostic.",
+    "Keep option wording and codes frozen within a confirmatory collection wave.",
+    "Randomize option order only if the randomization seed and displayed order are recorded; edition four keeps a stable grouped order."
+  ]
+}

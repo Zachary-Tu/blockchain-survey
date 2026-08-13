@@ -108,6 +108,7 @@ export async function ensureExperimentSchema() {
           session_id TEXT NOT NULL,
           trial_id TEXT NOT NULL,
           trial_order INTEGER NOT NULL,
+          response_version TEXT NOT NULL DEFAULT 'pre-v4',
           module_key TEXT NOT NULL,
           task_type TEXT NOT NULL,
           stimulus_type TEXT NOT NULL,
@@ -119,6 +120,8 @@ export async function ensureExperimentSchema() {
           disclosure_index INTEGER NOT NULL,
           disclosure_key TEXT NOT NULL,
           disclosure_state_json TEXT NOT NULL DEFAULT '{}',
+          stimulus_window_json TEXT NOT NULL DEFAULT '{}',
+          cue_schema_version TEXT NOT NULL DEFAULT 'legacy-cues-v1',
           boundary_count INTEGER NOT NULL DEFAULT 0,
           boundaries_json TEXT NOT NULL DEFAULT '[]',
           previous_boundaries_json TEXT NOT NULL DEFAULT '[]',
@@ -214,6 +217,22 @@ export async function ensureExperimentSchema() {
     ] as const;
     for (const [column, statement] of researchAdditiveMigrations) {
       if (!existingResearchColumns.has(column)) {
+        await d1.prepare(statement).run();
+      }
+    }
+    const modularColumnInfo = await d1
+      .prepare("PRAGMA table_info(modular_responses)")
+      .all<{ name: string }>();
+    const existingModularColumns = new Set(
+      modularColumnInfo.results.map((column) => column.name),
+    );
+    const modularAdditiveMigrations = [
+      ["response_version", "ALTER TABLE modular_responses ADD COLUMN response_version TEXT NOT NULL DEFAULT 'pre-v4'"],
+      ["stimulus_window_json", "ALTER TABLE modular_responses ADD COLUMN stimulus_window_json TEXT NOT NULL DEFAULT '{}'"],
+      ["cue_schema_version", "ALTER TABLE modular_responses ADD COLUMN cue_schema_version TEXT NOT NULL DEFAULT 'legacy-cues-v1'"],
+    ] as const;
+    for (const [column, statement] of modularAdditiveMigrations) {
+      if (!existingModularColumns.has(column)) {
         await d1.prepare(statement).run();
       }
     }

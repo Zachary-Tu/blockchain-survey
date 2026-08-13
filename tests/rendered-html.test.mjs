@@ -30,7 +30,7 @@ test("server-renders the modular research platform", async () => {
 
   const html = await response.text();
   assert.match(html, /<html lang="zh-CN">/i);
-  assert.match(html, /<title>Boundary Lab｜模块化阶段判断实验平台<\/title>/i);
+  assert.match(html, /<title>Boundary Lab｜第四版模块化阶段判断实验<\/title>/i);
   assert.match(html, /把一个问题/);
   assert.match(html, /拆成四组可检验的实验/);
   assert.match(html, /信息披露主实验/);
@@ -45,6 +45,12 @@ test("server-renders the modular research platform", async () => {
   assert.match(html, /T3 · 定义三阶段/);
   assert.match(html, /一般信息 GI/);
   assert.match(html, /领域信息 DI/);
+  assert.match(html, /数据截断/);
+  assert.match(html, /完整可用数据/);
+  assert.match(html, /预设截断窗口/);
+  assert.match(html, /2020-01-01—2024-12-31/);
+  assert.match(html, /FOURTH EDITION/);
+  assert.doesNotMatch(html, /你对这次划分有多大信心/);
   assert.doesNotMatch(html, /codex-preview|starter loading skeleton/i);
 });
 
@@ -66,6 +72,54 @@ test("keeps all preceding interfaces available for rollback", async () => {
   const legacyHtml = await legacy.text();
   assert.match(legacyHtml, /你在哪里看到/);
   assert.match(legacyHtml, /六轮信息披露/);
+
+  const predecessor = await render("/v4-predecessor");
+  assert.equal(predecessor.status, 200);
+  const predecessorHtml = await predecessor.text();
+  assert.match(predecessorHtml, /MODULAR PROTOCOL V6/);
+  assert.doesNotMatch(predecessorHtml, /完整可用数据/);
+});
+
+test("ships the fourth-edition full and curated window protocol", async () => {
+  const raw = await readFile(
+    new URL("../public/data/research-stimuli-modular-v7.json", import.meta.url),
+    "utf8",
+  );
+  const stimulus = JSON.parse(raw);
+
+  assert.equal(stimulus.protocolVersion, "boundary-lab-modular-v4");
+  assert.equal(stimulus.datasetVersion, "research-stimuli-modular-v7");
+  assert.deepEqual(
+    { start: stimulus.curatedWindow.start, end: stimulus.curatedWindow.end },
+    { start: "2020-01-01", end: "2024-12-31" },
+  );
+  assert.match(stimulus.curatedWindow.rule, /without interpolation/);
+  assert.deepEqual(
+    stimulus.assets.map((asset) => asset.metrics.price.resolutions.daily.points[0].date),
+    ["2010-10-21", "2015-11-16", "2020-07-19", "2017-11-02"],
+  );
+  for (const asset of stimulus.assets) {
+    const source = asset.metrics.price.source;
+    assert.equal(source.availableWindow.start, asset.metrics.price.resolutions.daily.points[0].date);
+    assert.equal(source.observationCount, asset.metrics.price.resolutions.daily.points.length);
+  }
+});
+
+test("freezes the literature-grounded cue taxonomy with stable codes", async () => {
+  const raw = await readFile(
+    new URL("../public/data/cue-taxonomy-v4.json", import.meta.url),
+    "utf8",
+  );
+  const taxonomy = JSON.parse(raw);
+  const options = taxonomy.groups.flatMap((group) => group.options);
+
+  assert.equal(taxonomy.schemaVersion, "visual-cpd-event-segmentation-v1");
+  assert.equal(options.length, 16);
+  assert.equal(new Set(options.map((option) => option.code)).size, options.length);
+  assert.ok(options.some((option) => option.code === "curve_signal_noise"));
+  assert.ok(options.some((option) => option.code === "display_axis_scale"));
+  assert.ok(options.some((option) => option.code === "context_prior_expectation"));
+  assert.ok(taxonomy.evidenceMap.length >= 6);
 });
 
 test("ships the modular stimulus bundle with research controls", async () => {

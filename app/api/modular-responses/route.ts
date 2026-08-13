@@ -9,6 +9,25 @@ const RESOLUTIONS = new Set(["daily", "weekly", "monthly", "yearly"]);
 const SCALES = new Set(["linear", "log"]);
 const WINDOWS = new Set(["whole", "truncated"]);
 const DISCLOSURES = new Set(["G0", "GI1", "GI2", "DI1", "DI2", "DI3", "DI4", "FULL"]);
+const RESPONSE_VERSIONS = new Set(["v4", "pre-v4"]);
+const V4_CUES = new Set([
+  "curve_trend_slope",
+  "curve_level_shift",
+  "curve_variance",
+  "curve_abrupt_jump",
+  "curve_extrema_reversal",
+  "curve_persistence",
+  "curve_periodicity",
+  "curve_signal_noise",
+  "display_temporal_location",
+  "display_window_points",
+  "display_resolution",
+  "display_axis_scale",
+  "context_asset_knowledge",
+  "context_events_news",
+  "context_prior_expectation",
+  "context_other",
+]);
 const UNCERTAINTY_HALF_WIDTHS = [0.01, 0.025, 0.05, 0.08, 0.12];
 
 type Boundary = {
@@ -126,6 +145,7 @@ export async function POST(request: Request) {
       sessionId?: string;
       trialId?: string;
       trialOrder?: number;
+      responseVersion?: string;
       moduleKey?: string;
       taskType?: string;
       stimulusType?: string;
@@ -137,6 +157,8 @@ export async function POST(request: Request) {
       disclosureIndex?: number;
       disclosureKey?: string;
       disclosureState?: unknown;
+      stimulusWindow?: unknown;
+      cueSchemaVersion?: string;
       boundaries?: unknown;
       previousBoundaries?: unknown;
       boundaryIntervals?: unknown;
@@ -155,6 +177,8 @@ export async function POST(request: Request) {
       adjustmentCount?: number;
       uncertaintyAdjustmentCount?: number;
     };
+    const responseVersion = payload.responseVersion ?? "pre-v4";
+    const isV4Response = responseVersion === "v4";
 
     if (
       !payload.sessionId ||
@@ -168,6 +192,7 @@ export async function POST(request: Request) {
       !payload.scaleMode ||
       !payload.windowMode ||
       !payload.disclosureKey ||
+      !RESPONSE_VERSIONS.has(responseVersion) ||
       !MODULES.has(payload.moduleKey) ||
       !TASKS.has(payload.taskType) ||
       !STIMULUS_TYPES.has(payload.stimulusType) ||
@@ -183,9 +208,9 @@ export async function POST(request: Request) {
       !Number.isInteger(payload.disclosureIndex) ||
       payload.disclosureIndex < 0 ||
       payload.disclosureIndex > 6 ||
-      !finiteNumber(payload.confidence) ||
-      payload.confidence < 1 ||
-      payload.confidence > 5 ||
+      (!isV4Response &&
+        (!finiteNumber(payload.confidence) || payload.confidence < 1 || payload.confidence > 5)) ||
+      (isV4Response && payload.confidence !== undefined) ||
       !nonNegative(payload.elapsedMs) ||
       !nonNegative(payload.revealReadMs) ||
       !validOptionalTime(payload.firstMoveMs) ||
@@ -220,18 +245,23 @@ export async function POST(request: Request) {
     }
 
     const influenceRequired = payload.moduleKey === "disclosure" && payload.disclosureIndex > 0;
+    const cueTags = Array.isArray(payload.cueTags) ? payload.cueTags : [];
     if (
       (influenceRequired &&
         (!finiteNumber(payload.influenceRating) || payload.influenceRating < 1 || payload.influenceRating > 5)) ||
       (!influenceRequired && payload.influenceRating !== null && payload.influenceRating !== undefined) ||
       (payload.cueTags !== undefined &&
-        (!Array.isArray(payload.cueTags) || payload.cueTags.length > 16 || payload.cueTags.some((tag) => typeof tag !== "string")))
+        (!Array.isArray(payload.cueTags) || payload.cueTags.length > 16 || payload.cueTags.some((tag) => typeof tag !== "string"))) ||
+      (isV4Response && cueTags.some((tag) => typeof tag !== "string" || !V4_CUES.has(tag))) ||
+      (isV4Response && payload.cueSchemaVersion !== "visual-cpd-event-segmentation-v1") ||
+      (!isV4Response && payload.cueSchemaVersion !== undefined && payload.cueSchemaVersion.length > 80)
     ) {
       return Response.json({ error: "Invalid rating or cue values" }, { status: 400 });
     }
 
     const disclosureStateJson = JSON.stringify(payload.disclosureState ?? {});
-    if (disclosureStateJson.length > 5000) {
+    const stimulusWindowJson = JSON.stringify(payload.stimulusWindow ?? {});
+    if (disclosureStateJson.length > 5000 || stimulusWindowJson.length > 2500) {
       return Response.json({ error: "Disclosure state is too large" }, { status: 400 });
     }
 
@@ -242,6 +272,7 @@ export async function POST(request: Request) {
         sessionId: payload.sessionId.slice(0, 80),
         trialId: payload.trialId.slice(0, 180),
         trialOrder: payload.trialOrder,
+        responseVersion,
         moduleKey: payload.moduleKey,
         taskType: payload.taskType,
         stimulusType: payload.stimulusType,
@@ -253,13 +284,15 @@ export async function POST(request: Request) {
         disclosureIndex: payload.disclosureIndex,
         disclosureKey: payload.disclosureKey,
         disclosureStateJson,
+        stimulusWindowJson,
+        cueSchemaVersion: (payload.cueSchemaVersion ?? "legacy-cues-v1").slice(0, 80),
         boundaryCount: boundaries.length,
         boundariesJson: JSON.stringify(boundaries),
         previousBoundariesJson: JSON.stringify(previousBoundaries),
         boundaryIntervalsJson: JSON.stringify(boundaryIntervals),
         singleStageConfirmed: payload.singleStageConfirmed === true,
-        confidence: Math.trunc(payload.confidence),
-        confidenceTouched: payload.confidenceTouched === true,
+        confidence: isV4Response ? 0 : Math.trunc(payload.confidence ?? 0),
+        confidenceTouched: isV4Response ? false : payload.confidenceTouched === true,
         influenceRating:
           payload.influenceRating === null || payload.influenceRating === undefined
             ? null
@@ -267,9 +300,7 @@ export async function POST(request: Request) {
         influenceTouched: payload.influenceTouched === true,
         noChangeConfirmed: payload.noChangeConfirmed === true,
         cueTags: JSON.stringify(
-          Array.isArray(payload.cueTags)
-            ? payload.cueTags.map((tag) => String(tag).slice(0, 50))
-            : [],
+          cueTags.map((tag) => String(tag).slice(0, 50)),
         ),
         rationale: (payload.rationale ?? "").trim().slice(0, 1000),
         elapsedMs: Math.trunc(payload.elapsedMs ?? 0),

@@ -16,30 +16,30 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Boundary Lab｜模块化阶段判断实验平台",
+  title: "Boundary Lab｜第四版模块化阶段判断实验",
   description:
-    "将信息披露、任务定义、跨指标一致性与稳健性拆为四个独立模块，研究人类与 Agent 如何划分时间序列阶段。",
+    "第四版研究平台：在信息披露、任务定义、跨指标与稳健性模块中，比较人类与 Agent 的时间序列阶段判断，并记录完整或预设截断窗口。",
   openGraph: {
-    title: "Boundary Lab｜模块化阶段判断实验平台",
+    title: "Boundary Lab｜第四版模块化阶段判断实验",
     description:
-      "四个可独立运行的研究模块，记录阶段边界、主观范围、信息修正轨迹与完整交互时间。",
+      "四个可独立运行的研究模块，记录阶段边界、主观范围、信息修正轨迹、判断线索与真实显示窗口。",
     type: "website",
     locale: "zh_CN",
     images: [
       {
-        url: "/og-modular.png",
+        url: "/og-fourth-edition.png",
         width: 1536,
         height: 1024,
-        alt: "Boundary Lab 模块化阶段判断研究平台",
+        alt: "Boundary Lab 第四版模块化阶段判断研究平台",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Boundary Lab｜模块化阶段判断实验平台",
+    title: "Boundary Lab｜第四版模块化阶段判断实验",
     description:
-      "信息披露、任务定义、跨指标一致性与稳健性四个模块，测量人类与 Agent 的阶段判断。",
-    images: ["/og-modular.png"],
+      "信息披露、任务定义、跨指标一致性与稳健性四个模块，测量人类与 Agent 的阶段判断与判断线索。",
+    images: ["/og-fourth-edition.png"],
   },
 };
 

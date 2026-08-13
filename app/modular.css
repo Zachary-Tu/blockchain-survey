@@ -1010,6 +1010,31 @@
 .mod-rating button.is-selected { border-color: var(--mod-ink); background: var(--mod-ink); color: white; }
 .mod-rating-labels { display: flex; justify-content: space-between; margin-top: 6px; color: var(--mod-muted); font-size: 9px; }
 
+.mod-cue-groups {
+  display: grid;
+  gap: 14px;
+}
+
+.mod-cue-group {
+  padding-top: 12px;
+  border-top: 1px solid rgba(23, 59, 54, 0.1);
+}
+
+.mod-cue-group:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.mod-cue-group > span {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--mod-accent);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+}
+
 .mod-cue-list { display: flex; flex-wrap: wrap; gap: 5px; }
 .mod-cue-list button {
   padding: 7px 10px;
@@ -1021,6 +1046,28 @@
   font-size: 9px;
 }
 .mod-cue-list button.is-selected { border-color: var(--mod-ink); background: #e8f0ec; color: var(--mod-ink); }
+
+.mod-cue-note {
+  margin: 0;
+  color: var(--mod-muted);
+  font-size: 8.5px;
+  line-height: 1.55;
+}
+
+.mod-cue-awaiting {
+  background: #f7f5ef;
+}
+
+.mod-cue-awaiting h3 {
+  margin: 8px 0 5px;
+}
+
+.mod-cue-awaiting p {
+  margin: 0;
+  color: var(--mod-muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
 
 .mod-rationale { display: block; margin-top: 17px; position: relative; }
 .mod-rationale > span { display: block; margin-bottom: 7px; font-size: 11px; font-weight: 650; }
