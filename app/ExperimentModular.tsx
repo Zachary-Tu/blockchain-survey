@@ -1095,8 +1095,12 @@ export function ExperimentModular({
   const sourcePoints = fullResolutionData?.points ?? [];
   const curatedStart = bundle?.curatedWindow?.start ?? "2020-01-01";
   const curatedEnd = bundle?.curatedWindow?.end ?? "2024-12-31";
+  const legacyTruncatedStart = Math.floor(sourcePoints.length * 0.27);
+  const legacyTruncatedEnd = Math.max(legacyTruncatedStart + 4, Math.ceil(sourcePoints.length * 0.78));
   const points = currentTrial?.windowMode === "truncated"
-    ? sourcePoints.filter((point) => point.date >= curatedStart && point.date <= curatedEnd)
+    ? isV4
+      ? sourcePoints.filter((point) => point.date >= curatedStart && point.date <= curatedEnd)
+      : sourcePoints.slice(legacyTruncatedStart, legacyTruncatedEnd)
     : sourcePoints;
   const sourceWindow = sourcePoints.length
     ? { start: sourcePoints[0].date, end: sourcePoints[sourcePoints.length - 1].date, observationCount: sourcePoints.length }
