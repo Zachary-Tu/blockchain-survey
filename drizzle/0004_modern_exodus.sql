@@ -1,0 +1,41 @@
+CREATE TABLE `modular_responses` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`session_id` text NOT NULL,
+	`trial_id` text NOT NULL,
+	`trial_order` integer NOT NULL,
+	`module_key` text NOT NULL,
+	`task_type` text NOT NULL,
+	`stimulus_type` text NOT NULL,
+	`asset_id` text NOT NULL,
+	`metric_type` text NOT NULL,
+	`resolution` text NOT NULL,
+	`scale_mode` text NOT NULL,
+	`window_mode` text NOT NULL,
+	`disclosure_index` integer NOT NULL,
+	`disclosure_key` text NOT NULL,
+	`disclosure_state_json` text DEFAULT '{}' NOT NULL,
+	`boundary_count` integer DEFAULT 0 NOT NULL,
+	`boundaries_json` text DEFAULT '[]' NOT NULL,
+	`previous_boundaries_json` text DEFAULT '[]' NOT NULL,
+	`boundary_intervals_json` text DEFAULT '[]' NOT NULL,
+	`single_stage_confirmed` integer DEFAULT false NOT NULL,
+	`confidence` integer NOT NULL,
+	`confidence_touched` integer DEFAULT false NOT NULL,
+	`influence_rating` integer,
+	`influence_touched` integer DEFAULT false NOT NULL,
+	`no_change_confirmed` integer DEFAULT false NOT NULL,
+	`cue_tags` text DEFAULT '[]' NOT NULL,
+	`rationale` text DEFAULT '' NOT NULL,
+	`elapsed_ms` integer NOT NULL,
+	`reveal_read_ms` integer DEFAULT 0 NOT NULL,
+	`first_move_ms` integer,
+	`first_uncertainty_ms` integer,
+	`adjustment_count` integer DEFAULT 0 NOT NULL,
+	`uncertainty_adjustment_count` integer DEFAULT 0 NOT NULL,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	FOREIGN KEY (`session_id`) REFERENCES `experiment_sessions`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE INDEX `idx_modular_responses_session_id` ON `modular_responses` (`session_id`);--> statement-breakpoint
+CREATE INDEX `idx_modular_responses_condition` ON `modular_responses` (`module_key`,`task_type`,`metric_type`);--> statement-breakpoint
+CREATE UNIQUE INDEX `idx_modular_response_session_trial_disclosure` ON `modular_responses` (`session_id`,`trial_id`,`disclosure_index`);

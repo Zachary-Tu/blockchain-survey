@@ -23,29 +23,38 @@ async function render(pathname = "/") {
   );
 }
 
-test("server-renders the research configuration for the third-generation study", async () => {
+test("server-renders the modular research platform", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
   assert.match(html, /<html lang="zh-CN">/i);
-  assert.match(html, /<title>Boundary Lab｜阶段判断的上下文弹性研究<\/title>/i);
-  assert.match(html, /语义会让分界移动吗/);
+  assert.match(html, /<title>Boundary Lab｜模块化阶段判断实验平台<\/title>/i);
+  assert.match(html, /把一个问题/);
+  assert.match(html, /拆成四组可检验的实验/);
+  assert.match(html, /信息披露主实验/);
+  assert.match(html, /任务定义实验/);
+  assert.match(html, /跨指标一致性/);
+  assert.match(html, /稳健性与对照/);
   assert.match(html, /价格数据/);
-  assert.match(html, /活跃地址/);
-  assert.match(html, /Google 搜索热度/);
-  assert.match(html, /自主选择分界点/);
-  assert.match(html, /评价预设阶段/);
-  assert.match(html, /1 个分界点/);
-  assert.match(html, /2 个分界点/);
-  assert.match(html, /3 个分界点/);
-  assert.match(html, /3 个预设分界点/);
-  assert.match(html, /完成前一步后揭示/);
+  assert.match(html, /Active addresses/);
+  assert.match(html, /Google Trend index/);
+  assert.match(html, /T1 · 任意阶段/);
+  assert.match(html, /T2 · 三阶段/);
+  assert.match(html, /T3 · 定义三阶段/);
+  assert.match(html, /一般信息 GI/);
+  assert.match(html, /领域信息 DI/);
   assert.doesNotMatch(html, /codex-preview|starter loading skeleton/i);
 });
 
-test("keeps both earlier interfaces available for rollback", async () => {
+test("keeps all preceding interfaces available for rollback", async () => {
+  const v3 = await render("/v3-revised");
+  assert.equal(v3.status, 200);
+  const v3Html = await v3.text();
+  assert.match(v3Html, /语义会让分界移动吗/);
+  assert.match(v3Html, /评价预设阶段/);
+
   const v2 = await render("/v2");
   assert.equal(v2.status, 200);
   const v2Html = await v2.text();
@@ -57,6 +66,31 @@ test("keeps both earlier interfaces available for rollback", async () => {
   const legacyHtml = await legacy.text();
   assert.match(legacyHtml, /你在哪里看到/);
   assert.match(legacyHtml, /六轮信息披露/);
+});
+
+test("ships the modular stimulus bundle with research controls", async () => {
+  const raw = await readFile(
+    new URL("../public/data/research-stimuli-modular-v6.json", import.meta.url),
+    "utf8",
+  );
+  const stimulus = JSON.parse(raw);
+
+  assert.equal(stimulus.protocolVersion, "boundary-lab-modular-v6");
+  assert.deepEqual(
+    stimulus.assets.map((asset) => asset.symbol),
+    ["BTC", "ETH", "SOL", "BNB"],
+  );
+  assert.deepEqual(
+    stimulus.controls.map((control) => control.kind),
+    ["cross-domain", "null", "ground-truth"],
+  );
+  assert.equal(stimulus.controls[0].id, "sp500");
+  assert.ok(stimulus.controls[0].metric.resolutions.daily.points.length > 2000);
+  assert.equal(stimulus.controls[1].id, "white-noise");
+  assert.equal(stimulus.controls[2].knownBoundaries.length, 2);
+  for (const asset of stimulus.assets) {
+    assert.ok(asset.events.every((event) => ["high", "low"].includes(event.priority)));
+  }
 });
 
 test("ships a provenance-aware multi-metric stimulus bundle", async () => {

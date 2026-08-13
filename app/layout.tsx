@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import "./v2.css";
 import "./v3.css";
+import "./modular.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,30 +16,30 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Boundary Lab｜阶段判断的上下文弹性研究",
+  title: "Boundary Lab｜模块化阶段判断实验平台",
   description:
-    "比较人类与多模态 Agent 在三类时间序列上的阶段判断，并测量四级语义披露如何改变分界点及其不确定范围。",
+    "将信息披露、任务定义、跨指标一致性与稳健性拆为四个独立模块，研究人类与 Agent 如何划分时间序列阶段。",
   openGraph: {
-    title: "Boundary Lab｜阶段判断的上下文弹性研究",
+    title: "Boundary Lab｜模块化阶段判断实验平台",
     description:
-      "三类曲线、六个配对任务条件、四级信息披露：比较人类与 Agent 的分界点和不确定范围如何随语义而改变。",
+      "四个可独立运行的研究模块，记录阶段边界、主观范围、信息修正轨迹与完整交互时间。",
     type: "website",
     locale: "zh_CN",
     images: [
       {
-        url: "/og.png",
+        url: "/og-modular.png",
         width: 1536,
         height: 1024,
-        alt: "Boundary Lab 多指标阶段判断与四级信息披露研究界面",
+        alt: "Boundary Lab 模块化阶段判断研究平台",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Boundary Lab｜阶段判断的上下文弹性研究",
+    title: "Boundary Lab｜模块化阶段判断实验平台",
     description:
-      "三类曲线、六个配对任务条件与四级信息披露，测量人类与 Agent 的上下文弹性。",
-    images: ["/og.png"],
+      "信息披露、任务定义、跨指标一致性与稳健性四个模块，测量人类与 Agent 的阶段判断。",
+    images: ["/og-modular.png"],
   },
 };
 

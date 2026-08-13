@@ -1,5 +1,5 @@
-import { ExperimentV3 } from "./ExperimentV3";
+import { ExperimentModular } from "./ExperimentModular";
 
 export default function Home() {
-  return <ExperimentV3 />;
+  return <ExperimentModular />;
 }

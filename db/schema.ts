@@ -88,6 +88,71 @@ export const researchResponses = sqliteTable(
   ],
 );
 
+export const modularResponses = sqliteTable(
+  "modular_responses",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => experimentSessions.id, { onDelete: "cascade" }),
+    trialId: text("trial_id").notNull(),
+    trialOrder: integer("trial_order").notNull(),
+    moduleKey: text("module_key").notNull(),
+    taskType: text("task_type").notNull(),
+    stimulusType: text("stimulus_type").notNull(),
+    assetId: text("asset_id").notNull(),
+    metricType: text("metric_type").notNull(),
+    resolution: text("resolution").notNull(),
+    scaleMode: text("scale_mode").notNull(),
+    windowMode: text("window_mode").notNull(),
+    disclosureIndex: integer("disclosure_index").notNull(),
+    disclosureKey: text("disclosure_key").notNull(),
+    disclosureStateJson: text("disclosure_state_json").notNull().default("{}"),
+    boundaryCount: integer("boundary_count").notNull().default(0),
+    boundariesJson: text("boundaries_json").notNull().default("[]"),
+    previousBoundariesJson: text("previous_boundaries_json").notNull().default("[]"),
+    boundaryIntervalsJson: text("boundary_intervals_json").notNull().default("[]"),
+    singleStageConfirmed: integer("single_stage_confirmed", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    confidence: integer("confidence").notNull(),
+    confidenceTouched: integer("confidence_touched", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    influenceRating: integer("influence_rating"),
+    influenceTouched: integer("influence_touched", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    noChangeConfirmed: integer("no_change_confirmed", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    cueTags: text("cue_tags").notNull().default("[]"),
+    rationale: text("rationale").notNull().default(""),
+    elapsedMs: integer("elapsed_ms").notNull(),
+    revealReadMs: integer("reveal_read_ms").notNull().default(0),
+    firstMoveMs: integer("first_move_ms"),
+    firstUncertaintyMs: integer("first_uncertainty_ms"),
+    adjustmentCount: integer("adjustment_count").notNull().default(0),
+    uncertaintyAdjustmentCount: integer("uncertainty_adjustment_count")
+      .notNull()
+      .default(0),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    index("idx_modular_responses_session_id").on(table.sessionId),
+    index("idx_modular_responses_condition").on(
+      table.moduleKey,
+      table.taskType,
+      table.metricType,
+    ),
+    uniqueIndex("idx_modular_response_session_trial_disclosure").on(
+      table.sessionId,
+      table.trialId,
+      table.disclosureIndex,
+    ),
+  ],
+);
+
 export const stageDecisions = sqliteTable(
   "stage_decisions",
   {
