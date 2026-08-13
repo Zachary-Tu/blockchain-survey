@@ -50,8 +50,42 @@ test("server-renders the modular research platform", async () => {
   assert.match(html, /预设截断窗口/);
   assert.match(html, /2020-01-01—2024-12-31/);
   assert.match(html, /FOURTH EDITION/);
+  assert.match(html, /RESEARCHER CONSOLE/);
+  assert.match(html, /研究者操作台 · 不向被测试者展示/);
+  assert.match(html, /确认配置，生成参与者说明/);
+  assert.doesNotMatch(html, /我已阅读并理解以上说明/);
   assert.doesNotMatch(html, /你对这次划分有多大信心/);
   assert.doesNotMatch(html, /codex-preview|starter loading skeleton/i);
+});
+
+test("implements a configuration-aware participant briefing without future disclosure leakage", async () => {
+  const source = await readFile(
+    new URL("../app/ExperimentModular.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(source, /phase === "briefing"/);
+  assert.match(source, /PARTICIPANT BRIEFING · 正式实验尚未开始/);
+  assert.match(source, /本页不会说明资产名称、指标类型、真实日期、数值单位、图表尺度、时间窗口或事件/);
+  assert.match(source, /我已了解，开始正式实验/);
+  assert.match(source, /DISCLOSURE_PATHS\[disclosurePath\]\.length - 1/);
+  assert.match(source, /participantBriefingVersion: isV4 \? "participant-briefing-v1"/);
+});
+
+test("server-renders the researcher cue methodology and reference list", async () => {
+  const response = await render("/methodology/cues");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+
+  assert.match(html, /每一步只问/);
+  assert.match(html, /本步真正新增的线索/);
+  assert.match(html, /disclosure-specific-cues-v2/);
+  assert.match(html, /g0_trend_slope/);
+  assert.match(html, /di4_no_effect/);
+  assert.match(html, /Tsai/);
+  assert.match(html, /Fudolig/);
+  assert.match(html, /Nguyen/);
+  assert.match(html, /项目专用操作化自报项目/);
 });
 
 test("keeps all preceding interfaces available for rollback", async () => {
@@ -120,6 +154,30 @@ test("freezes the literature-grounded cue taxonomy with stable codes", async () 
   assert.ok(options.some((option) => option.code === "display_axis_scale"));
   assert.ok(options.some((option) => option.code === "context_prior_expectation"));
   assert.ok(taxonomy.evidenceMap.length >= 6);
+});
+
+test("ships five disclosure-specific cues for every fourth-edition information state", async () => {
+  const raw = await readFile(
+    new URL("../public/data/cue-taxonomy-v4-v2.json", import.meta.url),
+    "utf8",
+  );
+  const taxonomy = JSON.parse(raw);
+  const expectedDisclosures = ["G0", "GI1", "GI2", "DI1", "DI2", "DI3", "DI4", "FULL"];
+  const options = taxonomy.sets.flatMap((set) => set.options);
+  const referenceIds = new Set(taxonomy.references.map((reference) => reference.id));
+
+  assert.equal(taxonomy.schemaVersion, "disclosure-specific-cues-v2");
+  assert.deepEqual(
+    [taxonomy.disclosureAccounting.general.updates, taxonomy.disclosureAccounting.domain.updates, taxonomy.disclosureAccounting.combined.updates],
+    [2, 4, 6],
+  );
+  assert.deepEqual(taxonomy.sets.map((set) => set.disclosureKey), expectedDisclosures);
+  assert.ok(taxonomy.sets.every((set) => set.options.length === 5));
+  assert.equal(options.length, 40);
+  assert.equal(new Set(options.map((option) => option.code)).size, options.length);
+  assert.ok(taxonomy.references.length >= 10);
+  assert.ok(options.every((option) => option.references.every((reference) => referenceIds.has(reference))));
+  assert.ok(taxonomy.sets.filter((set) => !["G0", "FULL"].includes(set.disclosureKey)).every((set) => set.options.filter((option) => option.exclusive).length === 1));
 });
 
 test("ships the modular stimulus bundle with research controls", async () => {

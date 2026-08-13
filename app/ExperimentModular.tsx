@@ -18,7 +18,7 @@ type WindowMode = "whole" | "truncated";
 type DisclosurePath = "general" | "domain" | "combined";
 type DisclosureKey = "G0" | "GI1" | "GI2" | "DI1" | "DI2" | "DI3" | "DI4" | "FULL";
 type RobustnessFactor = "resolution" | "scale" | "window" | "controls";
-type Phase = "setup" | "experiment" | "review" | "complete";
+type Phase = "setup" | "briefing" | "experiment" | "review" | "complete";
 
 type Point = { date: string; value: number };
 type ResolutionData = {
@@ -125,8 +125,13 @@ type ModularAnswer = {
 };
 
 type ProtocolVariant = "v4" | "pre-v4";
-type CueOption = { code: string; label: string };
-type CueGroup = { key: string; title: string; options: CueOption[] };
+type CueOption = { code: string; label: string; exclusive?: boolean };
+type CueSet = {
+  eyebrow: string;
+  question: string;
+  note: string;
+  options: CueOption[];
+};
 
 const MODULES: Array<{
   key: ModuleKey;
@@ -221,43 +226,105 @@ const RESOLUTION_LABEL: Record<Resolution, string> = {
   yearly: "年频",
 };
 const LEGACY_CUES = ["趋势方向", "均值变化", "波动结构", "持续时间", "序列类型", "资产知识", "历史事件", "其他"];
-const CUE_SCHEMA_VERSION = "visual-cpd-event-segmentation-v1";
-const CUE_GROUPS: CueGroup[] = [
-  {
-    key: "curve",
-    title: "曲线结构",
+const CUE_SCHEMA_VERSION = "disclosure-specific-cues-v2";
+const CUE_SETS: Record<DisclosureKey, CueSet> = {
+  G0: {
+    eyebrow: "仅依据曲线形状",
+    question: "这次划分主要依据了哪些曲线线索？",
+    note: "此时没有语义信息，请只报告你实际使用的视觉线索。",
     options: [
-      { code: "curve_trend_slope", label: "趋势方向或斜率改变" },
-      { code: "curve_level_shift", label: "平均水平或基线跳变" },
-      { code: "curve_variance", label: "波动幅度或噪声改变" },
-      { code: "curve_abrupt_jump", label: "突发跳跃或明显断点" },
-      { code: "curve_extrema_reversal", label: "高低点或方向反转" },
-      { code: "curve_persistence", label: "新状态是否持续稳定" },
-      { code: "curve_periodicity", label: "周期或重复模式" },
-      { code: "curve_signal_noise", label: "变化相对噪声是否明显" },
+      { code: "g0_trend_slope", label: "趋势方向或斜率持续改变" },
+      { code: "g0_level_shift", label: "整体水平或基线发生变化" },
+      { code: "g0_variance_noise", label: "波动幅度或噪声结构改变" },
+      { code: "g0_abrupt_reversal", label: "出现突发跳跃或方向反转" },
+      { code: "g0_persistence", label: "变化后形成持续稳定的新状态" },
     ],
   },
-  {
-    key: "display",
-    title: "时序与图表呈现",
+  GI1: {
+    eyebrow: "本步新增 · 序列类型",
+    question: "新增的序列类型信息主要怎样影响了判断？",
+    note: "请选择你如何使用“价格、活跃地址或搜索热度”这一类别信息。",
     options: [
-      { code: "display_temporal_location", label: "变化发生在序列中的位置" },
-      { code: "display_window_points", label: "可见时间窗口或观测数量" },
-      { code: "display_resolution", label: "数据频率或时间分辨率" },
-      { code: "display_axis_scale", label: "坐标刻度（线性/对数）" },
+      { code: "gi1_metric_meaning", label: "改变了我对曲线含义的理解" },
+      { code: "gi1_expected_dynamics", label: "参考了这类指标通常的变化模式" },
+      { code: "gi1_spike_interpretation", label: "重新判断尖峰是信号还是扰动" },
+      { code: "gi1_domain_prior", label: "调用了对同类指标的既有经验" },
+      { code: "gi1_no_effect", label: "序列类型没有改变我的判断", exclusive: true },
     ],
   },
-  {
-    key: "context",
-    title: "语义、知识与预期",
+  GI2: {
+    eyebrow: "本步新增 · 时间与单位",
+    question: "新增的坐标信息主要怎样影响了判断？",
+    note: "本步只询问日期、持续时长、频率、单位和刻度带来的作用。",
     options: [
-      { code: "context_asset_knowledge", label: "资产身份或领域知识" },
-      { code: "context_events_news", label: "历史事件或新闻信息" },
-      { code: "context_prior_expectation", label: "既有预期或上一轮判断" },
-      { code: "context_other", label: "其他线索" },
+      { code: "gi2_calendar_location", label: "具体日期或所处历史时点" },
+      { code: "gi2_duration", label: "候选阶段各自持续的时长" },
+      { code: "gi2_resolution_density", label: "数据频率与可见观测密度" },
+      { code: "gi2_unit_scale", label: "数值单位、量级与坐标刻度" },
+      { code: "gi2_no_effect", label: "坐标信息没有改变我的判断", exclusive: true },
     ],
   },
-];
+  DI1: {
+    eyebrow: "本步新增 · 资产名称",
+    question: "新增的资产身份主要怎样影响了判断？",
+    note: "请区分币名带来的既有知识，与曲线本身的形状判断。",
+    options: [
+      { code: "di1_asset_category", label: "资产身份或所属类别" },
+      { code: "di1_cycle_memory", label: "对该资产历史周期的记忆" },
+      { code: "di1_personal_familiarity", label: "个人关注、研究或交易经验" },
+      { code: "di1_expected_behavior", label: "对该资产典型走势的预期" },
+      { code: "di1_no_effect", label: "资产名称没有改变我的判断", exclusive: true },
+    ],
+  },
+  DI2: {
+    eyebrow: "本步新增 · 资产背景",
+    question: "新增的背景介绍主要怎样影响了判断？",
+    note: "请选择背景事实中真正参与本轮推断的部分。",
+    options: [
+      { code: "di2_launch_maturity", label: "上线时间与所处发展阶段" },
+      { code: "di2_function_positioning", label: "技术用途或网络定位" },
+      { code: "di2_mechanism", label: "发行、共识或运行机制" },
+      { code: "di2_background_fit", label: "背景事实与曲线形态是否一致" },
+      { code: "di2_no_effect", label: "背景介绍没有改变我的判断", exclusive: true },
+    ],
+  },
+  DI3: {
+    eyebrow: "本步新增 · 高优先级事件",
+    question: "新增的重要事件主要怎样影响了判断？",
+    note: "请报告事件日期与曲线变化之间实际使用的对应关系。",
+    options: [
+      { code: "di3_event_proximity", label: "事件日期与候选分界点接近" },
+      { code: "di3_post_event_level", label: "事件后方向或水平发生改变" },
+      { code: "di3_post_event_variance", label: "事件后波动状态发生改变" },
+      { code: "di3_event_cluster", label: "多个重要事件共同界定阶段" },
+      { code: "di3_no_effect", label: "重要事件没有改变我的判断", exclusive: true },
+    ],
+  },
+  DI4: {
+    eyebrow: "本步新增 · 低优先级事件",
+    question: "新增的补充事件主要怎样影响了判断？",
+    note: "请只报告本步新增事件带来的细化、扰动或相互印证。",
+    options: [
+      { code: "di4_boundary_refinement", label: "进一步细化了已有分界位置" },
+      { code: "di4_short_disturbance", label: "提示某段变化只是短期扰动" },
+      { code: "di4_event_density", label: "事件密度或聚集形成阶段线索" },
+      { code: "di4_cross_event_consistency", label: "与重要事件相互印证或冲突" },
+      { code: "di4_no_effect", label: "补充事件没有改变我的判断", exclusive: true },
+    ],
+  },
+  FULL: {
+    eyebrow: "当前可见 · 完整信息包",
+    question: "在完整信息中，哪些类别实际主导了判断？",
+    note: "完整快照只保留五个高层类别，便于与分层披露条件比较。",
+    options: [
+      { code: "full_curve_structure", label: "曲线结构与持续状态变化" },
+      { code: "full_axes_time", label: "时间、单位、频率与坐标刻度" },
+      { code: "full_metric_type", label: "序列类型及其通常变化模式" },
+      { code: "full_asset_context", label: "资产身份、背景与既有知识" },
+      { code: "full_events", label: "历史事件及其与曲线的对应" },
+    ],
+  },
+};
 const WIDTHS = [
   { value: 0.01, label: "很窄", width: "2%" },
   { value: 0.025, label: "较窄", width: "5%" },
@@ -1081,6 +1148,7 @@ export function ExperimentModular({
 
   const currentTrial = plan[trialIndex];
   const currentDisclosure = currentTrial?.disclosures[disclosureIndex];
+  const activeCueSet = currentDisclosure ? CUE_SETS[currentDisclosure] : CUE_SETS.G0;
   const currentAsset = bundle?.assets.find((asset) => asset.id === currentTrial?.assetId);
   const currentControl = bundle?.controls.find((control) => control.id === currentTrial?.controlId);
   const currentMetric = currentControl
@@ -1162,8 +1230,55 @@ export function ExperimentModular({
     firstUncertaintyAt.current = null;
   };
 
+  const toggleCue = (cue: CueOption) => {
+    const exclusiveCodes = new Set(activeCueSet.options.filter((option) => option.exclusive).map((option) => option.code));
+    setCueTags((value) => {
+      if (cue.exclusive) return value.includes(cue.code) ? [] : [cue.code];
+      const withoutExclusive = value.filter((code) => !exclusiveCodes.has(code));
+      return withoutExclusive.includes(cue.code)
+        ? withoutExclusive.filter((code) => code !== cue.code)
+        : [...withoutExclusive, cue.code];
+    });
+  };
+
+  const createSession = async (nextPlan: TrialPlan[]) => {
+    if (!bundle) throw new Error("研究刺激数据尚未载入。");
+    const response = await fetch("/api/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        actorType,
+        participantCode,
+        expertise,
+        experimentalArm: moduleKey,
+        protocolVersion: bundle.protocolVersion,
+        modelName: actorType === "agent" ? modelName : null,
+        studyConfig: {
+          module: moduleKey,
+          taskType,
+          metric,
+          resolution,
+          scaleMode,
+          disclosurePath,
+          snapshot,
+          assetId,
+          robustnessFactor,
+          windowMode: isV4 ? windowMode : "whole",
+          windowProtocol: isV4 ? bundle.curatedWindow ?? null : null,
+          participantBriefingVersion: isV4 ? "participant-briefing-v1" : null,
+          cueSchemaVersion: isV4 ? CUE_SCHEMA_VERSION : "legacy-cues-v1",
+          cueTaxonomyUrl: isV4 ? "/data/cue-taxonomy-v4-v2.json" : null,
+          randomizedPlan: nextPlan,
+        },
+      }),
+    });
+    const payload = (await response.json()) as { session?: { id: string }; error?: string };
+    if (!response.ok || !payload.session?.id) throw new Error(payload.error ?? "实验会话创建失败");
+    return payload.session.id;
+  };
+
   const begin = async () => {
-    if (!bundle || !consent) return;
+    if (!bundle || (!isV4 && !consent)) return;
     setBusy(true);
     setError("");
     try {
@@ -1180,42 +1295,31 @@ export function ExperimentModular({
         windowMode: isV4 ? windowMode : "whole",
       });
       if (!nextPlan.length) throw new Error("当前条件没有可用曲线，请调整研究配置。");
-      const response = await fetch("/api/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          actorType,
-          participantCode,
-          expertise,
-          experimentalArm: moduleKey,
-          protocolVersion: bundle.protocolVersion,
-          modelName: actorType === "agent" ? modelName : null,
-          studyConfig: {
-            module: moduleKey,
-            taskType,
-            metric,
-            resolution,
-            scaleMode,
-            disclosurePath,
-            snapshot,
-            assetId,
-            robustnessFactor,
-            windowMode: isV4 ? windowMode : "whole",
-            windowProtocol: isV4 ? bundle.curatedWindow ?? null : null,
-            cueSchemaVersion: isV4 ? CUE_SCHEMA_VERSION : "legacy-cues-v1",
-            cueTaxonomyUrl: isV4 ? "/data/cue-taxonomy-v4.json" : null,
-            randomizedPlan: nextPlan,
-          },
-        }),
-      });
-      const payload = (await response.json()) as { session?: { id: string }; error?: string };
-      if (!response.ok || !payload.session?.id) throw new Error(payload.error ?? "实验会话创建失败");
-      setSessionId(payload.session.id);
       setPlan(nextPlan);
       setTrialIndex(0);
       setDisclosureIndex(0);
       setAnswers([]);
       resetResponseState(nextPlan[0].taskType, false);
+      if (isV4) {
+        setConsent(false);
+        setPhase("briefing");
+      } else {
+        setSessionId(await createSession(nextPlan));
+        setPhase("experiment");
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "实验启动失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const startParticipantSession = async () => {
+    if (!bundle || !plan.length || !consent) return;
+    setBusy(true);
+    setError("");
+    try {
+      setSessionId(await createSession(plan));
       setPhase("experiment");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "实验启动失败");
@@ -1256,6 +1360,10 @@ export function ExperimentModular({
       setError("本步分界点与范围均未改变。请确认这是有意保持不变，或继续调整。");
       return;
     }
+    if (isV4 && cueTags.length === 0) {
+      setError("请选择至少一项本步实际使用的判断线索；如果新增信息没有影响，请选择“没有改变我的判断”。");
+      return;
+    }
 
     setBusy(true);
     setError("");
@@ -1267,6 +1375,7 @@ export function ExperimentModular({
       path: currentTrial.module === "disclosure" ? disclosurePath : "snapshot",
       visibility,
       cueSchemaVersion: isV4 ? CUE_SCHEMA_VERSION : "legacy-cues-v1",
+      cueSetKey: isV4 ? currentDisclosure : null,
       sourceWindow,
       displayedWindow,
       curatedWindow: currentTrial.windowMode === "truncated" ? bundle.curatedWindow ?? { start: curatedStart, end: curatedEnd } : null,
@@ -1390,6 +1499,15 @@ export function ExperimentModular({
             <Link href="/v3-revised">保留的 V3 修订版</Link>
           </nav>
         </header>
+
+        {isV4 && (
+          <div className="mod-operator-strip" role="note">
+            <span>RESEARCHER CONSOLE</span>
+            <strong>研究者操作台 · 不向被测试者展示</strong>
+            <p>在这里锁定实验条件；点击生成说明页后，再将设备交给参与者。</p>
+            <Link href="/methodology/cues">标签与文献依据 ↗</Link>
+          </div>
+        )}
 
         <section className="mod-hero">
           <div className="mod-hero-copy">
@@ -1551,9 +1669,9 @@ export function ExperimentModular({
                     value={disclosurePath}
                     onChange={setDisclosurePath}
                     options={[
-                      { value: "general", title: "一般信息 GI", description: "G0 → 类型 → 时间与单位" },
-                      { value: "domain", title: "领域信息 DI", description: "G0 → 币名 → 背景 → 高/低优先事件" },
-                      { value: "combined", title: "组合路径", description: "先一般信息，再累积领域信息" },
+                      { value: "general", title: "一般信息 GI · 2 步", description: "序列类型 → 时间与单位；另含 1 次 G0 匿名基线" },
+                      { value: "domain", title: "领域信息 DI · 4 步", description: "币名 → 背景 → 高优先事件 → 补充事件；另含 G0 基线" },
+                      { value: "combined", title: "组合路径 · 6 步", description: "先完成 2 步一般信息，再累积 4 步领域信息；另含 G0 基线" },
                     ]}
                   />
                 </div>
@@ -1587,7 +1705,7 @@ export function ExperimentModular({
               <h3>{moduleInfo.number}<br />{moduleInfo.english}</h3>
               <dl>
                 <div><dt>主要比较</dt><dd>{moduleInfo.design}</dd></div>
-                <div><dt>预计试次</dt><dd>{moduleKey === "disclosure" ? `${eligibleAssets(bundle ?? { assets: [], controls: [], protocolVersion: "", requestedWindow: { start: "", end: "" } }, metric, resolution).length} 条曲线 × ${DISCLOSURE_PATHS[disclosurePath].length} 层` : moduleKey === "framing" || moduleKey === "cross-series" ? "3 条曲线" : robustnessFactor === "scale" || robustnessFactor === "window" ? "2 条曲线" : "4 条曲线"}</dd></div>
+                <div><dt>预计试次</dt><dd>{moduleKey === "disclosure" ? `${eligibleAssets(bundle ?? { assets: [], controls: [], protocolVersion: "", requestedWindow: { start: "", end: "" } }, metric, resolution).length} 条曲线 × ${DISCLOSURE_PATHS[disclosurePath].length - 1} 步披露 + G0 基线` : moduleKey === "framing" || moduleKey === "cross-series" ? "3 条曲线" : robustnessFactor === "scale" || robustnessFactor === "window" ? "2 条曲线" : "4 条曲线"}</dd></div>
                 <div><dt>数据窗口</dt><dd>{isV4 ? moduleKey === "robustness" && robustnessFactor === "window" ? "完整 vs 2020—2024" : windowMode === "truncated" ? "2020—2024（固定）" : "各序列全部可用观测" : "2018—2026"}</dd></div>
                 <div><dt>提交规则</dt><dd>每个判断单独写入数据库</dd></div>
               </dl>
@@ -1596,7 +1714,7 @@ export function ExperimentModular({
           </div>
 
           <section className="mod-participant-card">
-            <div className="mod-field-label"><span>03</span><div><strong>参与者与知情同意</strong><small>用于区分人类与 Agent 样本；不采集真实姓名</small></div></div>
+            <div className="mod-field-label"><span>03</span><div><strong>{isV4 ? "会话与样本标记" : "参与者与知情同意"}</strong><small>{isV4 ? "由研究者预先配置；知情说明与同意将在下一页完成" : "用于区分人类与 Agent 样本；不采集真实姓名"}</small></div></div>
             <div className="mod-participant-grid">
               <label><span>判断主体</span><select value={actorType} onChange={(event) => setActorType(event.target.value as "human" | "agent")}><option value="human">人类测试者</option><option value="agent">LLM / Agent</option></select></label>
               <label><span>匿名编号（可选）</span><input value={participantCode} maxLength={64} onChange={(event) => setParticipantCode(event.target.value)} placeholder="例如 P-001" /></label>
@@ -1606,13 +1724,102 @@ export function ExperimentModular({
                 <label><span>模型/Agent 名称</span><input value={modelName} maxLength={120} onChange={(event) => setModelName(event.target.value)} placeholder="例如 GPT-5.6" /></label>
               )}
             </div>
-            <label className="mod-consent"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span>我已了解：每次提交后不能返回修改；研究会记录判断结果与交互时间，但不要求提供真实身份。</span></label>
+            {isV4 ? (
+              <div className="mod-console-handoff"><span>交接提示</span><p>下一页是参与者看到的第一屏。它会按本次配置说明任务流程，但不会提前揭示资产、指标、日期、数值、事件或其他后续实验信息。</p></div>
+            ) : (
+              <label className="mod-consent"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span>我已了解：每次提交后不能返回修改；研究会记录判断结果与交互时间，但不要求提供真实身份。</span></label>
+            )}
             {(loadError || error) && <p className="mod-error" role="alert">{loadError || error}</p>}
-            <button className="mod-start" type="button" onClick={begin} disabled={!bundle || !consent || busy || Boolean(loadError)}>{busy ? "正在建立随机实验序列…" : `开始 ${moduleInfo.number} 实验`}<span>→</span></button>
+            <button className="mod-start" type="button" onClick={begin} disabled={!bundle || (!isV4 && !consent) || busy || Boolean(loadError)}>{busy ? "正在建立随机实验序列…" : isV4 ? "确认配置，生成参与者说明" : `开始 ${moduleInfo.number} 实验`}<span>→</span></button>
           </section>
         </section>
 
         <footer className="mod-footer"><span>BOUNDARY LAB · {isV4 ? "FOURTH EDITION" : "MODULAR PROTOCOL V6"}</span><span>{isV4 ? "上一模块版与 V3 修订版均已保留" : "V3 修订版已保留，可随时回退"}</span></footer>
+      </main>
+    );
+  }
+
+  if (phase === "briefing" && isV4 && plan.length) {
+    const disclosureUpdates = moduleKey === "disclosure" ? Math.max(0, DISCLOSURE_PATHS[disclosurePath].length - 1) : 0;
+    const briefingTask = moduleKey === "framing"
+      ? {
+          title: "本次会依次出现三种阶段判断任务",
+          description: "每一轮开始时，系统都会明确说明可以设置多少个分界点，以及是否使用统一的阶段定义。请只按当轮说明作答。",
+        }
+      : TASKS[taskType];
+    const moduleBriefing: Record<ModuleKey, string> = {
+      disclosure: "本次研究关注：同一条曲线在获得新信息后，你是否会修正原来的阶段边界。",
+      framing: "本次研究关注：不同任务表述是否会改变你对阶段结构的判断。",
+      "cross-series": "本次研究关注：同一研究对象的不同时间序列是否呈现相似的阶段结构。",
+      robustness: "本次研究关注：图表呈现方式或对照序列是否会改变阶段判断。",
+    };
+    return (
+      <main className="mod-site mod-briefing-page">
+        <header className="mod-topbar">
+          <span className="mod-wordmark"><span>BOUNDARY</span> LAB <b>{editionMark}</b></span>
+          <span className="mod-briefing-header-label">参与者说明</span>
+        </header>
+
+        <section className="mod-briefing-shell">
+          <div className="mod-briefing-intro">
+            <span className="mod-eyebrow">PARTICIPANT BRIEFING · 正式实验尚未开始</span>
+            <h1>在开始之前，<br />先了解你要做什么。</h1>
+            <p>你将查看若干时间序列，并按当前可见信息判断曲线的阶段结构。阶段边界没有唯一标准答案，请报告你此刻真正认为最合理的位置。</p>
+          </div>
+
+          <div className="mod-briefing-grid">
+            <article className="mod-briefing-card is-accent">
+              <span>01 · 研究情境</span>
+              <h2>{moduleBriefing[moduleKey]}</h2>
+              <p>系统只会在预定时点显示信息。请不要猜测尚未出现的内容，也不要使用页面以外的搜索或资料。</p>
+            </article>
+            <article className="mod-briefing-card">
+              <span>02 · 判断任务</span>
+              <h2>{briefingTask.title}</h2>
+              <p>{briefingTask.description}</p>
+              {moduleKey !== "framing" && taskType === "T3" && <blockquote>{STAGE_DEFINITION}</blockquote>}
+            </article>
+            <article className="mod-briefing-card">
+              <span>03 · 本次流程</span>
+              <h2>{plan.length} 条实验曲线</h2>
+              {moduleKey === "disclosure" ? (
+                <p>每条曲线先完成 1 次匿名基线判断，随后经历 <strong>{disclosureUpdates} 次</strong>逐层信息更新。也就是操作台所选的 {disclosureUpdates} 步披露，另加 1 次基线判断。</p>
+              ) : (
+                <p>每条曲线只使用一个固定的信息状态，不会在同一轮中逐层追加内容。</p>
+              )}
+            </article>
+            <article className="mod-briefing-card">
+              <span>04 · 如何作答</span>
+              <h2>分界点 + 大致范围 + 判断线索</h2>
+              <p>先放置分界点，再为每个分界点选择你认为“最佳位置”可能落入的范围。完成图上判断后，页面会显示约 5 个与当前信息对应的线索标签。</p>
+            </article>
+            <article className="mod-briefing-card">
+              <span>05 · 信息隔离</span>
+              <h2>后续信息不会提前出现</h2>
+              <p>本页不会说明资产名称、指标类型、真实日期、数值单位、图表尺度、时间窗口或事件；若它们属于本次实验条件，只会在预定步骤显示。</p>
+            </article>
+            <article className="mod-briefing-card">
+              <span>06 · 记录方式</span>
+              <h2>提交后锁定，不采集真实姓名</h2>
+              <p>研究会记录分界位置、不确定范围、线索选择和交互时间。每一步提交后不能返回修改；轮末反馈不是正确答案评分。</p>
+            </article>
+          </div>
+
+          <section className="mod-briefing-consent">
+            <div>
+              <span className="mod-eyebrow">READY CHECK</span>
+              <h2>{actorType === "agent" ? "请确认执行主体已读取实验说明" : "如果说明已经清楚，就可以开始"}</h2>
+            </div>
+            <label className="mod-consent">
+              <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
+              <span>{actorType === "agent" ? "执行主体已读取以上约束，并会只使用当前页面可见的信息作答。" : "我已阅读并理解以上说明，同意匿名记录本次判断结果与交互时间。"}</span>
+            </label>
+            {error && <p className="mod-error" role="alert">{error}</p>}
+            <button className="mod-start" type="button" onClick={startParticipantSession} disabled={!consent || busy}>
+              {busy ? "正在准备正式实验…" : "我已了解，开始正式实验"}<span>→</span>
+            </button>
+          </section>
+        </section>
       </main>
     );
   }
@@ -1793,26 +2000,24 @@ export function ExperimentModular({
 
           {(!isV4 || responseShapeReady) ? (
             <section className="mod-question-block">
-              <h3>{isV4 ? "这次判断主要依据了哪些线索？" : "这次判断主要参考了什么？"}<small>可多选</small></h3>
+              <h3>{isV4 ? activeCueSet.question : "这次判断主要参考了什么？"}<small>可多选</small></h3>
               {isV4 ? (
                 <div className="mod-cue-groups">
-                  {CUE_GROUPS.map((group) => (
-                    <div className="mod-cue-group" key={group.key}>
-                      <span>{group.title}</span>
-                      <div className="mod-cue-list">
-                        {group.options.map((cue) => (
-                          <button
-                            type="button"
-                            key={cue.code}
-                            className={cueTags.includes(cue.code) ? "is-selected" : ""}
-                            aria-pressed={cueTags.includes(cue.code)}
-                            onClick={() => setCueTags((value) => value.includes(cue.code) ? value.filter((item) => item !== cue.code) : [...value, cue.code])}
-                          >{cue.label}</button>
-                        ))}
-                      </div>
+                  <div className="mod-cue-group">
+                    <span>{activeCueSet.eyebrow}</span>
+                    <div className="mod-cue-list">
+                      {activeCueSet.options.map((cue) => (
+                        <button
+                          type="button"
+                          key={cue.code}
+                          className={cueTags.includes(cue.code) ? "is-selected" : ""}
+                          aria-pressed={cueTags.includes(cue.code)}
+                          onClick={() => toggleCue(cue)}
+                        >{cue.label}</button>
+                      ))}
                     </div>
-                  ))}
-                  <p className="mod-cue-note">请只选择本轮实际使用的线索；这些类别用于比较人类与 Agent 的判断机制。</p>
+                  </div>
+                  <p className="mod-cue-note">{activeCueSet.note} 至少选择一项；“没有改变”与其他选项互斥。</p>
                 </div>
               ) : (
                 <div className="mod-cue-list">{LEGACY_CUES.map((cue) => <button type="button" key={cue} className={cueTags.includes(cue) ? "is-selected" : ""} onClick={() => setCueTags((value) => value.includes(cue) ? value.filter((item) => item !== cue) : [...value, cue])}>{cue}</button>)}</div>

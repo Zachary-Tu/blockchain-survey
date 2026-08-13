@@ -10,7 +10,7 @@ const SCALES = new Set(["linear", "log"]);
 const WINDOWS = new Set(["whole", "truncated"]);
 const DISCLOSURES = new Set(["G0", "GI1", "GI2", "DI1", "DI2", "DI3", "DI4", "FULL"]);
 const RESPONSE_VERSIONS = new Set(["v4", "pre-v4"]);
-const V4_CUES = new Set([
+const V4_CUES_V1 = new Set([
   "curve_trend_slope",
   "curve_level_shift",
   "curve_variance",
@@ -28,6 +28,17 @@ const V4_CUES = new Set([
   "context_prior_expectation",
   "context_other",
 ]);
+const V4_CUES_V2_BY_DISCLOSURE: Record<string, Set<string>> = {
+  G0: new Set(["g0_trend_slope", "g0_level_shift", "g0_variance_noise", "g0_abrupt_reversal", "g0_persistence"]),
+  GI1: new Set(["gi1_metric_meaning", "gi1_expected_dynamics", "gi1_spike_interpretation", "gi1_domain_prior", "gi1_no_effect"]),
+  GI2: new Set(["gi2_calendar_location", "gi2_duration", "gi2_resolution_density", "gi2_unit_scale", "gi2_no_effect"]),
+  DI1: new Set(["di1_asset_category", "di1_cycle_memory", "di1_personal_familiarity", "di1_expected_behavior", "di1_no_effect"]),
+  DI2: new Set(["di2_launch_maturity", "di2_function_positioning", "di2_mechanism", "di2_background_fit", "di2_no_effect"]),
+  DI3: new Set(["di3_event_proximity", "di3_post_event_level", "di3_post_event_variance", "di3_event_cluster", "di3_no_effect"]),
+  DI4: new Set(["di4_boundary_refinement", "di4_short_disturbance", "di4_event_density", "di4_cross_event_consistency", "di4_no_effect"]),
+  FULL: new Set(["full_curve_structure", "full_axes_time", "full_metric_type", "full_asset_context", "full_events"]),
+};
+const V4_CUE_SCHEMAS = new Set(["visual-cpd-event-segmentation-v1", "disclosure-specific-cues-v2"]);
 const UNCERTAINTY_HALF_WIDTHS = [0.01, 0.025, 0.05, 0.08, 0.12];
 
 type Boundary = {
@@ -246,14 +257,26 @@ export async function POST(request: Request) {
 
     const influenceRequired = payload.moduleKey === "disclosure" && payload.disclosureIndex > 0;
     const cueTags = Array.isArray(payload.cueTags) ? payload.cueTags : [];
+    const cueSchema = payload.cueSchemaVersion ?? "";
+    const activeV2Cues = V4_CUES_V2_BY_DISCLOSURE[payload.disclosureKey];
+    const hasV2NoEffect = cueTags.some((tag) => typeof tag === "string" && tag.endsWith("_no_effect"));
+    const invalidV4Cues = isV4Response && (
+      !V4_CUE_SCHEMAS.has(cueSchema) ||
+      (cueSchema === "visual-cpd-event-segmentation-v1" && cueTags.some((tag) => typeof tag !== "string" || !V4_CUES_V1.has(tag))) ||
+      (cueSchema === "disclosure-specific-cues-v2" && (
+        cueTags.length < 1 ||
+        cueTags.some((tag) => typeof tag !== "string" || !activeV2Cues?.has(tag)) ||
+        new Set(cueTags).size !== cueTags.length ||
+        (hasV2NoEffect && cueTags.length !== 1)
+      ))
+    );
     if (
       (influenceRequired &&
         (!finiteNumber(payload.influenceRating) || payload.influenceRating < 1 || payload.influenceRating > 5)) ||
       (!influenceRequired && payload.influenceRating !== null && payload.influenceRating !== undefined) ||
       (payload.cueTags !== undefined &&
         (!Array.isArray(payload.cueTags) || payload.cueTags.length > 16 || payload.cueTags.some((tag) => typeof tag !== "string"))) ||
-      (isV4Response && cueTags.some((tag) => typeof tag !== "string" || !V4_CUES.has(tag))) ||
-      (isV4Response && payload.cueSchemaVersion !== "visual-cpd-event-segmentation-v1") ||
+      invalidV4Cues ||
       (!isV4Response && payload.cueSchemaVersion !== undefined && payload.cueSchemaVersion.length > 80)
     ) {
       return Response.json({ error: "Invalid rating or cue values" }, { status: 400 });

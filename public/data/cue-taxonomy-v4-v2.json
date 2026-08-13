@@ -1,0 +1,211 @@
+{
+  "schemaVersion": "disclosure-specific-cues-v2",
+  "status": "frozen-for-fourth-edition",
+  "language": "zh-CN",
+  "purpose": "在每个信息披露步骤后，仅记录与该步新增信息相对应的判断线索，避免用同一组通用标签重复询问所有条件。",
+  "disclosureAccounting": {
+    "baseline": {
+      "key": "G0",
+      "judgments": 1,
+      "description": "匿名曲线基线判断，不计入信息更新步数。"
+    },
+    "general": {
+      "updates": 2,
+      "path": ["GI1", "GI2"],
+      "totalJudgmentsPerCurve": 3
+    },
+    "domain": {
+      "updates": 4,
+      "path": ["DI1", "DI2", "DI3", "DI4"],
+      "totalJudgmentsPerCurve": 5
+    },
+    "combined": {
+      "updates": 6,
+      "path": ["GI1", "GI2", "DI1", "DI2", "DI3", "DI4"],
+      "totalJudgmentsPerCurve": 7
+    }
+  },
+  "selectionRules": {
+    "required": true,
+    "multipleSelection": true,
+    "optionsPerDisclosure": 5,
+    "noEffectRule": "带有 _no_effect 后缀的选项与同一披露步骤中的其他选项互斥。",
+    "displayTiming": "只有完成分界点及不确定范围后才显示标签，以降低标签对边界放置的前摄影响。"
+  },
+  "sets": [
+    {
+      "disclosureKey": "G0",
+      "newInformation": "无语义信息；仅有曲线形状",
+      "question": "这次划分主要依据了哪些曲线线索？",
+      "options": [
+        { "code": "g0_trend_slope", "label": "趋势方向或斜率持续改变", "mechanism": "趋势方向、斜率和信号强度会影响视觉趋势与变点识别。", "references": ["R1", "R2", "R3"] },
+        { "code": "g0_level_shift", "label": "整体水平或基线发生变化", "mechanism": "水平位移是视觉变点判断中的核心信号。", "references": ["R1", "R2"] },
+        { "code": "g0_variance_noise", "label": "波动幅度或噪声结构改变", "mechanism": "方差、噪声和信噪比会改变趋势及变点可见性。", "references": ["R2", "R3"] },
+        { "code": "g0_abrupt_reversal", "label": "出现突发跳跃或方向反转", "mechanism": "突发预测误差和显著变化可触发边界更新。", "references": ["R2", "R4", "R5"] },
+        { "code": "g0_persistence", "label": "变化后形成持续稳定的新状态", "mechanism": "阶段被操作化为稳定表征之间的转移，而非孤立异常点。", "references": ["R1", "R4"] }
+      ]
+    },
+    {
+      "disclosureKey": "GI1",
+      "newInformation": "序列类型",
+      "question": "新增的序列类型信息主要怎样影响了判断？",
+      "options": [
+        { "code": "gi1_metric_meaning", "label": "改变了我对曲线含义的理解", "mechanism": "变量类型属于图表语义信息，会改变同一视觉形态的含义。", "references": ["R1"] },
+        { "code": "gi1_expected_dynamics", "label": "参考了这类指标通常的变化模式", "mechanism": "领域知识与熟悉度会影响信息选择和推断。", "references": ["R6", "R7", "R8"] },
+        { "code": "gi1_spike_interpretation", "label": "重新判断尖峰是信号还是扰动", "mechanism": "语义预期会改变显著变化被解释为边界还是噪声的方式。", "references": ["R1", "R4", "R5"] },
+        { "code": "gi1_domain_prior", "label": "调用了对同类指标的既有经验", "mechanism": "先验知识和个人经验会与图形特征交互。", "references": ["R6", "R7", "R8"] },
+        { "code": "gi1_no_effect", "label": "序列类型没有改变我的判断", "exclusive": true, "mechanism": "零影响对照，用于区分看见信息与实际使用信息。", "references": ["R1"] }
+      ]
+    },
+    {
+      "disclosureKey": "GI2",
+      "newInformation": "真实时间轴、单位、频率与刻度",
+      "question": "新增的坐标信息主要怎样影响了判断？",
+      "options": [
+        { "code": "gi2_calendar_location", "label": "具体日期或所处历史时点", "mechanism": "轴标签与时间语义把视觉位置转换为可解释的时间位置。", "references": ["R1"] },
+        { "code": "gi2_duration", "label": "候选阶段各自持续的时长", "mechanism": "时间尺度决定观察者如何编码持续关系与稳定状态。", "references": ["R1", "R4"] },
+        { "code": "gi2_resolution_density", "label": "数据频率与可见观测密度", "mechanism": "观测点数量、密度与表示方式影响趋势判断。", "references": ["R1", "R3", "R10"] },
+        { "code": "gi2_unit_scale", "label": "数值单位、量级与坐标刻度", "mechanism": "单位和数值刻度属于关键语义变量；线性与对数轴会系统改变判断。", "references": ["R1", "R9", "R10"] },
+        { "code": "gi2_no_effect", "label": "坐标信息没有改变我的判断", "exclusive": true, "mechanism": "零影响对照。", "references": ["R1"] }
+      ]
+    },
+    {
+      "disclosureKey": "DI1",
+      "newInformation": "资产名称",
+      "question": "新增的资产身份主要怎样影响了判断？",
+      "options": [
+        { "code": "di1_asset_category", "label": "资产身份或所属类别", "mechanism": "变量身份提供语义框架并改变视觉信息的解释。", "references": ["R1"] },
+        { "code": "di1_cycle_memory", "label": "对该资产历史周期的记忆", "mechanism": "内容熟悉度与先验记忆会影响图表推断。", "references": ["R6", "R7", "R8"] },
+        { "code": "di1_personal_familiarity", "label": "个人关注、研究或交易经验", "mechanism": "个体的主题熟悉度和图表经验会调节解释。", "references": ["R3", "R6", "R8"] },
+        { "code": "di1_expected_behavior", "label": "对该资产典型走势的预期", "mechanism": "概念预期会影响边界放置的一致性与显著性使用。", "references": ["R5", "R6"] },
+        { "code": "di1_no_effect", "label": "资产名称没有改变我的判断", "exclusive": true, "mechanism": "零影响对照。", "references": ["R1"] }
+      ]
+    },
+    {
+      "disclosureKey": "DI2",
+      "newInformation": "资产基础介绍",
+      "question": "新增的背景介绍主要怎样影响了判断？",
+      "options": [
+        { "code": "di2_launch_maturity", "label": "上线时间与所处发展阶段", "mechanism": "本项目将资产成熟度作为领域知识的一个可报告来源。", "references": ["R6", "R7", "R8"] },
+        { "code": "di2_function_positioning", "label": "技术用途或网络定位", "mechanism": "本项目将用途定位作为领域框架的一部分。", "references": ["R6", "R7", "R8"] },
+        { "code": "di2_mechanism", "label": "发行、共识或运行机制", "mechanism": "本项目将机制知识作为影响预期动态的领域先验。", "references": ["R6", "R7", "R8"] },
+        { "code": "di2_background_fit", "label": "背景事实与曲线形态是否一致", "mechanism": "图表理解依赖语义信息与视觉模式的整合。", "references": ["R1", "R6"] },
+        { "code": "di2_no_effect", "label": "背景介绍没有改变我的判断", "exclusive": true, "mechanism": "零影响对照。", "references": ["R1"] }
+      ]
+    },
+    {
+      "disclosureKey": "DI3",
+      "newInformation": "高优先级历史事件",
+      "question": "新增的重要事件主要怎样影响了判断？",
+      "options": [
+        { "code": "di3_event_proximity", "label": "事件日期与候选分界点接近", "mechanism": "事件时点与感知边界的时间邻近是可检验的对应线索。", "references": ["R4", "R5"] },
+        { "code": "di3_post_event_level", "label": "事件后方向或水平发生改变", "mechanism": "事件后水平或方向变化结合了语义时点与视觉变点。", "references": ["R1", "R2", "R4"] },
+        { "code": "di3_post_event_variance", "label": "事件后波动状态发生改变", "mechanism": "事件后方差变化可改变边界显著性。", "references": ["R2", "R4"] },
+        { "code": "di3_event_cluster", "label": "多个重要事件共同界定阶段", "mechanism": "边界可由一组相邻变化和累积不确定性共同支持。", "references": ["R4", "R5"] },
+        { "code": "di3_no_effect", "label": "重要事件没有改变我的判断", "exclusive": true, "mechanism": "零影响对照。", "references": ["R1"] }
+      ]
+    },
+    {
+      "disclosureKey": "DI4",
+      "newInformation": "低优先级补充事件",
+      "question": "新增的补充事件主要怎样影响了判断？",
+      "options": [
+        { "code": "di4_boundary_refinement", "label": "进一步细化了已有分界位置", "mechanism": "较弱语义线索可能细化而非重建已有边界。", "references": ["R1", "R4", "R5"] },
+        { "code": "di4_short_disturbance", "label": "提示某段变化只是短期扰动", "mechanism": "事件知识可帮助区分短期预测误差与稳定状态更新。", "references": ["R4", "R7"] },
+        { "code": "di4_event_density", "label": "事件密度或聚集形成阶段线索", "mechanism": "多个变化线索的聚集会影响共同边界判断。", "references": ["R4", "R5"] },
+        { "code": "di4_cross_event_consistency", "label": "与重要事件相互印证或冲突", "mechanism": "观察者会整合或权衡已有语义框架与新增证据。", "references": ["R1", "R6", "R8"] },
+        { "code": "di4_no_effect", "label": "补充事件没有改变我的判断", "exclusive": true, "mechanism": "零影响对照。", "references": ["R1"] }
+      ]
+    },
+    {
+      "disclosureKey": "FULL",
+      "newInformation": "完整信息快照",
+      "question": "在完整信息中，哪些类别实际主导了判断？",
+      "options": [
+        { "code": "full_curve_structure", "label": "曲线结构与持续状态变化", "mechanism": "视觉结构维度。", "references": ["R1", "R2", "R3", "R4"] },
+        { "code": "full_axes_time", "label": "时间、单位、频率与坐标刻度", "mechanism": "坐标语义与呈现维度。", "references": ["R1", "R9", "R10"] },
+        { "code": "full_metric_type", "label": "序列类型及其通常变化模式", "mechanism": "变量类型与指标先验维度。", "references": ["R1", "R6", "R7"] },
+        { "code": "full_asset_context", "label": "资产身份、背景与既有知识", "mechanism": "领域知识与熟悉度维度。", "references": ["R6", "R7", "R8"] },
+        { "code": "full_events", "label": "历史事件及其与曲线的对应", "mechanism": "事件语义、预期与边界对应维度。", "references": ["R4", "R5"] }
+      ]
+    }
+  ],
+  "methodologicalNotes": [
+    "这些标签是依据相关机制研究设计的项目专用操作化自报项目，不是从单一已验证量表逐字翻译而来。",
+    "DI2 中的上线时间、用途定位和运行机制是加密资产背景的项目特定拆分；文献支持的是领域知识影响图表理解这一上位机制。",
+    "DI3 与 DI4 的高低优先级由研究协议预先编码，不能根据参与者反应事后修改。",
+    "正式采集后应冻结措辞与代码；如需改动，应提升 schemaVersion 并保留旧版本。"
+  ],
+  "references": [
+    {
+      "id": "R1",
+      "citation": "Tsai, E. H.-I., Hahn, Y., & Siegler, R. S. (2026). The Pictorial–Semantic–Task Framework for Understanding Graph Comprehension. Journal of Intelligence, 14(2), 28.",
+      "doi": "10.3390/jintelligence14020028",
+      "url": "https://www.mdpi.com/2079-3200/14/2/28",
+      "usedFor": "区分视觉、语义和任务变量；支持标题、轴、刻度、单位、变量类型与先验知识的分层。"
+    },
+    {
+      "id": "R2",
+      "citation": "Fudolig, M. A., Robinson, E. A., & VanderPlas, S. (2025). Can You See The Change? Change Point Detection Using Visual Inference. Journal of Computational and Graphical Statistics, 34, 1705–1716.",
+      "doi": "10.1080/10618600.2025.2485278",
+      "url": "https://www.tandfonline.com/doi/full/10.1080/10618600.2025.2485278",
+      "usedFor": "支持位移幅度、方差、方向、变点位置与信噪比影响视觉变点识别。"
+    },
+    {
+      "id": "R3",
+      "citation": "Ciccione, L., Sablé-Meyer, M., Boissin, E., et al. (2023). Trend judgment as a perceptual building block of graphicacy and mathematics, across age, education, and culture. Scientific Reports, 13, 10266.",
+      "doi": "10.1038/s41598-023-37172-3",
+      "url": "https://www.nature.com/articles/s41598-023-37172-3",
+      "usedFor": "支持斜率、噪声、观测点数量与图表经验影响趋势判断。"
+    },
+    {
+      "id": "R4",
+      "citation": "Nguyen, T. T., Etzel, J. A., Bezdek, M. A., & Zacks, J. M. (2026). Multiple event segmentation mechanisms in the human brain. eLife, 14, RP107955.",
+      "doi": "10.7554/eLife.107955.3",
+      "url": "https://elifesciences.org/articles/107955",
+      "usedFor": "支持预测误差、预测不确定性和新稳定状态共同参与事件边界更新。"
+    },
+    {
+      "id": "R5",
+      "citation": "Pauly, R., & Schwan, S. (2024). How Do People Parse Dynamic Maps? Insights from Event Segmentation Experiments. LIPIcs COSIT 2024, Article 14.",
+      "doi": "10.4230/LIPIcs.COSIT.2024.14",
+      "url": "https://drops.dagstuhl.de/entities/document/10.4230/LIPIcs.COSIT.2024.14",
+      "usedFor": "支持预期与变化显著性影响观察者边界放置的一致性。"
+    },
+    {
+      "id": "R6",
+      "citation": "Shah, P., & Freedman, E. G. (2011). Bar and Line Graph Comprehension: An Interaction of Top-Down and Bottom-Up Processes. Topics in Cognitive Science, 3, 560–578.",
+      "doi": "10.1111/j.1756-8765.2009.01066.x",
+      "url": "https://onlinelibrary.wiley.com/doi/10.1111/j.1756-8765.2009.01066.x",
+      "usedFor": "支持主题熟悉度、图表能力、预期与图形格式交互影响推断。"
+    },
+    {
+      "id": "R7",
+      "citation": "Canham, M., & Hegarty, M. (2010). Effects of knowledge and display design on comprehension of complex graphics. Learning and Instruction, 20(2), 155–166.",
+      "doi": "10.1016/j.learninstruc.2009.02.014",
+      "url": "https://www.sciencedirect.com/science/article/pii/S0959475209000218",
+      "usedFor": "支持领域知识影响注意、信息选择、编码和推断；无关信息可能损害表现。"
+    },
+    {
+      "id": "R8",
+      "citation": "Berg, S. A., & Moon, A. (2023). A characterization of chemistry learners’ engagement in data analysis and interpretation. Chemistry Education Research and Practice, 24, 36–49.",
+      "doi": "10.1039/D2RP00154C",
+      "url": "https://pubs.rsc.org/en/content/articlehtml/2023/rp/d2rp00154c",
+      "usedFor": "支持既有知识和经验参与数据解释框架的建立与修正。"
+    },
+    {
+      "id": "R9",
+      "citation": "Ryan, W. H., & Evers, E. R. K. (2020). Graphs with logarithmic axes distort lay judgments. Behavioral Science & Policy, 6(2), 13–23.",
+      "doi": "10.1177/237946152000600203",
+      "url": "https://journals.sagepub.com/doi/10.1177/237946152000600203",
+      "usedFor": "支持线性与对数纵轴会系统改变增长判断。"
+    },
+    {
+      "id": "R10",
+      "citation": "Melnik-Leroy, G. A., Aidokas, L., Dzemyda, G., et al. (2023). Is my visualization better than yours? Analyzing factors modulating exponential growth bias in graphs. Frontiers in Psychology, 14, 1125810.",
+      "doi": "10.3389/fpsyg.2023.1125810",
+      "url": "https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2023.1125810/full",
+      "usedFor": "支持尺度选择、数学教育和任务情境共同调节增长曲线判断。"
+    }
+  ]
+}

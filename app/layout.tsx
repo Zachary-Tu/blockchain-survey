@@ -16,9 +16,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://boundary-lab-context-elasticity.zactt.chatgpt.site"),
   title: "Boundary Lab｜第四版模块化阶段判断实验",
   description:
-    "第四版研究平台：在信息披露、任务定义、跨指标与稳健性模块中，比较人类与 Agent 的时间序列阶段判断，并记录完整或预设截断窗口。",
+    "第四版研究平台：使用参与者说明页与分披露步骤的动态线索标签，比较人类与 Agent 的时间序列阶段判断。",
   openGraph: {
     title: "Boundary Lab｜第四版模块化阶段判断实验",
     description:
@@ -27,7 +28,7 @@ export const metadata: Metadata = {
     locale: "zh_CN",
     images: [
       {
-        url: "/og-fourth-edition.png",
+        url: "/og-fourth-edition-v2.png",
         width: 1536,
         height: 1024,
         alt: "Boundary Lab 第四版模块化阶段判断研究平台",
@@ -39,7 +40,7 @@ export const metadata: Metadata = {
     title: "Boundary Lab｜第四版模块化阶段判断实验",
     description:
       "信息披露、任务定义、跨指标一致性与稳健性四个模块，测量人类与 Agent 的阶段判断与判断线索。",
-    images: ["/og-fourth-edition.png"],
+    images: ["/og-fourth-edition-v2.png"],
   },
 };
 
