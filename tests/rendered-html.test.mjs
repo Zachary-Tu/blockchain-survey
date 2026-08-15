@@ -82,6 +82,8 @@ test("server-renders the modular research platform", async () => {
   assert.match(html, /FOURTH EDITION/);
   assert.match(html, /RESEARCHER CONSOLE/);
   assert.match(html, /研究者操作台 · 不向被测试者展示/);
+  assert.match(html, /人类 M1 主实验/);
+  assert.match(html, /Agent 全模块实验/);
   assert.match(html, /确认配置，生成参与者说明/);
   assert.doesNotMatch(html, /我已阅读并理解以上说明/);
   assert.doesNotMatch(html, /你对这次划分有多大信心/);
@@ -106,16 +108,47 @@ test("server-renders a standalone fixed M1 pilot without the researcher console"
   assert.doesNotMatch(html, /稳健性与对照/);
 });
 
-test("server-renders the two agent-native experiment entries", async () => {
-  const hub = await render("/agent");
-  assert.equal(hub.status, 200);
-  const hubHtml = await hub.text();
-  assert.match(hubHtml, /<title>Boundary Lab｜Agent 实验入口<\/title>/i);
-  assert.match(hubHtml, /M1 Agent 初批实验/);
-  assert.match(hubHtml, /Agent 模块控制台/);
-  assert.match(hubHtml, /受约束 JSON/);
-  assert.match(hubHtml, /\/agent\/pilot/);
-  assert.match(hubHtml, /\/agent\/console/);
+test("server-renders the standalone human M1 main experiment", async () => {
+  const response = await render("/m1");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+
+  assert.match(html, /<title>Boundary Lab｜人类 M1 主实验<\/title>/i);
+  assert.match(html, /M1 · 主实验/);
+  assert.match(html, /M1 MAIN STUDY · PARTICIPANT ENTRY/);
+  assert.match(html, /观察曲线/);
+  assert.match(html, /四条时间序列/);
+  assert.match(html, /匿名参与者编号/);
+  assert.doesNotMatch(html, /初批实验/);
+  assert.doesNotMatch(html, /RESEARCHER CONSOLE/);
+  assert.doesNotMatch(html, /选择实验模块|任务定义实验|跨指标一致性|稳健性与对照/);
+});
+
+test("server-renders the consolidated agent console as the primary agent entry", async () => {
+  const response = await render("/agent");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /<title>Boundary Lab｜Agent 全模块实验<\/title>/i);
+  assert.match(html, /Agent 全模块实验/);
+  assert.match(html, /FULL_MODULAR_PROTOCOL/);
+  assert.match(html, /汇总原研究控制台的 M1—M4 条件/);
+  assert.match(html, /EXPERIMENT_CONFIG/);
+  assert.match(html, /信息披露主实验/);
+  assert.match(html, /任务定义实验/);
+  assert.match(html, /跨指标一致性/);
+  assert.match(html, /稳健性与对照/);
+  assert.match(html, /disclosure_path/);
+  assert.match(html, /window_mode/);
+  assert.match(html, /model_or_agent_name/);
+  assert.doesNotMatch(html, /选择 Agent 实验入口/);
+  assert.doesNotMatch(html, /\/agent\/pilot/);
+
+  const legacy = await render("/agent/legacy");
+  assert.equal(legacy.status, 200);
+  const legacyHtml = await legacy.text();
+  assert.match(legacyHtml, /保留的 Agent 双入口/);
+  assert.match(legacyHtml, /\/agent\/pilot/);
+  assert.match(legacyHtml, /\/agent\/console/);
 
   const pilot = await render("/agent/pilot");
   assert.equal(pilot.status, 200);
@@ -134,14 +167,8 @@ test("server-renders the two agent-native experiment entries", async () => {
   const consoleResponse = await render("/agent/console");
   assert.equal(consoleResponse.status, 200);
   const consoleHtml = await consoleResponse.text();
-  assert.match(consoleHtml, /<title>Boundary Lab｜Agent 模块实验控制台<\/title>/i);
+  assert.match(consoleHtml, /<title>Boundary Lab｜保留的 Agent 模块控制台<\/title>/i);
   assert.match(consoleHtml, /EXPERIMENT_CONFIG/);
-  assert.match(consoleHtml, /信息披露主实验/);
-  assert.match(consoleHtml, /任务定义实验/);
-  assert.match(consoleHtml, /跨指标一致性/);
-  assert.match(consoleHtml, /稳健性与对照/);
-  assert.match(consoleHtml, /disclosure_path/);
-  assert.match(consoleHtml, /window_mode/);
 });
 
 test("server-renders the researcher CSV export hub", async () => {
@@ -150,25 +177,25 @@ test("server-renders the researcher CSV export hub", async () => {
   const html = await response.text();
 
   assert.match(html, /实验结果导出/);
-  assert.match(html, /下载 M1 配对 CSV/);
-  assert.match(html, /下载 Agent CSV/);
-  assert.match(html, /下载人类 M1 CSV/);
+  assert.match(html, /下载人类 M1 主实验 CSV/);
+  assert.match(html, /下载 Agent 全模块 CSV/);
+  assert.match(html, /下载全部 Agent CSV/);
   assert.match(html, /下载全部实验 CSV/);
   assert.match(html, /研究者白名单|服务器端研究者白名单/);
-  assert.match(html, /scope=m1/);
+  assert.match(html, /scope=human-m1/);
+  assert.match(html, /scope=agent-console/);
   assert.match(html, /scope=agent/);
-  assert.match(html, /scope=pilot/);
   assert.match(html, /scope=all/);
 });
 
-test("completes paired human and agent M1 lifecycles and exports 56 aligned CSV rows", async () => {
+test("completes human M1 main and Agent console lifecycles with isolated CSV exports", async () => {
   const mf = await appMiniflare();
   try {
     const api = (pathname, init = {}) => mf.dispatchFetch(`http://localhost${pathname}`, init);
 
     const disclosureKeys = ["G0", "GI1", "GI2", "DI1", "DI2", "DI3", "DI4"];
     const plan = ["bitcoin", "ethereum", "solana", "bnb"].map((assetId, order) => ({
-      id: `pilot-${assetId}`,
+      id: `human-m1-${assetId}`,
       order,
       disclosures: disclosureKeys,
     }));
@@ -205,9 +232,9 @@ test("completes paired human and agent M1 lifecycles and exports 56 aligned CSV 
         actorType: "human",
         participantCode: "SYSTEM-E2E",
         expertise: "none",
-        experimentalArm: "pilot-m1",
+        experimentalArm: "m1-main",
         protocolVersion: "boundary-lab-modular-v4",
-        studyConfig: { entryMode: "pilot", randomizedPlan: plan },
+        studyConfig: { entryMode: "m1", mainStudyProtocol: "m1-human-main-v1", randomizedPlan: plan },
       }),
     });
     assert.equal(sessionResponse.status, 201);
@@ -246,7 +273,7 @@ test("completes paired human and agent M1 lifecycles and exports 56 aligned CSV 
             moduleKey: "disclosure",
             taskType: "T2",
             stimulusType: "crypto",
-            assetId: trial.id.replace("pilot-", ""),
+            assetId: trial.id.replace("human-m1-", ""),
             metricType: "price",
             resolution: "weekly",
             scaleMode: "linear",
@@ -289,27 +316,29 @@ test("completes paired human and agent M1 lifecycles and exports 56 aligned CSV 
       expectedResponseCount: 28,
     });
 
-    const forbiddenExport = await api("/api/research-export?scope=pilot", {
+    const forbiddenExport = await api("/api/research-export?scope=human-m1", {
       headers: { "oai-authenticated-user-email": "participant@example.com" },
     });
     assert.equal(forbiddenExport.status, 403);
 
-    const exportResponse = await api("/api/research-export?scope=pilot", {
+    const exportResponse = await api("/api/research-export?scope=human-m1", {
       headers: { "oai-authenticated-user-email": "researcher@example.com" },
     });
     assert.equal(exportResponse.status, 200, await exportResponse.clone().text());
     assert.match(exportResponse.headers.get("content-type") ?? "", /^text\/csv/i);
-    assert.match(exportResponse.headers.get("content-disposition") ?? "", /boundary-lab-pilot/);
+    assert.match(exportResponse.headers.get("content-disposition") ?? "", /boundary-lab-human-m1/);
     const csvBytes = new Uint8Array(await exportResponse.arrayBuffer());
     assert.deepEqual([...csvBytes.slice(0, 3)], [0xef, 0xbb, 0xbf]);
     const csv = new TextDecoder().decode(csvBytes);
     assert.match(csv, /session_id,session_status/);
     assert.match(csv, /boundary_1_date,boundary_1_ratio,boundary_2_date,boundary_2_ratio/);
     assert.match(csv, /"包含,逗号与""引号"""/);
+    assert.match(csv, /m1-main/);
+    assert.doesNotMatch(csv, /AGENT-E2E-001/);
     assert.equal(csv.split("\r\n").length, 29);
 
     const agentPlan = ["bitcoin", "ethereum", "solana", "bnb"].map((assetId, order) => ({
-      id: `agent-pilot-${assetId}`,
+      id: `agent-console-${assetId}`,
       order,
       disclosures: disclosureKeys,
     }));
@@ -321,10 +350,10 @@ test("completes paired human and agent M1 lifecycles and exports 56 aligned CSV 
         participantCode: "AGENT-E2E-001",
         expertise: "none",
         modelName: "AgentModel-Test-1",
-        experimentalArm: "agent-pilot-m1",
+        experimentalArm: "agent-disclosure",
         protocolVersion: "boundary-lab-modular-v4",
         studyConfig: {
-          entryMode: "agent-pilot",
+          entryMode: "agent-console",
           agentInterfaceVersion: "agent-native-json-v1",
           agentMetadata: { provider: "test", temperature: "0", promptVersion: "agent-protocol-v1" },
           randomizedPlan: agentPlan,
@@ -349,7 +378,7 @@ test("completes paired human and agent M1 lifecycles and exports 56 aligned CSV 
             moduleKey: "disclosure",
             taskType: "T2",
             stimulusType: "crypto",
-            assetId: trial.id.replace("agent-pilot-", ""),
+            assetId: trial.id.replace("agent-console-", ""),
             metricType: "price",
             resolution: "weekly",
             scaleMode: "linear",
@@ -392,29 +421,29 @@ test("completes paired human and agent M1 lifecycles and exports 56 aligned CSV 
       expectedResponseCount: 28,
     });
 
-    const agentExportResponse = await api("/api/research-export?scope=agent", {
+    const agentExportResponse = await api("/api/research-export?scope=agent-console", {
       headers: { "oai-authenticated-user-email": "researcher@example.com" },
     });
     assert.equal(agentExportResponse.status, 200, await agentExportResponse.clone().text());
-    assert.match(agentExportResponse.headers.get("content-disposition") ?? "", /boundary-lab-agent/);
+    assert.match(agentExportResponse.headers.get("content-disposition") ?? "", /boundary-lab-agent-console/);
     const agentCsv = await agentExportResponse.text();
     assert.equal(agentCsv.split("\r\n").length, 29);
     assert.match(agentCsv, /agent-v1/);
-    assert.match(agentCsv, /agent-pilot-m1/);
+    assert.match(agentCsv, /agent-disclosure/);
     assert.match(agentCsv, /AgentModel-Test-1/);
     assert.doesNotMatch(agentCsv, /SYSTEM-E2E/);
 
-    const pairedExportResponse = await api("/api/research-export?scope=m1", {
+    const combinedExportResponse = await api("/api/research-export?scope=all", {
       headers: { "oai-authenticated-user-email": "researcher@example.com" },
     });
-    assert.equal(pairedExportResponse.status, 200, await pairedExportResponse.clone().text());
-    assert.match(pairedExportResponse.headers.get("content-disposition") ?? "", /boundary-lab-m1/);
-    const pairedCsv = await pairedExportResponse.text();
-    assert.equal(pairedCsv.split("\r\n").length, 57);
-    assert.match(pairedCsv, /SYSTEM-E2E/);
-    assert.match(pairedCsv, /AGENT-E2E-001/);
-    assert.match(pairedCsv, /pilot-m1/);
-    assert.match(pairedCsv, /agent-pilot-m1/);
+    assert.equal(combinedExportResponse.status, 200, await combinedExportResponse.clone().text());
+    assert.match(combinedExportResponse.headers.get("content-disposition") ?? "", /boundary-lab-all/);
+    const combinedCsv = await combinedExportResponse.text();
+    assert.equal(combinedCsv.split("\r\n").length, 57);
+    assert.match(combinedCsv, /SYSTEM-E2E/);
+    assert.match(combinedCsv, /AGENT-E2E-001/);
+    assert.match(combinedCsv, /m1-main/);
+    assert.match(combinedCsv, /agent-disclosure/);
   } finally {
     await mf.dispose();
   }
@@ -443,6 +472,8 @@ test("implements a configuration-aware participant briefing without future discl
   assert.match(source, /我已了解，开始正式实验/);
   assert.match(source, /DISCLOSURE_PATHS\[disclosurePath\]\.length - 1/);
   assert.match(source, /participantBriefingVersion: isV4 \? "participant-briefing-v1"/);
+  assert.match(source, /experimentalArm: isM1Main \? "m1-main"/);
+  assert.match(source, /mainStudyProtocol: isM1Main \? "m1-human-main-v1"/);
 });
 
 test("keeps the agent boundary judgment separate from post-judgment annotations", async () => {

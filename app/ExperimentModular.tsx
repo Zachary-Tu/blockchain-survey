@@ -20,7 +20,7 @@ export type DisclosurePath = "general" | "domain" | "combined";
 export type DisclosureKey = "G0" | "GI1" | "GI2" | "DI1" | "DI2" | "DI3" | "DI4" | "FULL";
 export type RobustnessFactor = "resolution" | "scale" | "window" | "controls";
 type Phase = "setup" | "briefing" | "experiment" | "review" | "complete";
-type EntryMode = "console" | "pilot";
+type EntryMode = "console" | "pilot" | "m1";
 
 export type Point = { date: string; value: number };
 export type ResolutionData = {
@@ -1148,6 +1148,8 @@ export function ExperimentModular({
 }) {
   const isV4 = protocolVariant === "v4";
   const isPilot = entryMode === "pilot";
+  const isM1Main = entryMode === "m1";
+  const isFixedM1 = isPilot || isM1Main;
   const editionMark = isV4 ? "04" : "06";
   const [bundle, setBundle] = useState<Bundle | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -1319,7 +1321,7 @@ export function ExperimentModular({
         actorType,
         participantCode,
         expertise,
-        experimentalArm: isPilot ? "pilot-m1" : moduleKey,
+        experimentalArm: isM1Main ? "m1-main" : isPilot ? "pilot-m1" : moduleKey,
         protocolVersion: bundle.protocolVersion,
         modelName: actorType === "agent" ? modelName : null,
         studyConfig: {
@@ -1339,6 +1341,7 @@ export function ExperimentModular({
           cueTaxonomyUrl: isV4 ? "/data/cue-taxonomy-v4-v2.json" : null,
           entryMode,
           pilotProtocol: isPilot ? "m1-pilot-v1" : null,
+          mainStudyProtocol: isM1Main ? "m1-human-main-v1" : null,
           randomizedPlan: nextPlan,
         },
       }),
@@ -1353,7 +1356,7 @@ export function ExperimentModular({
     setBusy(true);
     setError("");
     try {
-      if (isPilot && !participantCode.trim()) {
+      if (isFixedM1 && !participantCode.trim()) {
         throw new Error("请输入研究者提供的匿名参与者编号。");
       }
       const nextPlan = makeTrialPlan(bundle, {
@@ -1586,16 +1589,18 @@ export function ExperimentModular({
 
   if (phase === "setup") {
     const snapshotOptions = moduleKey === "robustness" ? SNAPSHOT_OPTIONS.slice(0, 3) : SNAPSHOT_OPTIONS;
-    if (isPilot) {
+    if (isFixedM1) {
+      const studyLabel = isM1Main ? "M1 · 主实验" : "M1 · 初批实验";
+      const studyEyebrow = isM1Main ? "M1 MAIN STUDY · PARTICIPANT ENTRY" : "M1 PILOT · PARTICIPANT ENTRY";
       return (
         <main className="mod-site mod-pilot-entry">
           <header className="mod-topbar">
             <span className="mod-wordmark"><span>BOUNDARY</span> LAB <b>04</b></span>
-            <span className="mod-pilot-header-label">M1 · 初批实验</span>
+            <span className="mod-pilot-header-label">{studyLabel}</span>
           </header>
           <section className="mod-pilot-shell">
             <div className="mod-pilot-hero">
-              <span className="mod-eyebrow">M1 PILOT · PARTICIPANT ENTRY</span>
+              <span className="mod-eyebrow">{studyEyebrow}</span>
               <h1>观察曲线，<br />标出你眼中的阶段。</h1>
               <p>你将对四条时间序列进行判断。系统会先显示匿名曲线，再逐步加入信息；每一步都请根据当前画面重新确认两个分界点。</p>
             </div>
@@ -1640,8 +1645,8 @@ export function ExperimentModular({
             <strong>研究者操作台 · 不向被测试者展示</strong>
             <p>在这里锁定实验条件；点击生成说明页后，再将设备交给参与者。</p>
             <div className="mod-operator-actions">
-              <Link href="/pilot">打开 M1 初批入口 ↗</Link>
-              <Link href="/agent">Agent 实验入口 ↗</Link>
+              <Link href="/m1">人类 M1 主实验 ↗</Link>
+              <Link href="/agent">Agent 全模块实验 ↗</Link>
               <Link href="/research/results">结果导出 ↗</Link>
               <Link href="/methodology/cues">标签与文献依据 ↗</Link>
             </div>
@@ -1922,7 +1927,7 @@ export function ExperimentModular({
               <span>03 · 本次流程</span>
               <h2>{plan.length} 条实验曲线</h2>
               {moduleKey === "disclosure" ? (
-                <p>每条曲线先完成 1 次匿名基线判断，随后经历 <strong>{disclosureUpdates} 次</strong>逐层信息更新。也就是{isPilot ? "本次初批协议预设的" : "操作台所选的"} {disclosureUpdates} 步披露，另加 1 次基线判断。</p>
+                <p>每条曲线先完成 1 次匿名基线判断，随后经历 <strong>{disclosureUpdates} 次</strong>逐层信息更新。也就是{isM1Main ? "本次主实验协议预设的" : isPilot ? "本次初批协议预设的" : "操作台所选的"} {disclosureUpdates} 步披露，另加 1 次基线判断。</p>
               ) : (
                 <p>每条曲线只使用一个固定的信息状态，不会在同一轮中逐层追加内容。</p>
               )}
@@ -2018,13 +2023,13 @@ export function ExperimentModular({
       <main className="mod-site mod-complete-page">
         <section>
           <span className="mod-eyebrow">SESSION COMPLETE</span>
-          <h1>{isPilot ? "M1 初批实验已完成。" : `${currentModule.number} 模块已完成。`}</h1>
+          <h1>{isM1Main ? "M1 主实验已完成。" : isPilot ? "M1 初批实验已完成。" : `${currentModule.number} 模块已完成。`}</h1>
           <p>共记录 {answers.length} 次判断，覆盖 {plan.length} 条实验曲线。浏览器中的副本可以下载，服务器端记录已与会话编号关联。</p>
           <div className="mod-session-code"><span>SESSION ID</span><code>{sessionId}</code></div>
           <div className="mod-complete-actions">
             <button type="button" onClick={() => downloadSessionCsv(sessionId, answers)}>下载本次 CSV</button>
             <button type="button" onClick={() => downloadJson(`boundary-lab-${sessionId}.json`, { protocolVersion: bundle.protocolVersion, sessionId, module: currentModule, plan, answers })}>下载本次 JSON</button>
-            <button type="button" onClick={() => window.location.reload()}>{isPilot ? "返回初批入口" : "返回模块首页"}</button>
+            <button type="button" onClick={() => window.location.reload()}>{isM1Main ? "返回 M1 主实验入口" : isPilot ? "返回初批入口" : "返回模块首页"}</button>
           </div>
         </section>
       </main>

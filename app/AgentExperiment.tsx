@@ -626,14 +626,14 @@ export function AgentExperiment({ mode }: { mode: AgentMode }) {
     return (
       <main className="agent-site">
         <header className="agent-header">
-          <Link href="/agent">Boundary Lab / Agent</Link>
-          <code>{isPilot ? "M1_FIXED" : "MODULAR_CONSOLE"}</code>
+          <Link href="/">Boundary Lab / Agent</Link>
+          <code>{isPilot ? "M1_FIXED" : "FULL_MODULAR_PROTOCOL"}</code>
         </header>
         <section className="agent-setup">
           <div className="agent-intro">
             <p>AGENT-NATIVE EXPERIMENT INTERFACE v1</p>
-            <h1>{isPilot ? "M1 Agent 初批实验" : "Agent 模块实验控制台"}</h1>
-            <p>曲线与披露状态和人类版本一致。差别仅在作答通道：Agent 读取当前观察对象和同一张图，以严格 JSON 提交答案，不使用拖拽、奖励页或视觉化控件。</p>
+            <h1>{isPilot ? "M1 Agent 初批实验" : "Agent 全模块实验"}</h1>
+            <p>{isPilot ? "曲线与披露状态和人类版本一致。差别仅在作答通道：Agent 读取当前观察对象和同一张图，以严格 JSON 提交答案，不使用拖拽、奖励页或视觉化控件。" : "这里汇总原研究控制台的 M1—M4 条件。为本次 Agent 运行锁定模块、任务、指标和呈现条件后，Agent 将读取当前观察对象与同一张图，并以严格 JSON 逐步提交。"}</p>
           </div>
 
           {isPilot ? (
@@ -706,7 +706,7 @@ export function AgentExperiment({ mode }: { mode: AgentMode }) {
       <main className="agent-site agent-complete">
         <section>
           <p>SESSION_COMPLETE</p>
-          <h1>{isPilot ? "M1 Agent 初批实验完成" : "Agent 模块实验完成"}</h1>
+          <h1>{isPilot ? "M1 Agent 初批实验完成" : "Agent 全模块实验完成"}</h1>
           <pre>{JSON.stringify({ session_id: sessionId, response_count: answers.length, status: "complete" }, null, 2)}</pre>
           <p>所有逐步响应已写入与人类实验相同的数据库表。研究者可从结果页按实验臂导出。</p>
           <div><Link href="/research/results">RESEARCH EXPORT</Link><button type="button" onClick={() => window.location.reload()}>NEW SESSION</button></div>

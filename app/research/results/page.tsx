@@ -22,22 +22,22 @@ export default function ResearchResultsPage() {
         <p>服务器会把会话表与逐步响应表连接后导出；每一行代表一名测试者在某条曲线、某一披露步骤的一次提交。CSV 带 UTF-8 BOM，可直接用 Excel 打开中文字段。</p>
         <div className="mod-research-export-grid">
           <article>
-            <span>01 · PAIRED M1</span>
-            <h2>M1 人类 + Agent</h2>
-            <p>合并 <code>pilot-m1</code> 与 <code>agent-pilot-m1</code>，用于直接比较同一初批协议。</p>
-            <a href="/api/research-export?scope=m1">下载 M1 配对 CSV</a>
+            <span>01 · HUMAN M1 MAIN</span>
+            <h2>人类 M1 主实验</h2>
+            <p>只包含正式人类入口产生、实验臂标记为 <code>m1-main</code> 的逐步记录。</p>
+            <a href="/api/research-export?scope=human-m1">下载人类 M1 主实验 CSV</a>
           </article>
           <article>
-            <span>02 · AGENT</span>
-            <h2>全部 Agent 回答</h2>
-            <p>筛选 <code>actor_type=agent</code>，包含固定 M1 与 Agent 模块控制台产生的记录。</p>
-            <a href="/api/research-export?scope=agent">下载 Agent CSV</a>
+            <span>02 · AGENT FULL CONSOLE</span>
+            <h2>Agent 全模块实验</h2>
+            <p>汇总 Agent 在 M1—M4 控制台条件下产生的记录，不混入上一版固定 Agent M1 初批。</p>
+            <a href="/api/research-export?scope=agent-console">下载 Agent 全模块 CSV</a>
           </article>
           <article>
-            <span>03 · HUMAN PILOT</span>
-            <h2>仅人类 M1 初批</h2>
-            <p>只包含独立人类初批入口产生、实验臂标记为 <code>pilot-m1</code> 的记录。</p>
-            <a href="/api/research-export?scope=pilot">下载人类 M1 CSV</a>
+            <span>03 · ALL AGENT</span>
+            <h2>全部 Agent 历史记录</h2>
+            <p>筛选全部 <code>actor_type=agent</code>，同时包含当前全模块入口与保留的 Agent 初批入口。</p>
+            <a href="/api/research-export?scope=agent">下载全部 Agent CSV</a>
           </article>
           <article>
             <span>04 · ALL MODULES</span>

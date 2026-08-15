@@ -119,7 +119,11 @@ export async function GET(request: Request) {
     await ensureExperimentSchema();
     const url = new URL(request.url);
     const requestedScope = url.searchParams.get("scope");
-    const scope = requestedScope === "pilot" || requestedScope === "m1" || requestedScope === "agent"
+    const scope = requestedScope === "pilot" ||
+      requestedScope === "m1" ||
+      requestedScope === "agent" ||
+      requestedScope === "human-m1" ||
+      requestedScope === "agent-console"
       ? requestedScope
       : "all";
     const base = getDb()
@@ -136,15 +140,24 @@ export async function GET(request: Request) {
     ] as const;
     const rows = scope === "pilot"
       ? await base.where(eq(experimentSessions.experimentalArm, "pilot-m1")).orderBy(...order)
-      : scope === "m1"
-        ? await base.where(inArray(experimentSessions.experimentalArm, ["pilot-m1", "agent-pilot-m1"])).orderBy(...order)
-        : scope === "agent"
-          ? await base.where(eq(experimentSessions.actorType, "agent")).orderBy(...order)
-          : await base.orderBy(
-          asc(experimentSessions.startedAt),
-          asc(modularResponses.trialOrder),
-          asc(modularResponses.disclosureIndex),
-        );
+      : scope === "human-m1"
+        ? await base.where(eq(experimentSessions.experimentalArm, "m1-main")).orderBy(...order)
+        : scope === "agent-console"
+          ? await base.where(inArray(experimentSessions.experimentalArm, [
+              "agent-disclosure",
+              "agent-framing",
+              "agent-cross-series",
+              "agent-robustness",
+            ])).orderBy(...order)
+          : scope === "m1"
+            ? await base.where(inArray(experimentSessions.experimentalArm, ["pilot-m1", "agent-pilot-m1"])).orderBy(...order)
+            : scope === "agent"
+              ? await base.where(eq(experimentSessions.actorType, "agent")).orderBy(...order)
+              : await base.orderBy(
+                  asc(experimentSessions.startedAt),
+                  asc(modularResponses.trialOrder),
+                  asc(modularResponses.disclosureIndex),
+                );
 
     const date = new Date().toISOString().slice(0, 10);
     const filename = `boundary-lab-${scope}-${date}.csv`;
