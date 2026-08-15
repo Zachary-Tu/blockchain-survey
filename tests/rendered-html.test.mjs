@@ -106,20 +106,62 @@ test("server-renders a standalone fixed M1 pilot without the researcher console"
   assert.doesNotMatch(html, /稳健性与对照/);
 });
 
+test("server-renders the two agent-native experiment entries", async () => {
+  const hub = await render("/agent");
+  assert.equal(hub.status, 200);
+  const hubHtml = await hub.text();
+  assert.match(hubHtml, /<title>Boundary Lab｜Agent 实验入口<\/title>/i);
+  assert.match(hubHtml, /M1 Agent 初批实验/);
+  assert.match(hubHtml, /Agent 模块控制台/);
+  assert.match(hubHtml, /受约束 JSON/);
+  assert.match(hubHtml, /\/agent\/pilot/);
+  assert.match(hubHtml, /\/agent\/console/);
+
+  const pilot = await render("/agent/pilot");
+  assert.equal(pilot.status, 200);
+  const pilotHtml = await pilot.text();
+  assert.match(pilotHtml, /<title>Boundary Lab｜M1 Agent 初批实验<\/title>/i);
+  assert.match(pilotHtml, /LOCKED_PROTOCOL/);
+  assert.match(pilotHtml, /T2 \/ 2 boundaries \/ 3 stages/);
+  assert.match(pilotHtml, /BTC, ETH, SOL, BNB \/ randomized/);
+  assert.match(pilotHtml, /expected responses/);
+  assert.match(pilotHtml, />28</);
+  assert.match(pilotHtml, /model_or_agent_name/);
+  assert.match(pilotHtml, /不得查看源代码、网络请求、完整数据包、未来披露或外部资料/);
+  assert.doesNotMatch(pilotHtml, /RESEARCHER CONSOLE/);
+  assert.doesNotMatch(pilotHtml, /本轮作答轨迹|你对这次划分有多大信心/);
+
+  const consoleResponse = await render("/agent/console");
+  assert.equal(consoleResponse.status, 200);
+  const consoleHtml = await consoleResponse.text();
+  assert.match(consoleHtml, /<title>Boundary Lab｜Agent 模块实验控制台<\/title>/i);
+  assert.match(consoleHtml, /EXPERIMENT_CONFIG/);
+  assert.match(consoleHtml, /信息披露主实验/);
+  assert.match(consoleHtml, /任务定义实验/);
+  assert.match(consoleHtml, /跨指标一致性/);
+  assert.match(consoleHtml, /稳健性与对照/);
+  assert.match(consoleHtml, /disclosure_path/);
+  assert.match(consoleHtml, /window_mode/);
+});
+
 test("server-renders the researcher CSV export hub", async () => {
   const response = await render("/research/results");
   assert.equal(response.status, 200);
   const html = await response.text();
 
   assert.match(html, /实验结果导出/);
-  assert.match(html, /下载 M1 初批 CSV/);
+  assert.match(html, /下载 M1 配对 CSV/);
+  assert.match(html, /下载 Agent CSV/);
+  assert.match(html, /下载人类 M1 CSV/);
   assert.match(html, /下载全部实验 CSV/);
-  assert.match(html, /研究者白名单/);
+  assert.match(html, /研究者白名单|服务器端研究者白名单/);
+  assert.match(html, /scope=m1/);
+  assert.match(html, /scope=agent/);
   assert.match(html, /scope=pilot/);
   assert.match(html, /scope=all/);
 });
 
-test("completes the full M1 API lifecycle and exports 28 persisted CSV rows", async () => {
+test("completes paired human and agent M1 lifecycles and exports 56 aligned CSV rows", async () => {
   const mf = await appMiniflare();
   try {
     const api = (pathname, init = {}) => mf.dispatchFetch(`http://localhost${pathname}`, init);
@@ -265,6 +307,114 @@ test("completes the full M1 API lifecycle and exports 28 persisted CSV rows", as
     assert.match(csv, /boundary_1_date,boundary_1_ratio,boundary_2_date,boundary_2_ratio/);
     assert.match(csv, /"包含,逗号与""引号"""/);
     assert.equal(csv.split("\r\n").length, 29);
+
+    const agentPlan = ["bitcoin", "ethereum", "solana", "bnb"].map((assetId, order) => ({
+      id: `agent-pilot-${assetId}`,
+      order,
+      disclosures: disclosureKeys,
+    }));
+    const agentSessionResponse = await api("/api/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        actorType: "agent",
+        participantCode: "AGENT-E2E-001",
+        expertise: "none",
+        modelName: "AgentModel-Test-1",
+        experimentalArm: "agent-pilot-m1",
+        protocolVersion: "boundary-lab-modular-v4",
+        studyConfig: {
+          entryMode: "agent-pilot",
+          agentInterfaceVersion: "agent-native-json-v1",
+          agentMetadata: { provider: "test", temperature: "0", promptVersion: "agent-protocol-v1" },
+          randomizedPlan: agentPlan,
+        },
+      }),
+    });
+    assert.equal(agentSessionResponse.status, 201, await agentSessionResponse.clone().text());
+    const { session: agentSession } = await agentSessionResponse.json();
+    assert.ok(agentSession.id);
+
+    for (const trial of agentPlan) {
+      for (let disclosureIndex = 0; disclosureIndex < disclosureKeys.length; disclosureIndex += 1) {
+        const disclosureKey = disclosureKeys[disclosureIndex];
+        const response = await api("/api/modular-responses", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            sessionId: agentSession.id,
+            trialId: trial.id,
+            trialOrder: trial.order,
+            responseVersion: "agent-v1",
+            moduleKey: "disclosure",
+            taskType: "T2",
+            stimulusType: "crypto",
+            assetId: trial.id.replace("agent-pilot-", ""),
+            metricType: "price",
+            resolution: "weekly",
+            scaleMode: "linear",
+            windowMode: "whole",
+            disclosureIndex,
+            disclosureKey,
+            disclosureState: { key: disclosureKey, agentInterfaceVersion: "agent-native-json-v1" },
+            stimulusWindow: { mode: "whole" },
+            cueSchemaVersion: "disclosure-specific-cues-v2",
+            boundaries,
+            previousBoundaries: disclosureIndex === 0 ? [] : boundaries,
+            boundaryIntervals,
+            singleStageConfirmed: false,
+            influenceRating: disclosureIndex === 0 ? null : 3,
+            influenceTouched: disclosureIndex > 0,
+            noChangeConfirmed: disclosureIndex > 0,
+            cueTags: [cueByDisclosure[disclosureKey]],
+            rationale: disclosureIndex === 6 ? "agent final rationale" : "",
+            elapsedMs: 900,
+            revealReadMs: 900,
+            firstMoveMs: null,
+            firstUncertaintyMs: null,
+            adjustmentCount: 0,
+            uncertaintyAdjustmentCount: 0,
+          }),
+        });
+        assert.equal(response.status, 201, await response.text());
+      }
+    }
+
+    const agentCompletion = await api("/api/sessions", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessionId: agentSession.id }),
+    });
+    assert.equal(agentCompletion.status, 200);
+    assert.deepEqual(await agentCompletion.json(), {
+      ok: true,
+      responseCount: 28,
+      expectedResponseCount: 28,
+    });
+
+    const agentExportResponse = await api("/api/research-export?scope=agent", {
+      headers: { "oai-authenticated-user-email": "researcher@example.com" },
+    });
+    assert.equal(agentExportResponse.status, 200, await agentExportResponse.clone().text());
+    assert.match(agentExportResponse.headers.get("content-disposition") ?? "", /boundary-lab-agent/);
+    const agentCsv = await agentExportResponse.text();
+    assert.equal(agentCsv.split("\r\n").length, 29);
+    assert.match(agentCsv, /agent-v1/);
+    assert.match(agentCsv, /agent-pilot-m1/);
+    assert.match(agentCsv, /AgentModel-Test-1/);
+    assert.doesNotMatch(agentCsv, /SYSTEM-E2E/);
+
+    const pairedExportResponse = await api("/api/research-export?scope=m1", {
+      headers: { "oai-authenticated-user-email": "researcher@example.com" },
+    });
+    assert.equal(pairedExportResponse.status, 200, await pairedExportResponse.clone().text());
+    assert.match(pairedExportResponse.headers.get("content-disposition") ?? "", /boundary-lab-m1/);
+    const pairedCsv = await pairedExportResponse.text();
+    assert.equal(pairedCsv.split("\r\n").length, 57);
+    assert.match(pairedCsv, /SYSTEM-E2E/);
+    assert.match(pairedCsv, /AGENT-E2E-001/);
+    assert.match(pairedCsv, /pilot-m1/);
+    assert.match(pairedCsv, /agent-pilot-m1/);
   } finally {
     await mf.dispose();
   }
@@ -293,6 +443,27 @@ test("implements a configuration-aware participant briefing without future discl
   assert.match(source, /我已了解，开始正式实验/);
   assert.match(source, /DISCLOSURE_PATHS\[disclosurePath\]\.length - 1/);
   assert.match(source, /participantBriefingVersion: isV4 \? "participant-briefing-v1"/);
+});
+
+test("keeps the agent boundary judgment separate from post-judgment annotations", async () => {
+  const source = await readFile(
+    new URL("../app/AgentExperiment.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(source, /responseStage === "annotation"\s*\? activeCueSet\.options/);
+  assert.match(source, /allowed_cue_tags:[\s\S]*?: null/);
+  assert.match(source, /VALIDATE BOUNDARIES \+ REVEAL ANNOTATION/);
+  assert.match(source, /先提交边界与不确定范围；通过校验后才会显示线索代码与影响评分/);
+  assert.match(source, /actorType: "agent"/);
+  assert.match(source, /responseVersion: "agent-v1"/);
+  assert.match(source, /agentInterfaceVersion: "agent-native-json-v1"/);
+  assert.match(source, /information_snapshot/);
+  assert.match(source, /robustness_factor/);
+  assert.match(source, /不得查看源代码、网络请求、完整数据包、未来披露或外部资料/);
+  assert.match(source, /firstMoveMs: null/);
+  assert.match(source, /adjustmentCount: 0/);
+  assert.doesNotMatch(source, /你对这次划分有多大信心/);
 });
 
 test("server-renders the researcher cue methodology and reference list", async () => {

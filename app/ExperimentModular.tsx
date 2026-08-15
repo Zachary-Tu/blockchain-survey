@@ -10,25 +10,25 @@ import {
   useState,
 } from "react";
 
-type ModuleKey = "disclosure" | "framing" | "cross-series" | "robustness";
-type TaskType = "T1" | "T2" | "T3";
-type MetricKey = "price" | "activeAddresses" | "googleTrends";
-type Resolution = "daily" | "weekly" | "monthly" | "yearly";
-type ScaleMode = "linear" | "log";
-type WindowMode = "whole" | "truncated";
-type DisclosurePath = "general" | "domain" | "combined";
-type DisclosureKey = "G0" | "GI1" | "GI2" | "DI1" | "DI2" | "DI3" | "DI4" | "FULL";
-type RobustnessFactor = "resolution" | "scale" | "window" | "controls";
+export type ModuleKey = "disclosure" | "framing" | "cross-series" | "robustness";
+export type TaskType = "T1" | "T2" | "T3";
+export type MetricKey = "price" | "activeAddresses" | "googleTrends";
+export type Resolution = "daily" | "weekly" | "monthly" | "yearly";
+export type ScaleMode = "linear" | "log";
+export type WindowMode = "whole" | "truncated";
+export type DisclosurePath = "general" | "domain" | "combined";
+export type DisclosureKey = "G0" | "GI1" | "GI2" | "DI1" | "DI2" | "DI3" | "DI4" | "FULL";
+export type RobustnessFactor = "resolution" | "scale" | "window" | "controls";
 type Phase = "setup" | "briefing" | "experiment" | "review" | "complete";
 type EntryMode = "console" | "pilot";
 
-type Point = { date: string; value: number };
-type ResolutionData = {
+export type Point = { date: string; value: number };
+export type ResolutionData = {
   points: Point[];
   referenceBoundaries: number[];
   referenceBoundariesByCount: Record<string, number[]>;
 };
-type MetricData = {
+export type MetricData = {
   name: string;
   shortName?: string;
   unit: string;
@@ -38,7 +38,7 @@ type MetricData = {
   source: Record<string, unknown>;
   resolutions: Partial<Record<Resolution, ResolutionData>>;
 };
-type EventAnnotation = {
+export type EventAnnotation = {
   date: string;
   title: string;
   description: string;
@@ -46,7 +46,7 @@ type EventAnnotation = {
   sourceUrl: string;
   priority: "high" | "low";
 };
-type Asset = {
+export type Asset = {
   id: string;
   name: string;
   nameZh: string;
@@ -55,7 +55,7 @@ type Asset = {
   events: EventAnnotation[];
   metrics: Record<MetricKey, MetricData>;
 };
-type ControlSeries = {
+export type ControlSeries = {
   id: string;
   kind: "cross-domain" | "null" | "ground-truth";
   name: string;
@@ -73,7 +73,7 @@ type ControlSeries = {
   knownBoundaries: string[];
   events: EventAnnotation[];
 };
-type Bundle = {
+export type Bundle = {
   protocolVersion: string;
   datasetVersion?: string;
   requestedWindow: { start: string; end: string };
@@ -82,7 +82,7 @@ type Bundle = {
   assets: Asset[];
   controls: ControlSeries[];
 };
-type TrialPlan = {
+export type TrialPlan = {
   id: string;
   order: number;
   module: ModuleKey;
@@ -96,8 +96,8 @@ type TrialPlan = {
   disclosures: DisclosureKey[];
   variantLabel: string;
 };
-type BoundaryRecord = { index: number; ratio: number; date: string };
-type IntervalRecord = {
+export type BoundaryRecord = { index: number; ratio: number; date: string };
+export type IntervalRecord = {
   boundaryIndex: number;
   centerRatio: number;
   halfWidthRatio: number;
@@ -142,15 +142,15 @@ type ModularAnswer = {
 };
 
 type ProtocolVariant = "v4" | "pre-v4";
-type CueOption = { code: string; label: string; exclusive?: boolean };
-type CueSet = {
+export type CueOption = { code: string; label: string; exclusive?: boolean };
+export type CueSet = {
   eyebrow: string;
   question: string;
   note: string;
   options: CueOption[];
 };
 
-const MODULES: Array<{
+export const MODULES: Array<{
   key: ModuleKey;
   number: string;
   title: string;
@@ -192,7 +192,7 @@ const MODULES: Array<{
   },
 ];
 
-const TASKS: Record<TaskType, { title: string; short: string; description: string }> = {
+export const TASKS: Record<TaskType, { title: string; short: string; description: string }> = {
   T1: {
     title: "自由决定阶段数量",
     short: "任意阶段",
@@ -210,10 +210,10 @@ const TASKS: Record<TaskType, { title: string; short: string; description: strin
   },
 };
 
-const STAGE_DEFINITION =
+export const STAGE_DEFINITION =
   "阶段是曲线在趋势方向、平均水平或波动结构上持续存在的相对稳定状态；短暂尖峰或单个异常点本身不足以构成独立阶段。";
 
-const DISCLOSURE_COPY: Record<DisclosureKey, { title: string; short: string; description: string }> = {
+export const DISCLOSURE_COPY: Record<DisclosureKey, { title: string; short: string; description: string }> = {
   G0: { title: "匿名曲线", short: "基线", description: "只显示曲线形状与完成任务所需的控件。" },
   GI1: { title: "序列类型", short: "GI1", description: "披露这是价格、活跃地址或搜索热度序列。" },
   GI2: { title: "时间与单位", short: "GI2", description: "在序列类型基础上披露真实时间轴与数值单位。" },
@@ -224,27 +224,27 @@ const DISCLOSURE_COPY: Record<DisclosureKey, { title: string; short: string; des
   FULL: { title: "完整信息包", short: "FULL", description: "同时显示序列类型、坐标、资产背景与全部事件。" },
 };
 
-const DISCLOSURE_PATHS: Record<DisclosurePath, DisclosureKey[]> = {
+export const DISCLOSURE_PATHS: Record<DisclosurePath, DisclosureKey[]> = {
   general: ["G0", "GI1", "GI2"],
   domain: ["G0", "DI1", "DI2", "DI3", "DI4"],
   combined: ["G0", "GI1", "GI2", "DI1", "DI2", "DI3", "DI4"],
 };
 
-const SNAPSHOT_OPTIONS: DisclosureKey[] = ["G0", "GI1", "GI2", "DI1", "DI2", "DI3", "DI4", "FULL"];
-const METRIC_LABEL: Record<MetricKey, string> = {
+export const SNAPSHOT_OPTIONS: DisclosureKey[] = ["G0", "GI1", "GI2", "DI1", "DI2", "DI3", "DI4", "FULL"];
+export const METRIC_LABEL: Record<MetricKey, string> = {
   price: "价格数据",
   activeAddresses: "活跃地址",
   googleTrends: "Google Trends Index",
 };
-const RESOLUTION_LABEL: Record<Resolution, string> = {
+export const RESOLUTION_LABEL: Record<Resolution, string> = {
   daily: "日频",
   weekly: "周频",
   monthly: "月频",
   yearly: "年频",
 };
 const LEGACY_CUES = ["趋势方向", "均值变化", "波动结构", "持续时间", "序列类型", "资产知识", "历史事件", "其他"];
-const CUE_SCHEMA_VERSION = "disclosure-specific-cues-v2";
-const CUE_SETS: Record<DisclosureKey, CueSet> = {
+export const CUE_SCHEMA_VERSION = "disclosure-specific-cues-v2";
+export const CUE_SETS: Record<DisclosureKey, CueSet> = {
   G0: {
     eyebrow: "仅依据曲线形状",
     question: "这次划分主要依据了哪些曲线线索？",
@@ -342,7 +342,7 @@ const CUE_SETS: Record<DisclosureKey, CueSet> = {
     ],
   },
 };
-const WIDTHS = [
+export const WIDTHS = [
   { value: 0.01, label: "很窄", width: "2%" },
   { value: 0.025, label: "较窄", width: "5%" },
   { value: 0.05, label: "中等", width: "10%" },
@@ -363,7 +363,7 @@ function shuffled<T>(items: T[]) {
   return copy;
 }
 
-function initialBoundaries(task: TaskType) {
+export function initialBoundaries(task: TaskType) {
   return task === "T1" ? [] : [1 / 3, 2 / 3];
 }
 
@@ -399,14 +399,14 @@ function nearestIndex(points: Point[], dateValue: string) {
   return best;
 }
 
-function boundaryRecords(values: number[], points: Point[]): BoundaryRecord[] {
+export function boundaryRecords(values: number[], points: Point[]): BoundaryRecord[] {
   return [...values].sort((a, b) => a - b).map((ratio) => {
     const index = clamp(Math.round(ratio * (points.length - 1)), 0, points.length - 1);
     return { index, ratio: Number(ratio.toFixed(6)), date: points[index].date };
   });
 }
 
-function intervalRecords(values: number[], widths: Array<number | null>, points: Point[]): IntervalRecord[] {
+export function intervalRecords(values: number[], widths: Array<number | null>, points: Point[]): IntervalRecord[] {
   return values.flatMap((centerRatio, boundaryIndex) => {
     const halfWidthRatio = widths[boundaryIndex];
     if (halfWidthRatio === null || halfWidthRatio === undefined) return [];
@@ -429,7 +429,7 @@ function intervalRecords(values: number[], widths: Array<number | null>, points:
   });
 }
 
-function disclosureVisibility(key: DisclosureKey, path: DisclosurePath) {
+export function disclosureVisibility(key: DisclosureKey, path: DisclosurePath) {
   const domainLevel = key.startsWith("DI") ? Number(key.slice(2)) : 0;
   const combinedDomain = path === "combined" && domainLevel > 0;
   return {
@@ -462,7 +462,7 @@ function eligibleAssets(bundle: Bundle, metric: MetricKey, resolution: Resolutio
   });
 }
 
-function makeTrialPlan(
+export function makeTrialPlan(
   bundle: Bundle,
   config: {
     module: ModuleKey;
@@ -656,7 +656,7 @@ function DisclosureSnapshot({ active }: { active: DisclosureKey }) {
   );
 }
 
-function ModularChart({
+export function ModularChart({
   points,
   metric,
   unit,
@@ -670,6 +670,7 @@ function ModularChart({
   taskType,
   onBoundariesChange,
   onBoundaryInteraction,
+  interactive = true,
 }: {
   points: Point[];
   metric: MetricKey;
@@ -684,6 +685,7 @@ function ModularChart({
   taskType: TaskType;
   onBoundariesChange: (values: number[]) => void;
   onBoundaryInteraction: () => void;
+  interactive?: boolean;
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const dragIndex = useRef<number | null>(null);
@@ -793,11 +795,11 @@ function ModularChart({
         className="mod-chart"
         viewBox={`0 0 ${width} ${height}`}
         role="img"
-        aria-label="用于阶段划分的交互式时间序列曲线"
-        onPointerDown={onCanvasPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={finishDrag}
-        onPointerCancel={finishDrag}
+        aria-label={interactive ? "用于阶段划分的交互式时间序列曲线" : "用于 Agent 阶段划分的时间序列曲线"}
+        onPointerDown={interactive ? onCanvasPointerDown : undefined}
+        onPointerMove={interactive ? onPointerMove : undefined}
+        onPointerUp={interactive ? finishDrag : undefined}
+        onPointerCancel={interactive ? finishDrag : undefined}
       >
         <defs>
           <linearGradient id="mod-area-gradient" x1="0" x2="0" y1="0" y2="1">
@@ -858,12 +860,12 @@ function ModularChart({
               key={`boundary-${index}`}
               data-boundary-handle
               className="mod-boundary-handle"
-              onPointerDown={(event) => {
+              onPointerDown={interactive ? (event) => {
                 event.stopPropagation();
                 dragIndex.current = index;
                 event.currentTarget.ownerSVGElement?.setPointerCapture?.(event.pointerId);
                 onBoundaryInteraction();
-              }}
+              } : undefined}
             >
               <line x1={xAt(ratio)} x2={xAt(ratio)} y1={margin.top} y2={margin.top + plotHeight} stroke="#153832" strokeWidth="3" strokeDasharray="7 6" />
               <rect x={xAt(ratio) - 43} y={margin.top - 45} width="86" height="34" rx="17" fill="#153832" />
@@ -888,7 +890,7 @@ function ModularChart({
         )}
       </svg>
       <div className="mod-chart-footnote">
-        <span>拖动分界线；点击曲线可快速移动最近的分界点</span>
+        <span>{interactive ? "拖动分界线；点击曲线可快速移动最近的分界点" : "Agent 通过右侧 JSON 精确提交分界位置"}</span>
         <span>{points.length.toLocaleString("zh-CN")} 个{RESOLUTION_LABEL[resolution]}观测值</span>
       </div>
     </div>
@@ -1639,6 +1641,7 @@ export function ExperimentModular({
             <p>在这里锁定实验条件；点击生成说明页后，再将设备交给参与者。</p>
             <div className="mod-operator-actions">
               <Link href="/pilot">打开 M1 初批入口 ↗</Link>
+              <Link href="/agent">Agent 实验入口 ↗</Link>
               <Link href="/research/results">结果导出 ↗</Link>
               <Link href="/methodology/cues">标签与文献依据 ↗</Link>
             </div>

@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { ensureExperimentSchema, getDb } from "@/db";
 import { experimentSessions, modularResponses } from "@/db/schema";
 import { buildCsv, type CsvColumn } from "@/lib/csv";
@@ -118,7 +118,10 @@ export async function GET(request: Request) {
   try {
     await ensureExperimentSchema();
     const url = new URL(request.url);
-    const scope = url.searchParams.get("scope") === "pilot" ? "pilot" : "all";
+    const requestedScope = url.searchParams.get("scope");
+    const scope = requestedScope === "pilot" || requestedScope === "m1" || requestedScope === "agent"
+      ? requestedScope
+      : "all";
     const base = getDb()
       .select({ session: experimentSessions, response: modularResponses })
       .from(modularResponses)
@@ -126,15 +129,18 @@ export async function GET(request: Request) {
         experimentSessions,
         eq(modularResponses.sessionId, experimentSessions.id),
       );
+    const order = [
+      asc(experimentSessions.startedAt),
+      asc(modularResponses.trialOrder),
+      asc(modularResponses.disclosureIndex),
+    ] as const;
     const rows = scope === "pilot"
-      ? await base
-          .where(eq(experimentSessions.experimentalArm, "pilot-m1"))
-          .orderBy(
-            asc(experimentSessions.startedAt),
-            asc(modularResponses.trialOrder),
-            asc(modularResponses.disclosureIndex),
-          )
-      : await base.orderBy(
+      ? await base.where(eq(experimentSessions.experimentalArm, "pilot-m1")).orderBy(...order)
+      : scope === "m1"
+        ? await base.where(inArray(experimentSessions.experimentalArm, ["pilot-m1", "agent-pilot-m1"])).orderBy(...order)
+        : scope === "agent"
+          ? await base.where(eq(experimentSessions.actorType, "agent")).orderBy(...order)
+          : await base.orderBy(
           asc(experimentSessions.startedAt),
           asc(modularResponses.trialOrder),
           asc(modularResponses.disclosureIndex),

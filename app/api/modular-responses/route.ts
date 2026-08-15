@@ -9,7 +9,7 @@ const RESOLUTIONS = new Set(["daily", "weekly", "monthly", "yearly"]);
 const SCALES = new Set(["linear", "log"]);
 const WINDOWS = new Set(["whole", "truncated"]);
 const DISCLOSURES = new Set(["G0", "GI1", "GI2", "DI1", "DI2", "DI3", "DI4", "FULL"]);
-const RESPONSE_VERSIONS = new Set(["v4", "pre-v4"]);
+const RESPONSE_VERSIONS = new Set(["v4", "pre-v4", "agent-v1"]);
 const V4_CUES_V1 = new Set([
   "curve_trend_slope",
   "curve_level_shift",
@@ -189,7 +189,7 @@ export async function POST(request: Request) {
       uncertaintyAdjustmentCount?: number;
     };
     const responseVersion = payload.responseVersion ?? "pre-v4";
-    const isV4Response = responseVersion === "v4";
+    const isStructuredResponse = responseVersion === "v4" || responseVersion === "agent-v1";
 
     if (
       !payload.sessionId ||
@@ -219,9 +219,9 @@ export async function POST(request: Request) {
       !Number.isInteger(payload.disclosureIndex) ||
       payload.disclosureIndex < 0 ||
       payload.disclosureIndex > 6 ||
-      (!isV4Response &&
+      (!isStructuredResponse &&
         (!finiteNumber(payload.confidence) || payload.confidence < 1 || payload.confidence > 5)) ||
-      (isV4Response && payload.confidence !== undefined) ||
+      (isStructuredResponse && payload.confidence !== undefined) ||
       !nonNegative(payload.elapsedMs) ||
       !nonNegative(payload.revealReadMs) ||
       !validOptionalTime(payload.firstMoveMs) ||
@@ -260,7 +260,7 @@ export async function POST(request: Request) {
     const cueSchema = payload.cueSchemaVersion ?? "";
     const activeV2Cues = V4_CUES_V2_BY_DISCLOSURE[payload.disclosureKey];
     const hasV2NoEffect = cueTags.some((tag) => typeof tag === "string" && tag.endsWith("_no_effect"));
-    const invalidV4Cues = isV4Response && (
+    const invalidV4Cues = isStructuredResponse && (
       !V4_CUE_SCHEMAS.has(cueSchema) ||
       (cueSchema === "visual-cpd-event-segmentation-v1" && cueTags.some((tag) => typeof tag !== "string" || !V4_CUES_V1.has(tag))) ||
       (cueSchema === "disclosure-specific-cues-v2" && (
@@ -277,7 +277,7 @@ export async function POST(request: Request) {
       (payload.cueTags !== undefined &&
         (!Array.isArray(payload.cueTags) || payload.cueTags.length > 16 || payload.cueTags.some((tag) => typeof tag !== "string"))) ||
       invalidV4Cues ||
-      (!isV4Response && payload.cueSchemaVersion !== undefined && payload.cueSchemaVersion.length > 80)
+      (!isStructuredResponse && payload.cueSchemaVersion !== undefined && payload.cueSchemaVersion.length > 80)
     ) {
       return Response.json({ error: "Invalid rating or cue values" }, { status: 400 });
     }
@@ -314,8 +314,8 @@ export async function POST(request: Request) {
         previousBoundariesJson: JSON.stringify(previousBoundaries),
         boundaryIntervalsJson: JSON.stringify(boundaryIntervals),
         singleStageConfirmed: payload.singleStageConfirmed === true,
-        confidence: isV4Response ? 0 : Math.trunc(payload.confidence ?? 0),
-        confidenceTouched: isV4Response ? false : payload.confidenceTouched === true,
+        confidence: isStructuredResponse ? 0 : Math.trunc(payload.confidence ?? 0),
+        confidenceTouched: isStructuredResponse ? false : payload.confidenceTouched === true,
         influenceRating:
           payload.influenceRating === null || payload.influenceRating === undefined
             ? null
