@@ -115,6 +115,46 @@
 .mod-operator-strip strong { font-size: 12px; }
 .mod-operator-strip p { margin: 0; color: rgba(255, 255, 255, 0.56); font-size: 11px; }
 .mod-operator-strip a { color: white; font-size: 10px; text-underline-offset: 3px; white-space: nowrap; }
+.mod-operator-actions { display: flex; align-items: center; justify-content: flex-end; gap: 15px; }
+
+/* Standalone M1 pilot entry */
+.mod-pilot-header-label { color: var(--mod-muted); font-family: var(--font-geist-mono), monospace; font-size: 10px; letter-spacing: .12em; }
+.mod-pilot-shell { width: min(1260px, 91vw); margin: 0 auto; padding: clamp(65px, 8vw, 118px) 0 70px; }
+.mod-pilot-hero { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(300px, .55fr); gap: 40px 80px; align-items: end; padding-bottom: 66px; border-bottom: 1px solid rgba(23, 59, 54, .18); }
+.mod-pilot-hero .mod-eyebrow { grid-column: 1 / -1; }
+.mod-pilot-hero h1 { margin: 0; font-family: Georgia, "Noto Serif SC", serif; font-size: clamp(58px, 7vw, 104px); font-weight: 500; letter-spacing: -.065em; line-height: 1.02; }
+.mod-pilot-hero p { margin: 0 0 10px; color: var(--mod-muted); font-size: 16px; line-height: 1.85; }
+.mod-pilot-protocol { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 18px 0; border-top: 1px solid rgba(23, 59, 54, .16); border-left: 1px solid rgba(23, 59, 54, .16); }
+.mod-pilot-protocol article { min-height: 205px; padding: 25px; border-right: 1px solid rgba(23, 59, 54, .16); border-bottom: 1px solid rgba(23, 59, 54, .16); background: rgba(255, 253, 248, .66); }
+.mod-pilot-protocol article > span { color: var(--mod-accent); font-family: var(--font-geist-mono), monospace; font-size: 10px; }
+.mod-pilot-protocol strong { display: block; margin-top: 48px; font-family: Georgia, "Noto Serif SC", serif; font-size: 25px; font-weight: 500; }
+.mod-pilot-protocol p { margin: 9px 0 0; color: var(--mod-muted); font-size: 11px; line-height: 1.7; }
+.mod-pilot-participant-card { display: grid; grid-template-columns: minmax(230px, .55fr) minmax(400px, 1fr); gap: 34px 70px; align-items: end; margin-top: 18px; padding: clamp(28px, 4vw, 54px); background: var(--mod-ink); color: white; }
+.mod-pilot-participant-card h2 { margin: 12px 0; font-family: Georgia, "Noto Serif SC", serif; font-size: 36px; font-weight: 500; }
+.mod-pilot-participant-card p { margin: 0; color: rgba(255, 255, 255, .58); font-size: 11px; line-height: 1.7; }
+.mod-pilot-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.mod-pilot-fields label { display: grid; gap: 7px; color: rgba(255, 255, 255, .62); font-size: 10px; }
+.mod-pilot-fields input, .mod-pilot-fields select { width: 100%; min-height: 50px; padding: 0 14px; border: 1px solid rgba(255, 255, 255, .3); border-radius: 0; outline: 0; background: rgba(255, 255, 255, .07); color: white; }
+.mod-pilot-fields select option { color: var(--mod-ink); background: white; }
+.mod-pilot-participant-card .mod-start { grid-column: 2; margin: 0; border-color: white; background: white; color: var(--mod-ink); }
+.mod-pilot-participant-card .mod-error { grid-column: 2; margin: -10px 0 0; }
+.mod-pilot-privacy { margin: 18px 0 0; color: var(--mod-muted); font-family: var(--font-geist-mono), monospace; font-size: 9px; text-align: center; letter-spacing: .05em; }
+
+/* Research-only CSV export */
+.mod-research-export-shell { width: min(1120px, 90vw); margin: 0 auto; padding: clamp(70px, 9vw, 130px) 0 90px; }
+.mod-research-export-shell > h1 { margin: 17px 0 24px; font-family: Georgia, "Noto Serif SC", serif; font-size: clamp(56px, 7vw, 94px); font-weight: 500; letter-spacing: -.06em; line-height: 1; }
+.mod-research-export-shell > p { max-width: 760px; margin: 0; color: var(--mod-muted); font-size: 15px; line-height: 1.85; }
+.mod-research-export-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 58px; }
+.mod-research-export-grid article { min-height: 300px; display: flex; flex-direction: column; padding: 30px; border: 1px solid rgba(23, 59, 54, .18); background: var(--mod-card); }
+.mod-research-export-grid article > span { color: var(--mod-accent); font-family: var(--font-geist-mono), monospace; font-size: 10px; letter-spacing: .1em; }
+.mod-research-export-grid h2 { margin: 55px 0 10px; font-family: Georgia, "Noto Serif SC", serif; font-size: 30px; font-weight: 500; }
+.mod-research-export-grid p { margin: 0; color: var(--mod-muted); font-size: 11px; line-height: 1.7; }
+.mod-research-export-grid code { color: var(--mod-accent); }
+.mod-research-export-grid a { width: max-content; margin-top: auto; padding: 12px 16px; background: var(--mod-ink); color: white; font-size: 11px; text-decoration: none; }
+.mod-research-export-shell aside { display: grid; grid-template-columns: 150px 1fr; gap: 25px; margin-top: 10px; padding: 23px 27px; border-left: 4px solid var(--mod-accent); background: rgba(255, 253, 248, .72); }
+.mod-research-export-shell aside strong { color: var(--mod-accent); font-size: 11px; }
+.mod-research-export-shell aside p { margin: 0; color: var(--mod-muted); font-size: 11px; line-height: 1.7; }
+.mod-review-error { width: min(420px, 90vw); margin: 24px auto 0; text-align: center; }
 
 .mod-hero {
   min-height: 660px;
@@ -1443,6 +1483,12 @@
   .mod-briefing-consent { grid-template-columns: 1fr 1fr; }
   .mod-briefing-consent .mod-start { grid-column: 1 / -1; }
   .mod-method-sets { grid-template-columns: 1fr; }
+  .mod-operator-strip { grid-template-columns: auto auto 1fr; }
+  .mod-operator-actions { grid-column: 1 / -1; justify-content: flex-start; }
+  .mod-pilot-hero { grid-template-columns: 1fr; }
+  .mod-pilot-hero .mod-eyebrow { grid-column: auto; }
+  .mod-pilot-participant-card { grid-template-columns: 1fr; }
+  .mod-pilot-participant-card .mod-start, .mod-pilot-participant-card .mod-error { grid-column: auto; }
 }
 
 @media (max-width: 680px) {
@@ -1485,6 +1531,15 @@
   .mod-method-sets li p, .mod-method-sets li small { grid-column: auto; }
   .mod-method-references > ol > li { grid-template-columns: 35px 1fr; }
   .mod-method-references li a { grid-column: 2; }
+  .mod-operator-actions { flex-wrap: wrap; }
+  .mod-pilot-shell { width: calc(100vw - 36px); padding-top: 55px; }
+  .mod-pilot-hero { gap: 25px; padding-bottom: 42px; }
+  .mod-pilot-hero h1 { font-size: 52px; }
+  .mod-pilot-protocol, .mod-pilot-fields, .mod-research-export-grid { grid-template-columns: 1fr; }
+  .mod-pilot-protocol article { min-height: 170px; }
+  .mod-pilot-protocol strong { margin-top: 30px; }
+  .mod-pilot-participant-card { padding: 25px; }
+  .mod-research-export-shell aside { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

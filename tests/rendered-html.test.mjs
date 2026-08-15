@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
+import path from "node:path";
 import test from "node:test";
+import { Miniflare } from "miniflare";
 
 async function render(pathname = "/") {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -21,6 +23,34 @@ async function render(pathname = "/") {
       passThroughOnException() {},
     },
   );
+}
+
+async function appMiniflare() {
+  const root = path.resolve("dist");
+  async function walk(directory = "") {
+    const files = [];
+    for (const entry of await readdir(path.join(root, directory), { withFileTypes: true })) {
+      const relative = path.join(directory, entry.name);
+      if (entry.isDirectory()) files.push(...await walk(relative));
+      else if (/\.m?js$/.test(entry.name)) files.push(relative.replaceAll("\\", "/"));
+    }
+    return files;
+  }
+
+  const files = await walk();
+  const ordered = ["server/index.js", ...files.filter((file) => file !== "server/index.js")];
+  const modules = await Promise.all(ordered.map(async (modulePath) => ({
+    type: "ESModule",
+    path: modulePath,
+    contents: await readFile(path.join(root, modulePath), "utf8"),
+  })));
+  return new Miniflare({
+    modules,
+    compatibilityDate: "2026-05-15",
+    compatibilityFlags: ["nodejs_compat"],
+    d1Databases: ["DB"],
+    bindings: { RESEARCHER_EMAILS: "researcher@example.com" },
+  });
 }
 
 test("server-renders the modular research platform", async () => {
@@ -56,6 +86,199 @@ test("server-renders the modular research platform", async () => {
   assert.doesNotMatch(html, /我已阅读并理解以上说明/);
   assert.doesNotMatch(html, /你对这次划分有多大信心/);
   assert.doesNotMatch(html, /codex-preview|starter loading skeleton/i);
+});
+
+test("server-renders a standalone fixed M1 pilot without the researcher console", async () => {
+  const response = await render("/pilot");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+
+  assert.match(html, /<title>Boundary Lab｜M1 初批实验<\/title>/i);
+  assert.match(html, /M1 · 初批实验/);
+  assert.match(html, /观察曲线/);
+  assert.match(html, /四条时间序列/);
+  assert.match(html, /匿名参与者编号/);
+  assert.match(html, /进入实验说明/);
+  assert.doesNotMatch(html, /RESEARCHER CONSOLE/);
+  assert.doesNotMatch(html, /选择实验模块/);
+  assert.doesNotMatch(html, /任务定义实验/);
+  assert.doesNotMatch(html, /跨指标一致性/);
+  assert.doesNotMatch(html, /稳健性与对照/);
+});
+
+test("server-renders the researcher CSV export hub", async () => {
+  const response = await render("/research/results");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+
+  assert.match(html, /实验结果导出/);
+  assert.match(html, /下载 M1 初批 CSV/);
+  assert.match(html, /下载全部实验 CSV/);
+  assert.match(html, /研究者白名单/);
+  assert.match(html, /scope=pilot/);
+  assert.match(html, /scope=all/);
+});
+
+test("completes the full M1 API lifecycle and exports 28 persisted CSV rows", async () => {
+  const mf = await appMiniflare();
+  try {
+    const api = (pathname, init = {}) => mf.dispatchFetch(`http://localhost${pathname}`, init);
+
+    const disclosureKeys = ["G0", "GI1", "GI2", "DI1", "DI2", "DI3", "DI4"];
+    const plan = ["bitcoin", "ethereum", "solana", "bnb"].map((assetId, order) => ({
+      id: `pilot-${assetId}`,
+      order,
+      disclosures: disclosureKeys,
+    }));
+    const incompleteSessionResponse = await api("/api/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        actorType: "human",
+        participantCode: "SYSTEM-INCOMPLETE",
+        expertise: "none",
+        experimentalArm: "test-incomplete",
+        protocolVersion: "boundary-lab-modular-v4",
+        studyConfig: { randomizedPlan: [{ disclosures: ["G0"] }] },
+      }),
+    });
+    assert.equal(incompleteSessionResponse.status, 201);
+    const { session: incompleteSession } = await incompleteSessionResponse.json();
+    const prematureCompletion = await api("/api/sessions", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessionId: incompleteSession.id }),
+    });
+    assert.equal(prematureCompletion.status, 409);
+    assert.deepEqual(await prematureCompletion.json(), {
+      error: "Session responses are incomplete",
+      responseCount: 0,
+      expectedResponseCount: 1,
+    });
+
+    const sessionResponse = await api("/api/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        actorType: "human",
+        participantCode: "SYSTEM-E2E",
+        expertise: "none",
+        experimentalArm: "pilot-m1",
+        protocolVersion: "boundary-lab-modular-v4",
+        studyConfig: { entryMode: "pilot", randomizedPlan: plan },
+      }),
+    });
+    assert.equal(sessionResponse.status, 201);
+    const { session } = await sessionResponse.json();
+    assert.ok(session.id);
+
+    const boundaries = [
+      { index: 10, ratio: 0.3, date: "2021-01-01" },
+      { index: 20, ratio: 0.7, date: "2023-01-01" },
+    ];
+    const boundaryIntervals = [
+      { boundaryIndex: 0, centerRatio: 0.3, halfWidthRatio: 0.05, widthRatio: 0.1, lowerRatio: 0.25, upperRatio: 0.35, lowerIndex: 8, upperIndex: 12, lowerDate: "2020-10-01", upperDate: "2021-04-01" },
+      { boundaryIndex: 1, centerRatio: 0.7, halfWidthRatio: 0.05, widthRatio: 0.1, lowerRatio: 0.65, upperRatio: 0.75, lowerIndex: 18, upperIndex: 22, lowerDate: "2022-10-01", upperDate: "2023-04-01" },
+    ];
+    const cueByDisclosure = {
+      G0: "g0_trend_slope",
+      GI1: "gi1_metric_meaning",
+      GI2: "gi2_calendar_location",
+      DI1: "di1_asset_category",
+      DI2: "di2_launch_maturity",
+      DI3: "di3_event_proximity",
+      DI4: "di4_boundary_refinement",
+    };
+
+    for (const trial of plan) {
+      for (let disclosureIndex = 0; disclosureIndex < disclosureKeys.length; disclosureIndex += 1) {
+        const disclosureKey = disclosureKeys[disclosureIndex];
+        const response = await api("/api/modular-responses", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            sessionId: session.id,
+            trialId: trial.id,
+            trialOrder: trial.order,
+            responseVersion: "v4",
+            moduleKey: "disclosure",
+            taskType: "T2",
+            stimulusType: "crypto",
+            assetId: trial.id.replace("pilot-", ""),
+            metricType: "price",
+            resolution: "weekly",
+            scaleMode: "linear",
+            windowMode: "whole",
+            disclosureIndex,
+            disclosureKey,
+            disclosureState: { key: disclosureKey },
+            stimulusWindow: { mode: "whole" },
+            cueSchemaVersion: "disclosure-specific-cues-v2",
+            boundaries,
+            previousBoundaries: disclosureIndex === 0 ? [] : boundaries,
+            boundaryIntervals,
+            singleStageConfirmed: false,
+            influenceRating: disclosureIndex === 0 ? null : 3,
+            influenceTouched: disclosureIndex > 0,
+            noChangeConfirmed: disclosureIndex > 0,
+            cueTags: [cueByDisclosure[disclosureKey]],
+            rationale: disclosureIndex === 1 ? "包含,逗号与\"引号\"" : "",
+            elapsedMs: 1200,
+            revealReadMs: 300,
+            firstMoveMs: 400,
+            firstUncertaintyMs: 500,
+            adjustmentCount: 2,
+            uncertaintyAdjustmentCount: 2,
+          }),
+        });
+        assert.equal(response.status, 201, await response.text());
+      }
+    }
+
+    const completion = await api("/api/sessions", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessionId: session.id }),
+    });
+    assert.equal(completion.status, 200);
+    assert.deepEqual(await completion.json(), {
+      ok: true,
+      responseCount: 28,
+      expectedResponseCount: 28,
+    });
+
+    const forbiddenExport = await api("/api/research-export?scope=pilot", {
+      headers: { "oai-authenticated-user-email": "participant@example.com" },
+    });
+    assert.equal(forbiddenExport.status, 403);
+
+    const exportResponse = await api("/api/research-export?scope=pilot", {
+      headers: { "oai-authenticated-user-email": "researcher@example.com" },
+    });
+    assert.equal(exportResponse.status, 200, await exportResponse.clone().text());
+    assert.match(exportResponse.headers.get("content-type") ?? "", /^text\/csv/i);
+    assert.match(exportResponse.headers.get("content-disposition") ?? "", /boundary-lab-pilot/);
+    const csvBytes = new Uint8Array(await exportResponse.arrayBuffer());
+    assert.deepEqual([...csvBytes.slice(0, 3)], [0xef, 0xbb, 0xbf]);
+    const csv = new TextDecoder().decode(csvBytes);
+    assert.match(csv, /session_id,session_status/);
+    assert.match(csv, /boundary_1_date,boundary_1_ratio,boundary_2_date,boundary_2_ratio/);
+    assert.match(csv, /"包含,逗号与""引号"""/);
+    assert.equal(csv.split("\r\n").length, 29);
+  } finally {
+    await mf.dispose();
+  }
+});
+
+test("rejects unauthenticated aggregate CSV access before touching the database", async () => {
+  const mf = await appMiniflare();
+  try {
+    const response = await mf.dispatchFetch("http://localhost/api/research-export?scope=all");
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), { error: "Researcher sign-in is required" });
+  } finally {
+    await mf.dispose();
+  }
 });
 
 test("implements a configuration-aware participant briefing without future disclosure leakage", async () => {

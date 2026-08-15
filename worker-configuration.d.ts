@@ -2,5 +2,6 @@
 declare namespace Cloudflare {
   interface Env {
     DB: D1Database;
+    RESEARCHER_EMAILS: string;
   }
 }

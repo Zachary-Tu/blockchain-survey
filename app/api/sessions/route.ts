@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { count, eq } from "drizzle-orm";
 import { ensureExperimentSchema, getDb } from "@/db";
-import { experimentSessions } from "@/db/schema";
+import { experimentSessions, modularResponses } from "@/db/schema";
 
 const EXPERTISE = new Set(["none", "casual", "active", "professional"]);
 const ACTOR_TYPES = new Set(["human", "agent"]);
@@ -59,11 +59,58 @@ export async function PATCH(request: Request) {
       return Response.json({ error: "sessionId is required" }, { status: 400 });
     }
     await ensureExperimentSchema();
-    await getDb()
+    const [session] = await getDb()
+      .select({
+        id: experimentSessions.id,
+        status: experimentSessions.status,
+        studyConfigJson: experimentSessions.studyConfigJson,
+      })
+      .from(experimentSessions)
+      .where(eq(experimentSessions.id, payload.sessionId))
+      .limit(1);
+    if (!session) {
+      return Response.json({ error: "Session not found" }, { status: 404 });
+    }
+
+    let expectedResponseCount = 0;
+    try {
+      const config = JSON.parse(session.studyConfigJson) as {
+        randomizedPlan?: Array<{ disclosures?: unknown[] }>;
+      };
+      expectedResponseCount = Array.isArray(config.randomizedPlan)
+        ? config.randomizedPlan.reduce(
+            (sum, trial) =>
+              sum + (Array.isArray(trial.disclosures) ? trial.disclosures.length : 0),
+            0,
+          )
+        : 0;
+    } catch {
+      expectedResponseCount = 0;
+    }
+
+    const [responseTotal] = await getDb()
+      .select({ value: count() })
+      .from(modularResponses)
+      .where(eq(modularResponses.sessionId, payload.sessionId));
+    const responseCount = responseTotal?.value ?? 0;
+    if (expectedResponseCount > 0 && responseCount !== expectedResponseCount) {
+      return Response.json(
+        {
+          error: "Session responses are incomplete",
+          responseCount,
+          expectedResponseCount,
+        },
+        { status: 409 },
+      );
+    }
+
+    if (session.status !== "complete") {
+      await getDb()
       .update(experimentSessions)
       .set({ status: "complete", completedAt: new Date().toISOString() })
       .where(eq(experimentSessions.id, payload.sessionId));
-    return Response.json({ ok: true });
+    }
+    return Response.json({ ok: true, responseCount, expectedResponseCount });
   } catch (error) {
     return Response.json({ error: message(error) }, { status: 500 });
   }

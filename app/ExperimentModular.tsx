@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { buildCsv } from "@/lib/csv";
 import {
   PointerEvent as ReactPointerEvent,
   useCallback,
@@ -19,6 +20,7 @@ type DisclosurePath = "general" | "domain" | "combined";
 type DisclosureKey = "G0" | "GI1" | "GI2" | "DI1" | "DI2" | "DI3" | "DI4" | "FULL";
 type RobustnessFactor = "resolution" | "scale" | "window" | "controls";
 type Phase = "setup" | "briefing" | "experiment" | "review" | "complete";
+type EntryMode = "console" | "pilot";
 
 type Point = { date: string; value: number };
 type ResolutionData = {
@@ -121,7 +123,22 @@ type ModularAnswer = {
   singleStageConfirmed: boolean;
   confidence?: number;
   influenceRating: number | null;
+  influenceTouched: boolean;
+  noChangeConfirmed: boolean;
+  cueTags: string[];
+  rationale: string;
+  stimulusType: string;
+  resolution: Resolution;
+  scaleMode: ScaleMode;
+  windowMode: WindowMode;
+  disclosureState: Record<string, unknown>;
+  stimulusWindow: Record<string, unknown>;
   elapsedMs: number;
+  revealReadMs: number;
+  firstMoveMs: number | null;
+  firstUncertaintyMs: number | null;
+  adjustmentCount: number;
+  uncertaintyAdjustmentCount: number;
 };
 
 type ProtocolVariant = "v4" | "pre-v4";
@@ -1054,6 +1071,53 @@ function downloadJson(filename: string, value: unknown) {
   URL.revokeObjectURL(url);
 }
 
+function downloadText(filename: string, value: string, type: string) {
+  const blob = new Blob([value], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function downloadSessionCsv(sessionId: string, answers: ModularAnswer[]) {
+  const csv = buildCsv(answers, [
+    { key: "session_id", value: () => sessionId },
+    { key: "trial_id", value: (row) => row.trialId },
+    { key: "trial_order", value: (row) => row.trialOrder },
+    { key: "disclosure_index", value: (row) => row.disclosureIndex },
+    { key: "disclosure_key", value: (row) => row.disclosureKey },
+    { key: "task_type", value: (row) => row.taskType },
+    { key: "stimulus_type", value: (row) => row.stimulusType },
+    { key: "asset_id", value: (row) => row.assetId },
+    { key: "metric_type", value: (row) => row.metric },
+    { key: "resolution", value: (row) => row.resolution },
+    { key: "scale_mode", value: (row) => row.scaleMode },
+    { key: "window_mode", value: (row) => row.windowMode },
+    { key: "boundaries_json", value: (row) => JSON.stringify(row.boundaries) },
+    { key: "previous_boundaries_json", value: (row) => JSON.stringify(row.previousBoundaries) },
+    { key: "boundary_intervals_json", value: (row) => JSON.stringify(row.boundaryIntervals) },
+    { key: "single_stage_confirmed", value: (row) => row.singleStageConfirmed },
+    { key: "influence_rating", value: (row) => row.influenceRating },
+    { key: "influence_touched", value: (row) => row.influenceTouched },
+    { key: "no_change_confirmed", value: (row) => row.noChangeConfirmed },
+    { key: "cue_tags_json", value: (row) => JSON.stringify(row.cueTags) },
+    { key: "rationale", value: (row) => row.rationale },
+    { key: "elapsed_ms", value: (row) => row.elapsedMs },
+    { key: "reveal_read_ms", value: (row) => row.revealReadMs },
+    { key: "first_move_ms", value: (row) => row.firstMoveMs },
+    { key: "first_uncertainty_ms", value: (row) => row.firstUncertaintyMs },
+    { key: "adjustment_count", value: (row) => row.adjustmentCount },
+    { key: "uncertainty_adjustment_count", value: (row) => row.uncertaintyAdjustmentCount },
+    { key: "disclosure_state_json", value: (row) => JSON.stringify(row.disclosureState) },
+    { key: "stimulus_window_json", value: (row) => JSON.stringify(row.stimulusWindow) },
+  ]);
+  downloadText(`boundary-lab-${sessionId}.csv`, csv, "text/csv;charset=utf-8");
+}
+
 function sameNumbers(first: number[], second: number[]) {
   return first.length === second.length && first.every((value, index) => Math.abs(value - second[index]) < 0.00001);
 }
@@ -1075,10 +1139,13 @@ function participantVariantLabel(
 
 export function ExperimentModular({
   protocolVariant = "v4",
+  entryMode = "console",
 }: {
   protocolVariant?: ProtocolVariant;
+  entryMode?: EntryMode;
 }) {
   const isV4 = protocolVariant === "v4";
+  const isPilot = entryMode === "pilot";
   const editionMark = isV4 ? "04" : "06";
   const [bundle, setBundle] = useState<Bundle | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -1250,7 +1317,7 @@ export function ExperimentModular({
         actorType,
         participantCode,
         expertise,
-        experimentalArm: moduleKey,
+        experimentalArm: isPilot ? "pilot-m1" : moduleKey,
         protocolVersion: bundle.protocolVersion,
         modelName: actorType === "agent" ? modelName : null,
         studyConfig: {
@@ -1268,6 +1335,8 @@ export function ExperimentModular({
           participantBriefingVersion: isV4 ? "participant-briefing-v1" : null,
           cueSchemaVersion: isV4 ? CUE_SCHEMA_VERSION : "legacy-cues-v1",
           cueTaxonomyUrl: isV4 ? "/data/cue-taxonomy-v4-v2.json" : null,
+          entryMode,
+          pilotProtocol: isPilot ? "m1-pilot-v1" : null,
           randomizedPlan: nextPlan,
         },
       }),
@@ -1282,6 +1351,9 @@ export function ExperimentModular({
     setBusy(true);
     setError("");
     try {
+      if (isPilot && !participantCode.trim()) {
+        throw new Error("请输入研究者提供的匿名参与者编号。");
+      }
       const nextPlan = makeTrialPlan(bundle, {
         module: moduleKey,
         taskType,
@@ -1384,6 +1456,15 @@ export function ExperimentModular({
         ...(visibility.lowEvents ? ["low"] : []),
       ],
     };
+    const stimulusWindow = {
+      mode: currentTrial.windowMode,
+      source: sourceWindow,
+      displayed: displayedWindow,
+      curatedRule: currentTrial.windowMode === "truncated" ? bundle.curatedWindow ?? { start: curatedStart, end: curatedEnd } : null,
+    };
+    const revealReadMs = Math.round((firstMoveAt.current ?? firstUncertaintyAt.current ?? now) - stepStartedAt.current);
+    const firstMoveMs = firstMoveAt.current === null ? null : Math.round(firstMoveAt.current - stepStartedAt.current);
+    const firstUncertaintyMs = firstUncertaintyAt.current === null ? null : Math.round(firstUncertaintyAt.current - stepStartedAt.current);
     try {
       const response = await fetch("/api/modular-responses", {
         method: "POST",
@@ -1404,12 +1485,7 @@ export function ExperimentModular({
           disclosureKey: currentDisclosure,
           disclosureState,
           responseVersion: isV4 ? "v4" : "pre-v4",
-          stimulusWindow: {
-            mode: currentTrial.windowMode,
-            source: sourceWindow,
-            displayed: displayedWindow,
-            curatedRule: currentTrial.windowMode === "truncated" ? bundle.curatedWindow ?? { start: curatedStart, end: curatedEnd } : null,
-          },
+          stimulusWindow,
           cueSchemaVersion: isV4 ? CUE_SCHEMA_VERSION : "legacy-cues-v1",
           boundaries: currentBoundaryRecords,
           previousBoundaries: previousAnswer?.boundaries ?? [],
@@ -1423,9 +1499,9 @@ export function ExperimentModular({
           cueTags,
           rationale,
           elapsedMs,
-          revealReadMs: Math.round((firstMoveAt.current ?? firstUncertaintyAt.current ?? now) - stepStartedAt.current),
-          firstMoveMs: firstMoveAt.current === null ? null : Math.round(firstMoveAt.current - stepStartedAt.current),
-          firstUncertaintyMs: firstUncertaintyAt.current === null ? null : Math.round(firstUncertaintyAt.current - stepStartedAt.current),
+          revealReadMs,
+          firstMoveMs,
+          firstUncertaintyMs,
           adjustmentCount,
           uncertaintyAdjustmentCount,
         }),
@@ -1446,7 +1522,22 @@ export function ExperimentModular({
         singleStageConfirmed,
         confidence: isV4 ? undefined : confidence,
         influenceRating: currentTrial.module === "disclosure" && disclosureIndex > 0 ? influence : null,
+        influenceTouched: currentTrial.module === "disclosure" && disclosureIndex > 0 ? influenceTouched : false,
+        noChangeConfirmed,
+        cueTags,
+        rationale,
+        stimulusType,
+        resolution: currentTrial.resolution,
+        scaleMode: currentTrial.scaleMode,
+        windowMode: currentTrial.windowMode,
+        disclosureState,
+        stimulusWindow,
         elapsedMs,
+        revealReadMs,
+        firstMoveMs,
+        firstUncertaintyMs,
+        adjustmentCount,
+        uncertaintyAdjustmentCount,
       };
       setAnswers((value) => [...value, answer]);
       if (disclosureIndex < currentTrial.disclosures.length - 1) {
@@ -1472,15 +1563,20 @@ export function ExperimentModular({
       return;
     }
     setBusy(true);
+    setError("");
     try {
-      await fetch("/api/sessions", {
+      const response = await fetch("/api/sessions", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId }),
       });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "会话完成状态写入失败");
+      setPhase("complete");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "会话完成状态写入失败");
     } finally {
       setBusy(false);
-      setPhase("complete");
     }
   };
 
@@ -1488,6 +1584,42 @@ export function ExperimentModular({
 
   if (phase === "setup") {
     const snapshotOptions = moduleKey === "robustness" ? SNAPSHOT_OPTIONS.slice(0, 3) : SNAPSHOT_OPTIONS;
+    if (isPilot) {
+      return (
+        <main className="mod-site mod-pilot-entry">
+          <header className="mod-topbar">
+            <span className="mod-wordmark"><span>BOUNDARY</span> LAB <b>04</b></span>
+            <span className="mod-pilot-header-label">M1 · 初批实验</span>
+          </header>
+          <section className="mod-pilot-shell">
+            <div className="mod-pilot-hero">
+              <span className="mod-eyebrow">M1 PILOT · PARTICIPANT ENTRY</span>
+              <h1>观察曲线，<br />标出你眼中的阶段。</h1>
+              <p>你将对四条时间序列进行判断。系统会先显示匿名曲线，再逐步加入信息；每一步都请根据当前画面重新确认两个分界点。</p>
+            </div>
+            <div className="mod-pilot-protocol" aria-label="本次实验流程摘要">
+              <article><span>01</span><strong>固定三阶段</strong><p>每次用两个分界点，把曲线划分为三个阶段。</p></article>
+              <article><span>02</span><strong>四条匿名曲线</strong><p>每条曲线包含 1 次基线判断与 6 次信息更新。</p></article>
+              <article><span>03</span><strong>逐步独立提交</strong><p>每次提交都会立即保存，提交后不能返回修改。</p></article>
+            </div>
+            <section className="mod-pilot-participant-card">
+              <div>
+                <span className="mod-eyebrow">BEFORE YOU BEGIN</span>
+                <h2>输入匿名编号</h2>
+                <p>请使用研究者提供的编号，不要填写真实姓名。下一页会说明完整操作方式并征求匿名记录同意。</p>
+              </div>
+              <div className="mod-pilot-fields">
+                <label><span>匿名参与者编号</span><input value={participantCode} maxLength={64} onChange={(event) => setParticipantCode(event.target.value)} placeholder="例如 P-001" autoComplete="off" /></label>
+                <label><span>相关经验</span><select value={expertise} onChange={(event) => setExpertise(event.target.value)}><option value="none">无相关经验</option><option value="casual">偶尔关注</option><option value="active">持续参与</option><option value="professional">专业研究/从业</option></select></label>
+              </div>
+              {(loadError || error) && <p className="mod-error" role="alert">{loadError || error}</p>}
+              <button className="mod-start" type="button" onClick={begin} disabled={!bundle || busy || Boolean(loadError)}>{busy ? "正在生成随机实验序列…" : "进入实验说明"}<span>→</span></button>
+            </section>
+            <p className="mod-pilot-privacy">不采集真实姓名 · 后续实验信息不会在作答前提前显示</p>
+          </section>
+        </main>
+      );
+    }
     return (
       <main className="mod-site">
         <header className="mod-topbar">
@@ -1505,7 +1637,11 @@ export function ExperimentModular({
             <span>RESEARCHER CONSOLE</span>
             <strong>研究者操作台 · 不向被测试者展示</strong>
             <p>在这里锁定实验条件；点击生成说明页后，再将设备交给参与者。</p>
-            <Link href="/methodology/cues">标签与文献依据 ↗</Link>
+            <div className="mod-operator-actions">
+              <Link href="/pilot">打开 M1 初批入口 ↗</Link>
+              <Link href="/research/results">结果导出 ↗</Link>
+              <Link href="/methodology/cues">标签与文献依据 ↗</Link>
+            </div>
           </div>
         )}
 
@@ -1783,7 +1919,7 @@ export function ExperimentModular({
               <span>03 · 本次流程</span>
               <h2>{plan.length} 条实验曲线</h2>
               {moduleKey === "disclosure" ? (
-                <p>每条曲线先完成 1 次匿名基线判断，随后经历 <strong>{disclosureUpdates} 次</strong>逐层信息更新。也就是操作台所选的 {disclosureUpdates} 步披露，另加 1 次基线判断。</p>
+                <p>每条曲线先完成 1 次匿名基线判断，随后经历 <strong>{disclosureUpdates} 次</strong>逐层信息更新。也就是{isPilot ? "本次初批协议预设的" : "操作台所选的"} {disclosureUpdates} 步披露，另加 1 次基线判断。</p>
               ) : (
                 <p>每条曲线只使用一个固定的信息状态，不会在同一轮中逐层追加内容。</p>
               )}
@@ -1868,6 +2004,7 @@ export function ExperimentModular({
           <article className="mod-review-stat"><small>平均不确定范围</small><strong>{(averageRange * 100).toFixed(1)}<em>% 时间窗</em></strong><p>范围越宽，表示你对精确边界位置保留越多余量</p></article>
           <article className="mod-review-stat"><small>阶段数量</small><strong>{(last?.boundaries.length ?? first?.boundaries.length ?? 0) + 1}<em> 个阶段</em></strong><p>{first && last && first.boundaries.length !== last.boundaries.length ? `从 ${first.boundaries.length + 1} 个阶段修正为 ${last.boundaries.length + 1} 个阶段` : "本轮阶段数量保持稳定"}</p></article>
         </section>
+        {error && <p className="mod-error mod-review-error" role="alert">{error}</p>}
         <button className="mod-start mod-review-next" type="button" onClick={continueAfterReview} disabled={busy}>{trialIndex < plan.length - 1 ? "进入下一条曲线" : "完成本次模块"}<span>→</span></button>
       </main>
     );
@@ -1878,12 +2015,13 @@ export function ExperimentModular({
       <main className="mod-site mod-complete-page">
         <section>
           <span className="mod-eyebrow">SESSION COMPLETE</span>
-          <h1>{currentModule.number} 模块已完成。</h1>
+          <h1>{isPilot ? "M1 初批实验已完成。" : `${currentModule.number} 模块已完成。`}</h1>
           <p>共记录 {answers.length} 次判断，覆盖 {plan.length} 条实验曲线。浏览器中的副本可以下载，服务器端记录已与会话编号关联。</p>
           <div className="mod-session-code"><span>SESSION ID</span><code>{sessionId}</code></div>
           <div className="mod-complete-actions">
+            <button type="button" onClick={() => downloadSessionCsv(sessionId, answers)}>下载本次 CSV</button>
             <button type="button" onClick={() => downloadJson(`boundary-lab-${sessionId}.json`, { protocolVersion: bundle.protocolVersion, sessionId, module: currentModule, plan, answers })}>下载本次 JSON</button>
-            <button type="button" onClick={() => window.location.reload()}>返回模块首页</button>
+            <button type="button" onClick={() => window.location.reload()}>{isPilot ? "返回初批入口" : "返回模块首页"}</button>
           </div>
         </section>
       </main>
