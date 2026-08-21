@@ -220,8 +220,14 @@ function moveHeuristic(
   score += adjacentOpponent * 2.1 + adjacentOwn * 1.2;
   if (group.liberties.length === 1) score -= 22;
   if (moveNumber < size * 1.7) {
-    score += size >= 13 ? edgeDistance * 1.4 : Math.max(0, size / 2 - centerDistance) * 1.1;
-    if (size >= 13 && edgeDistance > 1 && edgeDistance < 5) score += 3.5;
+    if (size >= 13) {
+      if (edgeDistance === 3) score += 9;
+      else if (edgeDistance === 2) score += 6;
+      else if (edgeDistance === 4) score += 3;
+      else if (edgeDistance <= 1) score -= 5;
+    } else {
+      score += Math.max(0, size / 2 - centerDistance) * 1.1;
+    }
   }
   if (moveNumber > size * 2.2) score += adjacentOwn + adjacentOpponent;
   return score;
@@ -254,8 +260,11 @@ function rolloutValue(
   for (let turn = 0; turn < depth; turn += 1) {
     const moves = listLegalMoves(current, color, hashes);
     if (!moves.length) break;
-    const sampled = moves[Math.floor(Math.random() * moves.length)];
-    const result = playMove(current, color, sampled, hashes);
+    const best = moves
+      .map((point) => ({ point, score: moveHeuristic(current, color, point, hashes, hashes.length) }))
+      .sort((left, right) => right.score - left.score)[0]?.point;
+    if (!best) break;
+    const result = playMove(current, color, best, hashes);
     if (!result.valid) break;
     current = result.board;
     hashes.push(boardHash(current));
@@ -276,26 +285,20 @@ export function chooseAiMove(
   const legalMoves = listLegalMoves(board, aiColor, positionHistory);
   if (!legalMoves.length) return null;
 
-  const noiseByOpponent: Record<GoOpponent["id"], number> = {
-    normal: 25,
-    hero: 10,
-    emperor: 4,
-    saiyan: 1.6,
-  };
   const scored = legalMoves.map((point) => ({
     point,
-    score: moveHeuristic(board, aiColor, point, positionHistory, moveNumber)
-      + (Math.random() - 0.5) * noiseByOpponent[opponentId],
+    score: moveHeuristic(board, aiColor, point, positionHistory, moveNumber),
   }));
   scored.sort((left, right) => right.score - left.score);
 
   if (opponentId === "normal") {
-    const pool = scored.slice(0, Math.min(14, scored.length));
-    return pool[Math.floor(Math.random() * pool.length)].point;
+    const tacticalGap = scored[1] ? scored[0].score - scored[1].score : Infinity;
+    if (tacticalGap >= 9) return scored[0].point;
+    return scored[Math.min(moveNumber % 3, scored.length - 1)].point;
   }
   if (opponentId === "hero") {
-    const pool = scored.slice(0, Math.min(6, scored.length));
-    return pool[Math.floor(Math.random() * Math.min(3, pool.length))].point;
+    const tacticalGap = scored[1] ? scored[0].score - scored[1].score : Infinity;
+    return tacticalGap >= 5 ? scored[0].point : scored[Math.min(moveNumber % 2, scored.length - 1)].point;
   }
 
   const candidateLimit = opponentId === "saiyan" ? 10 : 7;

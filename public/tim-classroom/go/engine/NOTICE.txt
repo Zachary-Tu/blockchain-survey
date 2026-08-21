@@ -1,0 +1,25 @@
+Tim 围棋小课堂的浏览器端 AI 使用 Web KaTrain 的 KataGo 风格神经网络与
+MCTS 搜索实现。前两档使用其随项目提供的小型 KataGo 测试模型；后两档
+使用 KataGo Training 公布的 b10c128-s1141046784-d204142634 网络：
+https://katagotraining.org/
+https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-b10c128-s1141046784-d204142634.txt.gz
+
+b10 文件仅从官方文本权重转换为 Web KaTrain 所需的 @BIN@ Float32 序列化，
+网络结构与数值权重未作训练或修改。转换脚本位于 scripts/convert-katago-text-model.ts。
+
+Web KaTrain
+Copyright (c) 2026 Web KaTrain Contributors
+https://github.com/Sir-Teo/web-katrain
+License: MIT
+
+KataGo
+Copyright (c) David J. Wu and contributors
+https://github.com/lightvector/KataGo
+License: MIT
+
+TensorFlow.js
+https://github.com/tensorflow/tfjs
+License: Apache-2.0
+
+完整第三方源代码与许可可通过上述项目链接查看。本课堂的题目局面与中文讲解
+为本项目原创，并未复制第三方教学网站的题目或题解。

@@ -15,6 +15,30 @@ export type GoLevel = {
 export type GoPoint = { row: number; col: number };
 export type GoSetupStone = GoPoint & { color: 1 | 2 };
 
+export type GoPuzzleTask =
+  | "capture"
+  | "save"
+  | "connect"
+  | "cut"
+  | "ladder"
+  | "net"
+  | "tesuji"
+  | "life"
+  | "kill"
+  | "capturing-race"
+  | "shape"
+  | "joseki"
+  | "opening"
+  | "middle-game"
+  | "endgame"
+  | "whole-board";
+
+export type GoPuzzleRefutation = {
+  move: GoPoint;
+  response: GoPoint[];
+  explanation: string;
+};
+
 type GoQuestionBase = {
   id: string;
   family: string;
@@ -31,11 +55,18 @@ export type GoChoiceQuestion = GoQuestionBase & {
 
 export type GoBoardQuestion = GoQuestionBase & {
   type: "board";
+  task: GoPuzzleTask;
   boardSize: number;
   stones: GoSetupStone[];
-  correctMoves: GoPoint[];
-  sequence: GoPoint[];
   toPlay: 1 | 2;
+  /** Alternating moves beginning with `toPlay`. Every line is a complete valid variation. */
+  solutionLines: GoPoint[][];
+  /** Teaching notes corresponding to the canonical line, one note per move where available. */
+  stepNotes: string[];
+  hint: string;
+  success: string;
+  failure: string;
+  refutations: GoPuzzleRefutation[];
 };
 
 export type GoQuestion = GoChoiceQuestion | GoBoardQuestion;
@@ -47,4 +78,6 @@ export type GoOpponent = {
   description: string;
   image: string;
   color: string;
+  estimatedRank: string;
+  enginePlan: string;
 };

@@ -9,14 +9,18 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "vinext start",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs",
+    "test": "npm run build && node --test tests/rendered-html.test.mjs && npm run test:go",
+    "test:go": "tsx --test tests/go-ai-assets.test.ts tests/go-engine.test.ts tests/go-question-bank.test.ts",
+    "go:model:convert": "tsx scripts/convert-katago-text-model.ts",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",
     "react": "19.2.6",
-    "react-dom": "19.2.6"
+    "react-dom": "19.2.6",
+    "web-katrain-engine": "https://github.com/Sir-Teo/web-katrain/archive/58825d66ef5dfcf31eb7b75759e25ce04571bc02.tar.gz"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",
@@ -37,6 +41,7 @@
     "globals": "16.4.0",
     "react-server-dom-webpack": "19.2.6",
     "tailwindcss": "4.2.1",
+    "tsx": "4.22.1",
     "typescript": "5.9.3",
     "typescript-eslint": "8.59.3",
     "vinext": "1.0.0-beta.2",
