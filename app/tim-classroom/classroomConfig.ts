@@ -1,9 +1,10 @@
 import type { DifficultyKey, Question, QuestionBank } from "./quizTypes";
+import { convexQuestions } from "./convexQuestions";
 import { graphQuestions } from "./graphQuestions";
 import { loveQuestions } from "./loveQuestions";
 import { sportsQuestions } from "./sportsQuestions";
 
-export type CourseKey = "sports" | "graph" | "love";
+export type CourseKey = "sports" | "graph" | "convex" | "love";
 
 export type DifficultyProfile = {
   label: string;
@@ -30,6 +31,14 @@ export type ReportProfile = {
   grades: Array<{ min: number; label: string; note: string }>;
 };
 
+export type CourseImages = {
+  home: string;
+  card: string;
+  difficulty: string;
+  quiz: [string, string, string, string, string, string, string, string, string, string];
+  result: string;
+};
+
 export type Course = {
   key: CourseKey;
   eyebrow: string;
@@ -37,7 +46,7 @@ export type Course = {
   shortTitle: string;
   description: string;
   detail: string;
-  image: string;
+  images: CourseImages;
   greetings: Record<DifficultyKey, string>;
   difficulties: Record<DifficultyKey, DifficultyProfile>;
   report: ReportProfile;
@@ -59,7 +68,24 @@ export const courses: Course[] = [
     shortTitle: "运动",
     description: "测试体育与训练判断力",
     detail: "规则 · 训练 · 运动科学",
-    image: "/tim-classroom/tim-sports.png",
+    images: {
+      home: "/tim-classroom/poses/sports-home.png",
+      card: "/tim-classroom/tim-sports.png",
+      difficulty: "/tim-classroom/poses/sports-level.png",
+      quiz: [
+        "/tim-classroom/poses/sports-q01.png",
+        "/tim-classroom/poses/sports-q02.png",
+        "/tim-classroom/poses/sports-q03.png",
+        "/tim-classroom/poses/sports-q04.png",
+        "/tim-classroom/poses/sports-q05.png",
+        "/tim-classroom/poses/sports-q06.png",
+        "/tim-classroom/poses/sports-q07.png",
+        "/tim-classroom/poses/sports-q08.png",
+        "/tim-classroom/poses/sports-q09.png",
+        "/tim-classroom/poses/sports-q10.png",
+      ],
+      result: "/tim-classroom/poses/sports-result.png",
+    },
     greetings: {
       middle: "普通人也能稳稳开局：先从赛场常识和运动安全开始。",
       university: "健身高手局：把训练原理放进具体情境里判断。",
@@ -115,7 +141,24 @@ export const courses: Course[] = [
     shortTitle: "图论",
     description: "测试图神经网络知识",
     detail: "图基础 · 消息传递 · GNN",
-    image: "/tim-classroom/tim-study.png",
+    images: {
+      home: "/tim-classroom/poses/graph-home.png",
+      card: "/tim-classroom/tim-study.png",
+      difficulty: "/tim-classroom/poses/graph-level.png",
+      quiz: [
+        "/tim-classroom/poses/graph-q01.png",
+        "/tim-classroom/poses/graph-q02.png",
+        "/tim-classroom/poses/graph-q03.png",
+        "/tim-classroom/poses/graph-q04.png",
+        "/tim-classroom/poses/graph-q05.png",
+        "/tim-classroom/poses/graph-q06.png",
+        "/tim-classroom/poses/graph-q07.png",
+        "/tim-classroom/poses/graph-q08.png",
+        "/tim-classroom/poses/graph-q09.png",
+        "/tim-classroom/poses/graph-q10.png",
+      ],
+      result: "/tim-classroom/poses/graph-result.png",
+    },
     greetings: {
       middle: "小学生局也要认真连边：先抓住节点、路径和邻居。",
       university: "大学生局开始消息传递，想清楚信息如何聚合。",
@@ -165,13 +208,103 @@ export const courses: Course[] = [
     questionBank: graphQuestions,
   },
   {
+    key: "convex",
+    eyebrow: "CONVEX 301",
+    title: "凸函数小课堂",
+    shortTitle: "凸函数",
+    description: "测试凸优化课程知识",
+    detail: "凸集 · 对偶 · 优化算法",
+    images: {
+      home: "/tim-classroom/poses/convex-home.png",
+      card: "/tim-classroom/poses/convex-card.png",
+      difficulty: "/tim-classroom/poses/convex-level.png",
+      quiz: [
+        "/tim-classroom/poses/convex-q01.png",
+        "/tim-classroom/poses/convex-q02.png",
+        "/tim-classroom/poses/convex-q03.png",
+        "/tim-classroom/poses/convex-q04.png",
+        "/tim-classroom/poses/convex-q05.png",
+        "/tim-classroom/poses/convex-q06.png",
+        "/tim-classroom/poses/convex-q07.png",
+        "/tim-classroom/poses/convex-q08.png",
+        "/tim-classroom/poses/convex-q09.png",
+        "/tim-classroom/poses/convex-q10.png",
+      ],
+      result: "/tim-classroom/poses/convex-result.png",
+    },
+    greetings: {
+      middle: "凸萌新局先看形状：抓住线段、曲率和全局最优的直觉。",
+      university: "优化高手局开始建模：一阶条件、对偶与近端方法都要连起来。",
+      phd: "优化大师局进入理论区：次梯度、锥对偶与收敛率逐项拆解。",
+    },
+    difficulties: {
+      middle: {
+        label: "凸萌新",
+        english: "CONVEX STARTER",
+        level: "几何入门",
+        description: "从凸集、凸函数和全局最优出发",
+        focus: "识别 · 直觉 · 基础算法",
+      },
+      university: {
+        label: "优化高手",
+        english: "OPTIMIZATION PRO",
+        level: "建模进阶",
+        description: "理解条件、对偶与标准问题形式",
+        focus: "建模 · KKT · 近端方法",
+      },
+      phd: {
+        label: "优化大师",
+        english: "OPTIMIZATION MASTER",
+        level: "理论挑战",
+        description: "挑战凸分析、锥规划与收敛理论",
+        focus: "对偶 · 算法 · 理论边界",
+      },
+    },
+    report: {
+      title: "凸优化能力报告",
+      english: "CONVEX OPTIMIZATION PROFILE",
+      scoreLabel: "凸优化指数",
+      disclaimer: "本报告基于凸优化课程知识题，只反映本轮知识与推理表现，不等同于正式课程成绩、学位水平或科研能力评定。",
+      dimensions: [
+        { key: "geometry", label: "凸性几何", description: "凸集、锥与几何结构理解", color: "#41d9ca", tip: "把集合画出来，并逐次检查任意两点连线是否仍在集合内。" },
+        { key: "functions", label: "函数判别", description: "曲率、保凸运算与最优性条件", color: "#73a7ff", tip: "交替使用定义、一阶条件与 Hessian 条件判断凸性。" },
+        { key: "duality", label: "建模对偶", description: "标准形式、KKT 与对偶证书", color: "#a77bff", tip: "先统一约束符号，再逐项写出可行性、驻点性和互补松弛。" },
+        { key: "algorithms", label: "算法收敛", description: "梯度、近端与内点方法理解", color: "#ffc857", tip: "比较每种算法的更新式、适用结构、步长条件和典型收敛率。" },
+      ],
+      grades: [
+        { min: 90, label: "凸优化架构师", note: "从几何到对偶、从 KKT 到算法，你已经把整门课连成了一张清晰知识图。" },
+        { min: 70, label: "KKT 解题高手", note: "核心框架掌握扎实，补齐报告中的薄弱维度后就能更稳定地处理复杂建模。" },
+        { min: 50, label: "凸性探索者", note: "你已经抓住凸优化的主要直觉，沿着错题复盘定义与条件会提升很快。" },
+        { min: 0, label: "可行域新手", note: "先从凸集和 Jensen 不等式起步。Tim 已把本轮需要补的知识点整理在报告里。" },
+      ],
+    },
+    questionBank: convexQuestions,
+  },
+  {
     key: "love",
-    eyebrow: "LOVE 301",
+    eyebrow: "LOVE 401",
     title: "恋爱小课堂",
     shortTitle: "恋爱",
     description: "测试健康关系判断力",
     detail: "沟通 · 边界 · 关系洞察",
-    image: "/tim-classroom/tim-love.png",
+    images: {
+      home: "/tim-classroom/poses/love-home.png",
+      card: "/tim-classroom/tim-love.png",
+      difficulty: "/tim-classroom/poses/love-level.png",
+      quiz: [
+        "/tim-classroom/poses/love-q01.png",
+        "/tim-classroom/poses/love-q02.png",
+        "/tim-classroom/poses/love-q03.png",
+        "/tim-classroom/poses/love-q04.png",
+        "/tim-classroom/poses/love-q05.png",
+        "/tim-classroom/poses/love-q06.png",
+        "/tim-classroom/poses/love-q07.png",
+        "/tim-classroom/poses/love-q08.png",
+        "/tim-classroom/poses/love-q09.png",
+        "/tim-classroom/poses/love-q10.png",
+      ],
+      result: "/tim-classroom/poses/love-result.png",
+    },
     greetings: {
       middle: "母单局不考套路：尊重、同意和边界才是起点。",
       university: "恋爱高手局别急着下结论，先分清感受、需要和行为。",
@@ -232,6 +365,11 @@ const dimensionLayouts: Record<CourseKey, Record<DifficultyKey, string[]>> = {
     middle: "structure structure logic structure logic logic logic structure structure structure structure model logic model model model model model evidence evidence".split(" "),
     university: "model model model logic logic logic structure logic model evidence structure evidence model model model logic model logic evidence evidence".split(" "),
     phd: "model model model logic structure structure evidence evidence evidence model logic model logic logic structure model evidence evidence evidence evidence".split(" "),
+  },
+  convex: {
+    middle: "duality geometry geometry geometry functions functions functions functions geometry functions geometry geometry duality duality functions functions algorithms algorithms algorithms duality".split(" "),
+    university: "functions functions functions functions functions functions functions functions duality duality duality duality duality duality functions algorithms algorithms algorithms duality geometry".split(" "),
+    phd: "functions functions geometry duality duality geometry duality duality duality duality algorithms algorithms algorithms algorithms algorithms algorithms algorithms algorithms algorithms functions".split(" "),
   },
   love: {
     middle: "boundaries communication boundaries empathy insight communication empathy boundaries boundaries boundaries empathy boundaries empathy boundaries boundaries insight insight communication boundaries insight".split(" "),

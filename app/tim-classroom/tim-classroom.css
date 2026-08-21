@@ -31,6 +31,7 @@
 
 .tim-phone[data-course="sports"] { --tc-accent: #fb5a42; --tc-accent-2: #ed3675; }
 .tim-phone[data-course="graph"] { --tc-accent: #6371ff; --tc-accent-2: #8b55e8; }
+.tim-phone[data-course="convex"] { --tc-accent: #20c9b0; --tc-accent-2: #3c8cf4; }
 .tim-phone[data-course="love"] { --tc-accent: #c93eb9; --tc-accent-2: #f55091; }
 
 .tim-grid {
@@ -135,10 +136,13 @@
   box-shadow: 0 14px 30px rgba(0, 0, 0, 0.26);
 }
 
-.tim-avatar + .tim-avatar { margin-left: -8px; }
-.tim-avatar:nth-child(2) { z-index: 2; width: 82px; height: 82px; }
-.tim-avatar:first-child { transform: rotate(-4deg); }
-.tim-avatar:last-child { transform: rotate(4deg); }
+.tim-avatar + .tim-avatar { margin-left: -9px; }
+.tim-avatar:nth-child(2),
+.tim-avatar:nth-child(3) { z-index: 2; width: 78px; height: 78px; }
+.tim-avatar:nth-child(1) { transform: rotate(-6deg); }
+.tim-avatar:nth-child(2) { transform: rotate(-2deg); }
+.tim-avatar:nth-child(3) { transform: rotate(2deg); }
+.tim-avatar:nth-child(4) { transform: rotate(6deg); }
 
 .tim-avatar img {
   max-height: 72px;
@@ -147,9 +151,11 @@
   filter: drop-shadow(0 7px 9px rgba(0,0,0,0.45));
 }
 
-.tim-avatar:nth-child(2) img { max-height: 80px; }
+.tim-avatar:nth-child(2) img,
+.tim-avatar:nth-child(3) img { max-height: 76px; }
 .tim-avatar-sports { background: linear-gradient(155deg, rgba(255, 103, 74, .16), rgba(255,255,255,.02)); }
-.tim-avatar-study { background: linear-gradient(155deg, rgba(78, 119, 255, .22), rgba(255,255,255,.02)); }
+.tim-avatar-graph { background: linear-gradient(155deg, rgba(78, 119, 255, .22), rgba(255,255,255,.02)); }
+.tim-avatar-convex { background: linear-gradient(155deg, rgba(32, 201, 176, .22), rgba(255,255,255,.02)); }
 .tim-avatar-love { background: linear-gradient(155deg, rgba(255, 75, 145, .18), rgba(255,255,255,.02)); }
 
 .tim-course-list {
@@ -188,6 +194,7 @@
 
 .tim-course-sports { background: linear-gradient(115deg, #fa593f, #e73273); }
 .tim-course-graph { background: linear-gradient(115deg, #5968ff, #8351e9); }
+.tim-course-convex { background: linear-gradient(115deg, #0aa993, #2879d7); }
 .tim-course-love { background: linear-gradient(115deg, #b137b8, #f04f91); }
 
 .tim-course::after {
@@ -1278,6 +1285,7 @@
 .tim-rank-bars b { display: block; height: 100%; border-radius: inherit; }
 .tim-rank-bars .bar-sports { background: linear-gradient(90deg, #fa593f, #e73273); }
 .tim-rank-bars .bar-graph { background: linear-gradient(90deg, #5968ff, #8351e9); }
+.tim-rank-bars .bar-convex { background: linear-gradient(90deg, #0aa993, #2879d7); }
 .tim-rank-bars .bar-love { background: linear-gradient(90deg, #b137b8, #f04f91); }
 
 .tim-class-fact {

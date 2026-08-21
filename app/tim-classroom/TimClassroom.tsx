@@ -23,10 +23,19 @@ type DimensionStat = {
 const sampleScores = [
   { label: "运动小课堂", rate: 82, color: "sports" },
   { label: "图论小课堂", rate: 68, color: "graph" },
+  { label: "凸函数小课堂", rate: 76, color: "convex" },
   { label: "恋爱小课堂", rate: 88, color: "love" },
 ];
 
 const optionLetters = ["A", "B", "C", "D"];
+const totalQuestionCount = courses.reduce(
+  (courseTotal, item) => courseTotal + difficultyOrder.reduce(
+    (difficultyTotal, key) => difficultyTotal + item.questionBank[key].length,
+    0,
+  ),
+  0,
+);
+const totalBankCount = courses.length * difficultyOrder.length;
 
 function getGrade(report: ReportProfile, score: number) {
   return report.grades.find((grade) => score >= grade.min) ?? report.grades[report.grades.length - 1];
@@ -55,6 +64,10 @@ export function TimClassroom() {
     [courseKey],
   );
   const difficulty = course.difficulties[difficultyKey];
+  const courseQuestionCount = difficultyOrder.reduce(
+    (total, key) => total + course.questionBank[key].length,
+    0,
+  );
   const fallbackQuestion: QuizQuestion = {
     ...course.questionBank[difficultyKey][0],
     sourceIndex: 0,
@@ -224,12 +237,14 @@ export function TimClassroom() {
             <div className="tim-hero">
               <p className="tim-kicker">TIM CLASS · RANDOM 10</p>
               <h1 id="tim-classroom-title">Tim小课堂</h1>
-              <p>三门课程、三档挑战。随机答 10 题，生成你的专属能力报告。</p>
+              <p>四门课程、三档挑战。随机答 10 题，生成你的专属能力报告。</p>
 
               <div className="tim-avatar-row" aria-hidden="true">
-                <span className="tim-avatar tim-avatar-sports"><img src="/tim-classroom/tim-sports.png" alt="" /></span>
-                <span className="tim-avatar tim-avatar-study"><img src="/tim-classroom/tim-study.png" alt="" /></span>
-                <span className="tim-avatar tim-avatar-love"><img src="/tim-classroom/tim-love.png" alt="" /></span>
+                {courses.map((item) => (
+                  <span className={`tim-avatar tim-avatar-${item.key}`} key={item.key}>
+                    <img src={item.images.home} alt="" />
+                  </span>
+                ))}
               </div>
             </div>
 
@@ -250,7 +265,7 @@ export function TimClassroom() {
                     <em>{item.detail}</em>
                   </span>
                   <span className="tim-course-count">3 档 · 随机 10 题</span>
-                  <img src={item.image} alt="" aria-hidden="true" />
+                  <img src={item.images.card} alt="" aria-hidden="true" />
                   <span className="tim-course-arrow" aria-hidden="true">→</span>
                 </button>
               ))}
@@ -261,9 +276,9 @@ export function TimClassroom() {
             </button>
 
             <footer className="tim-footer">
-              <span>9 套题库 · 每次分维度随机 10 题</span>
+              <span>{totalBankCount} 套题库 · 每次分维度随机 10 题</span>
               <span>每次重测都会重新抽题，答完生成能力报告。</span>
-              <small>© TIM CLASSROOM · v3.0 · 180 题池</small>
+              <small>© TIM CLASSROOM · v4.0 · {totalQuestionCount} 题池</small>
             </footer>
           </>
         )}
@@ -273,11 +288,11 @@ export function TimClassroom() {
             <header className="tim-quiz-topbar">
               <button type="button" onClick={goHome}>← 课程</button>
               <span>{course.eyebrow}</span>
-              <span>60 题池</span>
+              <span>{courseQuestionCount} 题池</span>
             </header>
 
             <section className="tim-difficulty-hero" aria-labelledby="tim-difficulty-heading">
-              <div className="tim-difficulty-mascot" aria-hidden="true"><img src={course.image} alt="" /></div>
+              <div className="tim-difficulty-mascot" aria-hidden="true"><img src={course.images.difficulty} alt="" /></div>
               <p className="tim-kicker">CHOOSE YOUR LEVEL</p>
               <h1 id="tim-difficulty-heading">{course.title}</h1>
               <p>每一档从独立的 20 题池中随机抽取 10 题。</p>
@@ -328,7 +343,7 @@ export function TimClassroom() {
             </div>
 
             <div className="tim-teacher">
-              <div className="tim-teacher-image" aria-hidden="true"><img src={course.image} alt="" /></div>
+              <div className="tim-teacher-image" aria-hidden="true"><img src={course.images.quiz[questionIndex]} alt="" /></div>
               <div className="tim-speech">
                 <small>TIM 老师说 · {difficulty.level}</small>
                 <p>{questionIndex === 0 ? course.greetings[difficultyKey] : "点选即作答。看清条件，答案会马上告诉你。"}</p>
@@ -399,7 +414,7 @@ export function TimClassroom() {
               <p className="tim-kicker">{course.report.english}</p>
               <div className="tim-result-mascot" aria-hidden="true">
                 <span className="tim-confetti">✦</span>
-                <img src={course.image} alt="" />
+                <img src={course.images.result} alt="" />
                 <span className="tim-confetti">✦</span>
               </div>
               <div
@@ -539,7 +554,7 @@ export function TimClassroom() {
               </div>
               <div className="tim-class-fact">
                 <img src="/tim-classroom/tim-smile.png" alt="微笑的 Tim" />
-                <p><strong>Tim 的观察</strong>现在每门课都会随机抽 10 题，并生成四维能力报告。</p>
+                <p><strong>Tim 的观察</strong>四门小课堂都会随机抽 10 题，并生成四维能力报告。</p>
               </div>
               <button className="tim-next-button" type="button" onClick={() => setShowScoreboard(false)}><span>知道了，去答题</span><span>→</span></button>
             </section>

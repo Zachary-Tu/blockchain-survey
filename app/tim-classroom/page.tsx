@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { TimClassroom } from "./TimClassroom";
 import "./tim-classroom.css";
 
-const title = "Tim小课堂｜随机10题与三类能力报告";
+const title = "Tim小课堂｜四门随机10题与能力报告";
 const description =
-  "跟着像素 Tim 从 180 题池随机挑战 10 题，即时查看对错，并生成图论 IQ、恋爱情商或体育运动能力报告。";
+  "跟着不同动作的像素 Tim 从 240 题池随机挑战 10 题，即时查看对错，并生成体育、图论、凸优化或恋爱能力报告。";
 
 export const metadata: Metadata = {
   title,
@@ -16,10 +16,10 @@ export const metadata: Metadata = {
     locale: "zh_CN",
     images: [
       {
-        url: "/tim-classroom/og-tim-classroom.png",
+        url: "/tim-classroom/og-tim-classroom-v2.png",
         width: 1536,
         height: 1024,
-        alt: "Tim小课堂：随机10题与图论IQ、恋爱情商、体育运动能力报告",
+        alt: "Tim小课堂：四门随机10题与体育、图论、凸优化、恋爱能力报告",
       },
     ],
   },
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title,
     description,
-    images: ["/tim-classroom/og-tim-classroom.png"],
+    images: ["/tim-classroom/og-tim-classroom-v2.png"],
   },
 };
 

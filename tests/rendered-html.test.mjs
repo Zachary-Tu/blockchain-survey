@@ -90,6 +90,23 @@ test("server-renders the modular research platform", async () => {
   assert.doesNotMatch(html, /codex-preview|starter loading skeleton/i);
 });
 
+test("server-renders Tim Classroom with four randomized course tracks", async () => {
+  const response = await render("/tim-classroom");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+
+  assert.match(html, /<title>Tim小课堂｜四门随机10题与能力报告<\/title>/i);
+  assert.match(html, /四门课程、三档挑战/);
+  assert.match(html, /运动小课堂/);
+  assert.match(html, /图论小课堂/);
+  assert.match(html, /凸函数小课堂/);
+  assert.match(html, /恋爱小课堂/);
+  assert.match(html, /12(?:<!-- -->)? 套题库/);
+  assert.match(html, /240(?:<!-- -->)? 题池/);
+  assert.match(html, /og-tim-classroom-v2\.png/);
+  assert.doesNotMatch(html, /三门课程|180 题池/);
+});
+
 test("server-renders a standalone fixed M1 pilot without the researcher console", async () => {
   const response = await render("/pilot");
   assert.equal(response.status, 200);
