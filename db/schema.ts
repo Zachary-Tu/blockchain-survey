@@ -191,3 +191,79 @@ export const stageDecisions = sqliteTable(
     ),
   ],
 );
+
+export const goLearners = sqliteTable(
+  "go_learners",
+  {
+    id: text("id").primaryKey(),
+    nickname: text("nickname").notNull(),
+    accessCodeHash: text("access_code_hash").notNull(),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    lastSeenAt: text("last_seen_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [index("idx_go_learners_last_seen").on(table.lastSeenAt)],
+);
+
+export const goAttempts = sqliteTable(
+  "go_attempts",
+  {
+    id: text("id").primaryKey(),
+    learnerId: text("learner_id")
+      .notNull()
+      .references(() => goLearners.id, { onDelete: "cascade" }),
+    level: integer("level").notNull(),
+    mode: text("mode").notNull().default("quiz"),
+    score: integer("score").notNull(),
+    total: integer("total").notNull(),
+    durationMs: integer("duration_ms").notNull().default(0),
+    answersJson: text("answers_json").notNull().default("[]"),
+    certificateId: text("certificate_id").notNull(),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    index("idx_go_attempts_learner").on(table.learnerId),
+    index("idx_go_attempts_level").on(table.level),
+    uniqueIndex("idx_go_attempts_certificate").on(table.certificateId),
+  ],
+);
+
+export const goProgress = sqliteTable(
+  "go_progress",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    learnerId: text("learner_id")
+      .notNull()
+      .references(() => goLearners.id, { onDelete: "cascade" }),
+    level: integer("level").notNull(),
+    bestScore: integer("best_score").notNull().default(0),
+    attempts: integer("attempts").notNull().default(0),
+    stars: integer("stars").notNull().default(0),
+    completedAt: text("completed_at"),
+    lastAttemptAt: text("last_attempt_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    uniqueIndex("idx_go_progress_learner_level").on(table.learnerId, table.level),
+    index("idx_go_progress_level").on(table.level),
+  ],
+);
+
+export const goGames = sqliteTable(
+  "go_games",
+  {
+    id: text("id").primaryKey(),
+    learnerId: text("learner_id")
+      .notNull()
+      .references(() => goLearners.id, { onDelete: "cascade" }),
+    opponentId: text("opponent_id").notNull(),
+    boardSize: integer("board_size").notNull(),
+    result: text("result").notNull(),
+    scoreJson: text("score_json").notNull().default("{}"),
+    moveCount: integer("move_count").notNull().default(0),
+    durationMs: integer("duration_ms").notNull().default(0),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    index("idx_go_games_learner").on(table.learnerId),
+    index("idx_go_games_opponent").on(table.opponentId),
+  ],
+);

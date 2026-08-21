@@ -239,6 +239,7 @@
 .tim-course-graph { background: linear-gradient(115deg, #5968ff, #8351e9); }
 .tim-course-convex { background: linear-gradient(115deg, #0aa993, #2879d7); }
 .tim-course-love { background: linear-gradient(115deg, #b137b8, #f04f91); }
+.tim-course-go { background: linear-gradient(115deg, #087f78, #255cb1 58%, #6047a8); }
 
 .tim-course::after {
   content: "";
@@ -1330,6 +1331,7 @@
 .tim-rank-bars .bar-graph { background: linear-gradient(90deg, #5968ff, #8351e9); }
 .tim-rank-bars .bar-convex { background: linear-gradient(90deg, #0aa993, #2879d7); }
 .tim-rank-bars .bar-love { background: linear-gradient(90deg, #b137b8, #f04f91); }
+.tim-rank-bars .bar-go { background: linear-gradient(90deg, #078679, #3469c4); }
 
 .tim-class-fact {
   display: grid;

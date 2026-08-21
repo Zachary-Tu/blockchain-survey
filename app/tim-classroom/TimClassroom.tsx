@@ -2,12 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import Image from "next/image";
 
 import { buildQuizAttempt, courses, difficultyOrder } from "./classroomConfig";
 import type { CourseKey, QuizQuestion, ReportProfile } from "./classroomConfig";
+import { GoClassroom } from "./go/GoClassroom";
 import type { DifficultyKey } from "./quizTypes";
 
-type Screen = "home" | "difficulty" | "quiz" | "result";
+type Screen = "home" | "difficulty" | "quiz" | "result" | "go";
 
 type DimensionStat = {
   key: string;
@@ -25,6 +27,7 @@ const sampleScores = [
   { label: "图论小课堂", rate: 68, color: "graph" },
   { label: "凸函数小课堂", rate: 76, color: "convex" },
   { label: "恋爱小课堂", rate: 88, color: "love" },
+  { label: "围棋小课堂", rate: 74, color: "go" },
 ];
 
 const optionLetters = ["A", "B", "C", "D"];
@@ -218,6 +221,10 @@ export function TimClassroom() {
 
   const selectedWasCorrect = selectedOption === question.correct;
 
+  if (screen === "go") {
+    return <GoClassroom onExit={goHome} />;
+  }
+
   return (
     <main className="tim-classroom" data-screen={screen}>
       <section
@@ -237,7 +244,7 @@ export function TimClassroom() {
             <div className="tim-hero">
               <p className="tim-kicker">TIM CLASS · RANDOM 10</p>
               <h1 id="tim-classroom-title">Tim小课堂</h1>
-              <p>四门课程、三档挑战。随机答 10 题，生成你的专属能力报告。</p>
+              <p>五门课程，多档挑战。随机答题、互动落子，生成你的专属学习报告。</p>
 
               <div className="tim-avatar-row" aria-hidden="true">
                 {courses.map((item) => (
@@ -269,6 +276,27 @@ export function TimClassroom() {
                   <span className="tim-course-arrow" aria-hidden="true">→</span>
                 </button>
               ))}
+              <button
+                className="tim-course tim-course-go"
+                type="button"
+                onClick={() => {
+                  resetAttempt();
+                  setScreen("go");
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                aria-label="选择围棋小课堂：从规则、定式、布局到死活和对弈练习"
+              >
+                <span className="tim-course-index">05</span>
+                <span className="tim-course-copy">
+                  <small>GO 501 · SPECIAL</small>
+                  <strong>围棋小课堂</strong>
+                  <span>规则、定式、布局与死活</span>
+                  <em>10 级教学 · AI 对弈 · 趣味证书</em>
+                </span>
+                <span className="tim-course-count">双模式 · 中国规则</span>
+                <Image src="/tim-classroom/go/opponents/normal-tim.png" alt="" aria-hidden="true" width={140} height={164} sizes="70px" />
+                <span className="tim-course-arrow" aria-hidden="true">→</span>
+              </button>
             </div>
 
             <button className="tim-scoreboard-link" type="button" onClick={() => setShowScoreboard(true)}>
@@ -276,9 +304,9 @@ export function TimClassroom() {
             </button>
 
             <footer className="tim-footer">
-              <span>{totalBankCount} 套题库 · 每次分维度随机 10 题</span>
-              <span>每次重测都会重新抽题，答完生成能力报告。</span>
-              <small>© TIM CLASSROOM · v4.0 · {totalQuestionCount} 题池</small>
+              <span>{totalBankCount} 套能力题库 + 围棋 10 级 · 随机练习</span>
+              <span>每次重测都会重新抽题，围棋另含互动棋盘与 AI 对弈。</span>
+              <small>© TIM CLASSROOM · v5.0 · {totalQuestionCount + 300} 题池</small>
             </footer>
           </>
         )}
@@ -554,7 +582,7 @@ export function TimClassroom() {
               </div>
               <div className="tim-class-fact">
                 <img src="/tim-classroom/tim-smile.png" alt="微笑的 Tim" />
-                <p><strong>Tim 的观察</strong>四门小课堂都会随机抽 10 题，并生成四维能力报告。</p>
+                <p><strong>Tim 的观察</strong>五门课堂都能即时反馈；围棋另有十级教学、错题重练与 AI 对弈。</p>
               </div>
               <button className="tim-next-button" type="button" onClick={() => setShowScoreboard(false)}><span>知道了，去答题</span><span>→</span></button>
             </section>

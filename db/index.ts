@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/d1";
 import * as schema from "./schema";
 
 let schemaReady: Promise<void> | null = null;
+let goSchemaReady: Promise<void> | null = null;
 
 export function getDb() {
   if (!env.DB) {
@@ -239,4 +240,65 @@ export async function ensureExperimentSchema() {
     await d1.prepare("PRAGMA optimize").run();
   })();
   return schemaReady;
+}
+
+export async function ensureGoSchema() {
+  goSchemaReady ??= (async () => {
+    const d1 = getD1();
+    await d1.batch([
+      d1.prepare(`CREATE TABLE IF NOT EXISTS go_learners (
+        id TEXT PRIMARY KEY NOT NULL,
+        nickname TEXT NOT NULL,
+        access_code_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`),
+      d1.prepare(`CREATE TABLE IF NOT EXISTS go_attempts (
+        id TEXT PRIMARY KEY NOT NULL,
+        learner_id TEXT NOT NULL,
+        level INTEGER NOT NULL,
+        mode TEXT NOT NULL DEFAULT 'quiz',
+        score INTEGER NOT NULL,
+        total INTEGER NOT NULL,
+        duration_ms INTEGER NOT NULL DEFAULT 0,
+        answers_json TEXT NOT NULL DEFAULT '[]',
+        certificate_id TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (learner_id) REFERENCES go_learners(id) ON DELETE CASCADE
+      )`),
+      d1.prepare(`CREATE TABLE IF NOT EXISTS go_progress (
+        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+        learner_id TEXT NOT NULL,
+        level INTEGER NOT NULL,
+        best_score INTEGER NOT NULL DEFAULT 0,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        stars INTEGER NOT NULL DEFAULT 0,
+        completed_at TEXT,
+        last_attempt_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (learner_id) REFERENCES go_learners(id) ON DELETE CASCADE
+      )`),
+      d1.prepare(`CREATE TABLE IF NOT EXISTS go_games (
+        id TEXT PRIMARY KEY NOT NULL,
+        learner_id TEXT NOT NULL,
+        opponent_id TEXT NOT NULL,
+        board_size INTEGER NOT NULL,
+        result TEXT NOT NULL,
+        score_json TEXT NOT NULL DEFAULT '{}',
+        move_count INTEGER NOT NULL DEFAULT 0,
+        duration_ms INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (learner_id) REFERENCES go_learners(id) ON DELETE CASCADE
+      )`),
+      d1.prepare("CREATE INDEX IF NOT EXISTS idx_go_learners_last_seen ON go_learners(last_seen_at)"),
+      d1.prepare("CREATE INDEX IF NOT EXISTS idx_go_attempts_learner ON go_attempts(learner_id)"),
+      d1.prepare("CREATE INDEX IF NOT EXISTS idx_go_attempts_level ON go_attempts(level)"),
+      d1.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_go_attempts_certificate ON go_attempts(certificate_id)"),
+      d1.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_go_progress_learner_level ON go_progress(learner_id, level)"),
+      d1.prepare("CREATE INDEX IF NOT EXISTS idx_go_progress_level ON go_progress(level)"),
+      d1.prepare("CREATE INDEX IF NOT EXISTS idx_go_games_learner ON go_games(learner_id)"),
+      d1.prepare("CREATE INDEX IF NOT EXISTS idx_go_games_opponent ON go_games(opponent_id)"),
+    ]);
+    await d1.prepare("PRAGMA optimize").run();
+  })();
+  return goSchemaReady;
 }
