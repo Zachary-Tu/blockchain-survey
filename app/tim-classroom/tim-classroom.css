@@ -264,6 +264,21 @@
   color: rgba(255,255,255,.86);
 }
 
+.tim-course-count {
+  position: absolute;
+  z-index: 2;
+  right: 95px;
+  bottom: 12px;
+  padding: 3px 6px;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 999px;
+  background: rgba(4, 8, 24, .16);
+  color: rgba(255,255,255,.74);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 7px;
+  letter-spacing: .04em;
+}
+
 .tim-scoreboard-link {
   width: 100%;
   min-height: 47px;
@@ -300,12 +315,200 @@
   letter-spacing: .12em;
 }
 
+.tim-difficulty-shell,
 .tim-quiz-shell,
 .tim-result-shell {
   min-height: calc(100svh - 48px);
   display: flex;
   flex-direction: column;
 }
+
+.tim-difficulty-shell { padding-bottom: 8px; }
+
+.tim-difficulty-hero {
+  display: grid;
+  justify-items: center;
+  padding: 19px 4px 18px;
+  text-align: center;
+}
+
+.tim-difficulty-mascot {
+  width: 94px;
+  height: 94px;
+  display: grid;
+  place-items: end center;
+  margin-bottom: 12px;
+  border: 1px solid color-mix(in srgb, var(--tc-accent) 34%, transparent);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 50% 75%, color-mix(in srgb, var(--tc-accent) 27%, transparent), transparent 62%),
+    rgba(255,255,255,.025);
+  box-shadow: 0 16px 36px rgba(0,0,0,.27);
+}
+
+.tim-difficulty-mascot img {
+  max-width: 88px;
+  max-height: 91px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 9px 8px rgba(0,0,0,.43));
+}
+
+.tim-difficulty-hero .tim-kicker { margin-bottom: 9px; }
+
+.tim-difficulty-hero h1 {
+  margin: 0;
+  font-size: 31px;
+  line-height: 1.1;
+  letter-spacing: -.05em;
+}
+
+.tim-difficulty-hero > p:last-child {
+  margin: 8px 0 0;
+  color: var(--tc-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.tim-difficulty-list {
+  display: grid;
+  gap: 10px;
+}
+
+.tim-difficulty-card {
+  --td-accent: #58ddb0;
+  position: relative;
+  width: 100%;
+  min-height: 120px;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) 50px 19px;
+  gap: 9px;
+  align-items: center;
+  padding: 13px 12px 13px 14px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--td-accent) 31%, rgba(255,255,255,.11));
+  border-radius: 18px;
+  background:
+    linear-gradient(110deg, color-mix(in srgb, var(--td-accent) 14%, #0b1529), rgba(11,21,41,.93));
+  color: white;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: inset 0 1px rgba(255,255,255,.04), 0 12px 30px rgba(0,0,0,.18);
+  transition: transform 170ms ease, border-color 170ms ease, background 170ms ease;
+}
+
+.tim-difficulty-card::after {
+  content: "";
+  position: absolute;
+  right: -28px;
+  top: -42px;
+  width: 124px;
+  height: 124px;
+  border: 1px solid color-mix(in srgb, var(--td-accent) 18%, transparent);
+  border-radius: 50%;
+  box-shadow: 0 0 0 21px color-mix(in srgb, var(--td-accent) 4%, transparent);
+}
+
+.tim-difficulty-card:hover,
+.tim-difficulty-card:focus-visible {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--td-accent) 72%, white);
+  background: linear-gradient(110deg, color-mix(in srgb, var(--td-accent) 21%, #0b1529), rgba(11,21,41,.95));
+  outline: none;
+}
+
+.tim-difficulty-card:active { transform: translateY(0) scale(.992); }
+.tim-difficulty-middle { --td-accent: #54dfa9; }
+.tim-difficulty-university { --td-accent: #6c7cff; }
+.tim-difficulty-phd { --td-accent: #f05ca6; }
+
+.tim-difficulty-number {
+  align-self: start;
+  padding-top: 3px;
+  color: color-mix(in srgb, var(--td-accent) 55%, white);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 9px;
+}
+
+.tim-difficulty-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.tim-difficulty-copy small,
+.tim-difficulty-copy em {
+  font-family: var(--font-geist-mono), monospace;
+  font-style: normal;
+}
+
+.tim-difficulty-copy small {
+  color: color-mix(in srgb, var(--td-accent) 58%, white);
+  font-size: 7px;
+  letter-spacing: .09em;
+}
+
+.tim-difficulty-copy strong {
+  margin: 1px 0;
+  font-size: 22px;
+  line-height: 1.1;
+  letter-spacing: -.035em;
+}
+
+.tim-difficulty-copy > span {
+  color: #b3bfd0;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.tim-difficulty-copy em {
+  width: fit-content;
+  margin-top: 4px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--td-accent) 11%, transparent);
+  color: #8796ad;
+  font-size: 7px;
+  letter-spacing: .04em;
+}
+
+.tim-difficulty-total {
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  color: color-mix(in srgb, var(--td-accent) 71%, white);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 24px;
+  font-weight: 760;
+}
+
+.tim-difficulty-total small {
+  margin-left: 2px;
+  color: #79879d;
+  font-size: 7px;
+  font-weight: 500;
+}
+
+.tim-difficulty-arrow {
+  z-index: 1;
+  color: #a6b2c6;
+  font-size: 18px;
+}
+
+.tim-difficulty-note {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 7px;
+  margin: 14px 8px 0;
+  color: #75849c;
+  font-size: 9px;
+  line-height: 1.55;
+  text-align: center;
+}
+
+.tim-difficulty-note span { color: var(--tc-accent); }
 
 .tim-quiz-topbar {
   min-height: 42px;
@@ -515,6 +718,7 @@
 
 .tim-next-button,
 .tim-copy-button,
+.tim-change-level,
 .tim-back-home {
   width: 100%;
   border-radius: 14px;
@@ -634,6 +838,7 @@
 .tim-result-actions .tim-next-button { margin: 0; }
 
 .tim-copy-button,
+.tim-change-level,
 .tim-back-home {
   min-height: 52px;
   border: 1px solid var(--tc-line);
@@ -641,6 +846,15 @@
   color: #d2d9e6;
   font-size: 10px;
 }
+
+.tim-change-level {
+  grid-column: 1 / -1;
+  min-height: 40px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.tim-change-level:hover { background: rgba(255,255,255,.075); }
 
 .tim-review {
   padding: 16px;
@@ -826,10 +1040,14 @@
   .tim-phone { padding-inline: 14px; }
   .tim-course { grid-template-columns: 25px minmax(0, 1fr) 56px 18px; }
   .tim-course > img { max-width: 55px; }
+  .tim-course-count { right: 78px; }
+  .tim-difficulty-card { grid-template-columns: 23px minmax(0, 1fr) 43px 15px; padding-inline: 11px; }
+  .tim-difficulty-total { font-size: 21px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .tim-course,
+  .tim-difficulty-card,
   .tim-progress span,
   .tim-options button,
   .tim-next-button { transition: none; }
