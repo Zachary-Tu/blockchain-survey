@@ -32,8 +32,8 @@ test("KataGo b10 强化模型能完成有限值前向推理", async () => {
   const compressed = fs.readFileSync(projectPath("public", "tim-classroom", "go", "engine", "katago-b10.bin.gz"));
   const parsed = parseKataGoModelV8(gunzipSync(compressed));
   const model = new KataGoModelV8Tf(parsed);
-  const spatial = tf.zeros([1, 9, 9, 22]);
-  const global = tf.zeros([1, 19]);
+  const spatial = tf.zeros([1, 9, 9, 22]) as tf.Tensor4D;
+  const global = tf.zeros([1, 19]) as tf.Tensor2D;
   const output = model.forwardPolicyValue(spatial, global);
   const values = await Promise.all([
     output.policy.data(),
@@ -45,6 +45,19 @@ test("KataGo b10 强化模型能完成有限值前向推理", async () => {
   assert.ok(values.every((tensor) => Array.from(tensor).every(Number.isFinite)));
   tf.dispose([spatial, global, output.policy, output.policyPass, output.value, output.scoreValue]);
   model.dispose();
+});
+
+test("新增机器人形象与 Fairy-Stockfish 象棋引擎资产完整", () => {
+  const robot = fs.readFileSync(projectPath("public", "tim-classroom", "go", "opponents", "robot-tim.png"));
+  assert.deepEqual([...robot.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  const wasm = fs.readFileSync(projectPath("public", "tim-classroom", "xiangqi", "engine", "stockfish.wasm"));
+  assert.deepEqual([...wasm.subarray(0, 4)], [0, 97, 115, 109]);
+  const notice = fs.readFileSync(projectPath("public", "tim-classroom", "xiangqi", "engine", "NOTICE.txt"), "utf8");
+  assert.match(notice, /Fairy-Stockfish WebAssembly 1\.1\.11/);
+  assert.match(notice, /GPL/);
+  for (const filename of ["young-tim.png", "woodcutter-tim.png", "immortal-tim.png"]) {
+    assert.ok(fs.statSync(projectPath("public", "tim-classroom", "xiangqi", "opponents", filename)).size > 100_000);
+  }
 });
 
 test("WASM 降级文件与第三方许可随站点发布", () => {

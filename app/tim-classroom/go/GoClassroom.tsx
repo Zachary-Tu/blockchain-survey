@@ -17,6 +17,7 @@ import type { AreaScore, GoBoardState, GoPoint } from "./goEngine";
 import { getGoAiModelProfile, requestGoAiMove, warmupGoAiEngine } from "./goAiEngine";
 import type { GoAiHistoryMove, GoAiResult } from "./goAiEngine";
 import { buildGoAttempt, goQuestionBankStats } from "./goQuestionBank";
+import { chooseObjectiveReply, objectiveAchieved } from "./goPuzzleEngine";
 import type { GoLevel, GoMode, GoOpponent, GoQuestion } from "./goTypes";
 
 type GoClassroomProps = {
@@ -49,7 +50,7 @@ type AnswerRecord = {
 };
 
 type GameResult = {
-  reason: "score" | "resign" | "move-limit";
+  reason: "score" | "manual" | "resign" | "move-limit";
   winner: 1 | 2;
   score: AreaScore;
 };
@@ -60,10 +61,6 @@ const boardSizes = [9, 13, 19] as const;
 
 function samePoint(left: GoPoint, right: GoPoint) {
   return left.row === right.row && left.col === right.col;
-}
-
-function lineMatchesPrefix(line: GoPoint[], prefix: GoPoint[]) {
-  return prefix.every((move, index) => Boolean(line[index] && samePoint(line[index], move)));
 }
 
 function uniquePoints(points: GoPoint[]) {
@@ -77,9 +74,10 @@ function uniquePoints(points: GoPoint[]) {
 }
 
 function solutionLabel(question: Extract<GoQuestion, { type: "board" }>) {
-  return question.solutionLines[0]
-    .map((move, index) => `${index + 1}.${pointLabel(move, question.boardSize)}`)
-    .join(" → ");
+  if (question.mode === "objective") return `目标：${question.objective?.label ?? question.category}`;
+  return uniquePoints(question.solutionLines.map((line) => line[0]))
+    .map((move) => pointLabel(move, question.boardSize))
+    .join(" / ");
 }
 
 function setupQuestionBoard(question: GoQuestion): GoBoardState {
@@ -133,7 +131,7 @@ export function GoClassroom({ onExit }: GoClassroomProps) {
   const [recordStatus, setRecordStatus] = useState<"idle" | "saving" | "saved" | "offline">("idle");
   const [puzzleBoard, setPuzzleBoard] = useState<GoBoardState>(() => createBoard(5));
   const [puzzlePrefix, setPuzzlePrefix] = useState<GoPoint[]>([]);
-  const [puzzleCandidates, setPuzzleCandidates] = useState<GoPoint[][]>([]);
+  const [puzzlePlayerMoves, setPuzzlePlayerMoves] = useState(0);
   const [puzzleBusy, setPuzzleBusy] = useState(false);
   const [puzzleMessage, setPuzzleMessage] = useState("在棋盘上落下你的第一手。");
   const [puzzleFirstMove, setPuzzleFirstMove] = useState<GoPoint | null>(null);
@@ -157,6 +155,8 @@ export function GoClassroom({ onExit }: GoClassroomProps) {
   const [engineStatus, setEngineStatus] = useState<"idle" | "loading" | "ready" | "fallback">("idle");
   const [engineLabel, setEngineLabel] = useState("神经网络尚未加载");
   const [lastAiAnalysis, setLastAiAnalysis] = useState<GoAiResult | null>(null);
+  const [showScoreEstimate, setShowScoreEstimate] = useState(false);
+  const [showEndConfirm, setShowEndConfirm] = useState(false);
   const aiTimer = useRef<number | null>(null);
   const puzzleTimer = useRef<number | null>(null);
   const aiRequestId = useRef(0);
@@ -168,6 +168,7 @@ export function GoClassroom({ onExit }: GoClassroomProps) {
   const score = answers.filter((answer) => answer.correct).length;
   const resultPercent = Math.round((score / Math.max(1, answers.length)) * 100);
   const wrongAnswers = answers.filter((answer) => !answer.correct);
+  const liveScore = scoreChineseArea(gameBoard);
 
   useEffect(() => {
     let cancelled = false;
@@ -215,11 +216,11 @@ export function GoClassroom({ onExit }: GoClassroomProps) {
     if (puzzleTimer.current !== null) window.clearTimeout(puzzleTimer.current);
     setPuzzleBoard(setupQuestionBoard(nextQuestion));
     setPuzzlePrefix([]);
-    setPuzzleCandidates(nextQuestion.solutionLines);
+    setPuzzlePlayerMoves(0);
     setPuzzleBusy(false);
-    setPuzzleMessage(nextQuestion.solutionLines.some((line) => line.length > 1)
-      ? `这是连续阅读题：你需要下 ${Math.ceil(Math.max(...nextQuestion.solutionLines.map((line) => line.length)) / 2)} 手，Tim 会自动应手。`
-      : "请在棋盘上落下推荐的一手。");
+    setPuzzleMessage(nextQuestion.mode === "objective"
+      ? `动态目标：${nextQuestion.objective?.label ?? nextQuestion.category}。你最多可下 ${nextQuestion.objective?.maxPlayerMoves ?? 1} 手，Tim 会局部应对。`
+      : `请从棋盘标出的候选点中选择；本题有 ${uniquePoints(nextQuestion.solutionLines.map((line) => line[0])).length} 个可接受答案。`);
     setPuzzleFirstMove(null);
     setHintVisible(false);
   };
@@ -382,39 +383,54 @@ export function GoClassroom({ onExit }: GoClassroomProps) {
 
   const answerBoard = (selectedMove: GoPoint) => {
     if (!question || question.type !== "board" || currentAnswer || puzzleBusy) return;
+    if (question.mode === "candidate" && !question.candidateMoves?.some((candidate) => samePoint(candidate, selectedMove))) {
+      setPuzzleMessage("这不是本题标出的候选点，请选择 A / B / C / D。");
+      return;
+    }
     const result = playMove(puzzleBoard, question.toPlay, selectedMove);
     if (!result.valid) {
       setPuzzleMessage(result.reason ?? "这一手不能下，请重新选择。");
       return;
     }
 
-    const ply = puzzlePrefix.length;
     const nextPrefix = [...puzzlePrefix, selectedMove];
-    const matching = puzzleCandidates.filter((line) => line[ply] && samePoint(line[ply], selectedMove));
     const firstMove = puzzleFirstMove ?? selectedMove;
     if (!puzzleFirstMove) setPuzzleFirstMove(selectedMove);
+    setPuzzleBoard(result.board);
+    setPuzzlePrefix(nextPrefix);
 
-    if (!matching.length) {
-      setPuzzlePrefix(nextPrefix);
-      finishPuzzleAnswer(question, false, selectedMove);
+    if (question.mode === "candidate") {
+      const correct = question.solutionLines.some((line) => samePoint(line[0], selectedMove));
+      finishPuzzleAnswer(question, correct, selectedMove);
       return;
     }
 
-    setPuzzleBoard(result.board);
-    setPuzzlePrefix(nextPrefix);
-    setPuzzleCandidates(matching);
-    const branch = matching[0];
-    if (nextPrefix.length >= branch.length) {
+    const objective = question.objective;
+    if (!objective) {
+      finishPuzzleAnswer(question, false, firstMove);
+      return;
+    }
+    const nextPlayerMoves = puzzlePlayerMoves + 1;
+    setPuzzlePlayerMoves(nextPlayerMoves);
+    if (objectiveAchieved(result.board, objective)) {
       finishPuzzleAnswer(question, true, firstMove);
       return;
     }
+    if (nextPlayerMoves >= objective.maxPlayerMoves) {
+      finishPuzzleAnswer(question, false, firstMove);
+      return;
+    }
 
-    const reply = branch[nextPrefix.length];
+    const replyColor = question.toPlay === 1 ? 2 : 1;
+    const reply = chooseObjectiveReply(result.board, replyColor, objective);
+    if (!reply) {
+      setPuzzleMessage("Tim 在限定区域内没有合法应手，请继续完成目标。");
+      return;
+    }
     setPuzzleBusy(true);
-    setPuzzleMessage(`这手方向正确。Tim 正在应在 ${pointLabel(reply, question.boardSize)}…`);
+    setPuzzleMessage(`Tim 正在根据你的着法寻找最顽强的局部应手…`);
     puzzleTimer.current = window.setTimeout(() => {
       puzzleTimer.current = null;
-      const replyColor = question.toPlay === 1 ? 2 : 1;
       const replyResult = playMove(result.board, replyColor, reply);
       if (!replyResult.valid) {
         finishPuzzleAnswer(question, false, firstMove);
@@ -422,18 +438,11 @@ export function GoClassroom({ onExit }: GoClassroomProps) {
         return;
       }
       const afterReplyPrefix = [...nextPrefix, reply];
-      const afterReplyCandidates = matching.filter((line) => lineMatchesPrefix(line, afterReplyPrefix));
       setPuzzleBoard(replyResult.board);
       setPuzzlePrefix(afterReplyPrefix);
-      setPuzzleCandidates(afterReplyCandidates.length ? afterReplyCandidates : [branch]);
-      if (afterReplyPrefix.length >= branch.length) {
-        finishPuzzleAnswer(question, true, firstMove);
-      } else {
-        const userMoveNumber = Math.floor(afterReplyPrefix.length / 2) + 1;
-        setPuzzleBusy(false);
-        setPuzzleMessage(`Tim 已应 ${pointLabel(reply, question.boardSize)}。请继续下你的第 ${userMoveNumber} 手。`);
-      }
-    }, 420);
+      setPuzzleBusy(false);
+      setPuzzleMessage(`Tim 应在 ${pointLabel(reply, question.boardSize)}。请继续完成「${objective.label}」（还可下 ${objective.maxPlayerMoves - nextPlayerMoves} 手）。`);
+    }, 260);
   };
 
   const mergeProgress = (entry: ProgressEntry) => {
@@ -603,7 +612,11 @@ export function GoClassroom({ onExit }: GoClassroomProps) {
     };
     setAiThinking(false);
     setGameResult(result);
-    setGameMessage(reason === "resign" ? "你选择了认输。这盘棋已经记入练习记录。" : "双方停一手，练习盘进入中国规则自动数子。");
+    setGameMessage(reason === "resign"
+      ? "你选择了认输。这盘棋已经记入练习记录。"
+      : reason === "manual"
+        ? "你确认结束棋局，已按当前盘面进行中国规则面积计分。"
+        : "双方停一手，练习盘进入中国规则自动数子。");
     void saveGame(result, finalMoveCount);
   };
 
@@ -616,6 +629,20 @@ export function GoClassroom({ onExit }: GoClassroomProps) {
     moves: GoAiHistoryMove[],
   ) => {
     const requestId = ++aiRequestId.current;
+    const recordAiPass = (nextMessage: string, logLabel: string) => {
+      const nextPasses = passes + 1;
+      const finalMoveCount = nextMoveCount + 1;
+      const nextMoves = [...moves, { x: -1, y: -1, player: "white" as const }];
+      const nextBoards = [...boards, board];
+      setAiThinking(false);
+      setConsecutivePasses(nextPasses);
+      setMoveCount(finalMoveCount);
+      setGameMoves(nextMoves);
+      setGameBoards(nextBoards);
+      setMoveLog((current) => [...current, logLabel]);
+      if (nextPasses >= 2) finishGame("score", board, undefined, finalMoveCount);
+      else setGameMessage(nextMessage);
+    };
     setAiThinking(true);
     setGameMessage(`${selectedOpponent.name} 正在用神经网络评估候选，再进行 MCTS 搜索…`);
     aiTimer.current = window.setTimeout(() => {
@@ -637,50 +664,41 @@ export function GoClassroom({ onExit }: GoClassroomProps) {
           ? `${analysis.modelName} · ${analysis.backend} · ${analysis.visits} visits`
           : `${analysis.modelName} · 本地降级`);
         const move = analysis.move;
-      if (!move) {
-        const nextPasses = passes + 1;
+        if (!move) {
+          recordAiPass(`${selectedOpponent.name} 搜索后选择停一手。轮到你执黑。`, `${selectedOpponent.name}：停一手`);
+          return;
+        }
+        const result = playMove(board, 2, move, history);
+        if (!result.valid) {
+          setEngineStatus("fallback");
+          setEngineLabel("AI 候选未通过本地规则复核 · 已安全跳过");
+          recordAiPass(`AI 候选与本地规则校验冲突：${result.reason ?? "非法落子"}。本手按停一手处理，页面不会中断。`, `${selectedOpponent.name}：规则校验未通过，按停一手处理`);
+          return;
+        }
+        const hash = boardHash(result.board);
         const finalMoveCount = nextMoveCount + 1;
-        const nextMoves = [...moves, { x: -1, y: -1, player: "white" as const }];
-        const nextBoards = [...boards, board];
-        setAiThinking(false);
-        setConsecutivePasses(nextPasses);
-        setMoveCount(finalMoveCount);
+        const nextMoves = [...moves, { x: move.col, y: move.row, player: "white" as const }];
+        const nextBoards = [...boards, result.board];
+        setGameBoard(result.board);
+        setGameHistory([...history, hash]);
         setGameMoves(nextMoves);
         setGameBoards(nextBoards);
-        setMoveLog((current) => [...current, `${selectedOpponent.name}：停一手`]);
-        if (nextPasses >= 2) {
-          finishGame("score", board, undefined, finalMoveCount);
-        } else {
-          setGameMessage(`${selectedOpponent.name} 搜索后选择停一手。轮到你执黑。`);
-        }
-        return;
-      }
-      const result = playMove(board, 2, move, history);
-      if (!result.valid) {
+        setLastMove(move);
+        setMoveCount(finalMoveCount);
+        setCapturedBlack((current) => current + result.captured);
+        setConsecutivePasses(0);
         setAiThinking(false);
+        setGameMessage(`${selectedOpponent.name} 落在 ${pointLabel(move, board.length)} · ${analysis.engine === "neural-mcts" ? `${analysis.visits} 次搜索访问` : "本地战术搜索"}。轮到你执黑。`);
+        setMoveLog((current) => [...current, `${selectedOpponent.name}：${pointLabel(move, board.length)}${result.captured ? `，提 ${result.captured} 子` : ""}`]);
+        if (finalMoveCount >= board.length * board.length * 2) finishGame("move-limit", result.board, undefined, finalMoveCount);
+      })
+      .catch((error) => {
+        if (requestId !== aiRequestId.current) return;
         setEngineStatus("fallback");
-        setGameMessage(`AI 候选与本地规则校验冲突：${result.reason ?? "非法落子"}。本手按停一手处理。`);
-        setConsecutivePasses(1);
-        return;
-      }
-      const hash = boardHash(result.board);
-      const finalMoveCount = nextMoveCount + 1;
-      const nextMoves = [...moves, { x: move.col, y: move.row, player: "white" as const }];
-      const nextBoards = [...boards, result.board];
-      setGameBoard(result.board);
-      setGameHistory([...history, hash]);
-      setGameMoves(nextMoves);
-      setGameBoards(nextBoards);
-      setLastMove(move);
-      setMoveCount(finalMoveCount);
-      setCapturedBlack((current) => current + result.captured);
-      setConsecutivePasses(0);
-      setAiThinking(false);
-      setGameMessage(`${selectedOpponent.name} 落在 ${pointLabel(move, board.length)} · ${analysis.engine === "neural-mcts" ? `${analysis.visits} 次搜索访问` : "本地战术搜索"}。轮到你执黑。`);
-      setMoveLog((current) => [...current, `${selectedOpponent.name}：${pointLabel(move, board.length)}${result.captured ? `，提 ${result.captured} 子` : ""}`]);
-      if (finalMoveCount >= board.length * board.length * 2) finishGame("move-limit", result.board, undefined, finalMoveCount);
+        setEngineLabel("搜索异常已隔离 · 对局继续");
+        recordAiPass(`AI 搜索已安全恢复：${error instanceof Error ? error.message : String(error)}。本手按停一手处理，轮到你。`, `${selectedOpponent.name}：搜索异常，按停一手处理`);
       });
-    }, 240);
+    }, 80);
   };
 
   const startGame = (opponent: GoOpponent) => {
@@ -700,6 +718,8 @@ export function GoClassroom({ onExit }: GoClassroomProps) {
     setAiThinking(false);
     setGameResult(null);
     setLastAiAnalysis(null);
+    setShowScoreEstimate(false);
+    setShowEndConfirm(false);
     setMoveLog([]);
     setGameMessage("黑棋先行。点击交叉点落子。你执黑，Tim 执白。");
     setScreen("game");
@@ -856,7 +876,7 @@ export function GoClassroom({ onExit }: GoClassroomProps) {
               ))}
             </div>
             <button className="go-primary-button" type="button" onClick={(event) => startQuiz(undefined, "quiz", event.timeStamp)}><span>随机抽取 10 题</span><b>开始练习 →</b></button>
-            <p className="go-lesson-footnote">每级 {goQuestionBankStats.themesPerLevel} 个棋谱主题 × {goQuestionBankStats.variantsPerTheme} 种旋转镜像 · 本轮每主题 1 题</p>
+            <p className="go-lesson-footnote">每级 {goQuestionBankStats.themesPerLevel} 个严选主题 × {goQuestionBankStats.variantsPerTheme} 种选项/棋盘变式 · 混合术语、候选点与动态目标题</p>
           </section>
         )}
 
@@ -865,10 +885,10 @@ export function GoClassroom({ onExit }: GoClassroomProps) {
             <div className="go-quiz-progress"><i style={{ width: `${((questionIndex + 1) / questions.length) * 100}%` }} /></div>
             <div className="go-quiz-teacher">
               <Image src={selectedLevel.image} alt="" width={164} height={144} sizes="82px" />
-              <div><small>TIM 老师 · {question.category}</small><p>{currentAnswer ? "按棋盘编号复盘推荐变化，再去下一题。" : question.type === "board" && question.solutionLines.some((line) => line.length > 1) ? "这是连续阅读题：你落子，Tim 自动应手，直到变化结束。" : "先判断局面任务，再在棋盘交叉点落子。"}</p></div>
+              <div><small>TIM 老师 · {question.category}</small><p>{currentAnswer ? "先读清判定目标和讲解，再进入下一题。" : question.type === "board" && question.mode === "objective" ? "这是动态目标题：Tim 会按你的落子局部应对，达成目标即胜。" : question.type === "board" ? "候选点已标为 A / B / C / D；若存在等价解，题面会明确说明并全部接受。" : "知识题会立即显示正误与解释。"}</p></div>
             </div>
             <article className="go-question-card">
-              <div className="go-question-meta"><span>{question.type === "board" ? `棋谱落子题 · ${question.category}` : "知识判断题"}</span><b>{questionIndex + 1} / {questions.length}</b></div>
+              <div className="go-question-meta"><span>{question.type === "board" ? `${question.mode === "objective" ? "动态目标棋谱" : "候选点判断"} · ${question.category}` : `术语与棋理 · ${question.category}`}</span><b>{questionIndex + 1} / {questions.length}</b></div>
               <h1>{question.prompt}</h1>
 
               {question.type === "choice" ? (
@@ -892,12 +912,13 @@ export function GoClassroom({ onExit }: GoClassroomProps) {
                     lastMove={puzzlePrefix.at(-1)}
                     selectedMove={currentAnswer?.selectedMove}
                     correctMoves={currentAnswer ? uniquePoints(question.solutionLines.map((line) => line[0])) : []}
-                    variation={currentAnswer ? question.solutionLines[0] : []}
+                    candidateMoves={question.mode === "candidate" ? question.candidateMoves : []}
+                    targetPoints={question.mode === "objective" ? question.objective?.anchors : []}
                     label={`${selectedLevel.title}互动落子题`}
                     compact
                   />
                   <div className={`go-puzzle-status ${puzzleBusy ? "is-thinking" : ""}`} aria-live="polite">
-                    <span>{puzzleBusy ? "···" : puzzlePrefix.length ? `${puzzlePrefix.length} 手` : "读"}</span>
+                    <span>{puzzleBusy ? "···" : puzzlePlayerMoves ? `你 ${puzzlePlayerMoves} 手` : "读"}</span>
                     <p>{puzzleMessage}</p>
                   </div>
                   {!currentAnswer && (
@@ -915,12 +936,12 @@ export function GoClassroom({ onExit }: GoClassroomProps) {
                   <div>
                     <strong>{currentAnswer.correct ? "这手正确" : "这手还可以更好"}</strong>
                     {question.type === "choice" && !currentAnswer.correct && <small>正确答案：{optionLetters[question.correct]} · {question.options[question.correct]}</small>}
-                    {question.type === "board" && (
+                    {question.type === "board" && question.mode === "candidate" && (
                       <>
-                        <small>推荐起手：{uniquePoints(question.solutionLines.map((line) => line[0])).map((point) => pointLabel(point, question.boardSize)).join(" / ")}</small>
-                        <small>推荐变化：{question.solutionLines[0].map((point, index) => `${index + 1}.${pointLabel(point, question.boardSize)}`).join(" → ")}</small>
+                        <small>全部可接受点：{uniquePoints(question.solutionLines.map((line) => line[0])).map((point) => pointLabel(point, question.boardSize)).join(" / ")}</small>
                       </>
                     )}
+                    {question.type === "board" && question.mode === "objective" && <small>胜利条件：{question.objective?.label} · 最多 {question.objective?.maxPlayerMoves} 手</small>}
                     <p>{question.explanation}</p>
                     {question.type === "board" && question.stepNotes.length > 1 && (
                       <ol className="go-variation-notes">
@@ -933,7 +954,7 @@ export function GoClassroom({ onExit }: GoClassroomProps) {
             </article>
             {currentAnswer ? (
               <button className="go-primary-button" type="button" onClick={nextQuestion}><span>{questionIndex === questions.length - 1 ? "完成本级" : "继续下一题"}</span><b>→</b></button>
-            ) : <p className="go-quiz-tip">{question.type === "board" ? "每一手都会先做合法性检查；答完不会自动跳题" : "点选后立即显示正确答案和讲解"}</p>}
+            ) : <p className="go-quiz-tip">{question.type === "board" ? "每一手先做合法性检查；候选题支持多解，目标题按实际结果判胜" : "点选后立即显示正确答案和讲解"}</p>}
           </section>
         )}
 
@@ -981,7 +1002,7 @@ export function GoClassroom({ onExit }: GoClassroomProps) {
             <div className="go-section-heading">
               <small>CHOOSE YOUR TIM BOSS</small>
               <h1 id="go-opponent-heading">选择对手棋力</h1>
-              <p>你执黑先行。四个 Boss 都是 Tim，只是造型和思考深度逐级变化。</p>
+              <p>你执黑先行。五个 Boss 都是 Tim，棋力从陪练到强化神经网络逐级变化。</p>
             </div>
             <div className="go-board-size-picker" aria-label="选择棋盘大小">
               {boardSizes.map((size) => <button type="button" className={boardSize === size ? "active" : ""} key={size} onClick={() => setBoardSize(size)}><strong>{size}路</strong><small>{size === 9 ? "入门推荐" : size === 13 ? "进阶练习" : "完整棋盘"}</small></button>)}
@@ -996,7 +1017,7 @@ export function GoClassroom({ onExit }: GoClassroomProps) {
               ))}
             </div>
             <div className={`go-engine-chip is-${engineStatus}`}><span /> <strong>{engineStatus === "loading" ? "ENGINE LOADING" : engineStatus === "ready" ? "NEURAL MCTS READY" : engineStatus === "fallback" ? "TACTICAL FALLBACK" : "ENGINE IDLE"}</strong><small>{engineLabel}</small></div>
-            <p className="go-engine-note">Web KaTrain / KataGo 风格神经网络 + MCTS 在浏览器 Worker 中思考；前两档使用 b6 轻量网络，后两档使用更强的 b10 网络与更深搜索。WebGPU 不可用时自动转 WASM / CPU，强化模型失败时再降到轻量网络。棋力标签仅表示本课堂相对强弱，不是正式段位认证。</p>
+            <p className="go-engine-note">Web KaTrain / KataGo 风格神经网络 + MCTS 在独立 Worker 中思考。普通、好汉与皇帝使用快速 b6；机器人与赛亚人在设备承受范围内启用 b10，手机内存或 WebGPU 不足时自动使用精确 b6，避免页面闪退。棋力标签仅表示本课堂相对强弱，不是正式段位认证。</p>
           </section>
         )}
 
@@ -1017,9 +1038,25 @@ export function GoClassroom({ onExit }: GoClassroomProps) {
             </div>
             <div className="go-game-actions">
               <button type="button" onClick={playerPass} disabled={aiThinking || Boolean(gameResult)}>停一手</button>
+              <button type="button" onClick={() => { setShowScoreEstimate((current) => !current); setShowEndConfirm(false); }} disabled={Boolean(gameResult)}>形势数子</button>
+              <button type="button" onClick={() => { setShowEndConfirm((current) => !current); setShowScoreEstimate(true); }} disabled={aiThinking || Boolean(gameResult)}>结束棋局</button>
               <button type="button" onClick={() => finishGame("resign", gameBoard, 2)} disabled={aiThinking || Boolean(gameResult)}>认输</button>
               <button type="button" onClick={() => startGame(selectedOpponent)}>重新开局</button>
             </div>
+            {showScoreEstimate && !gameResult && (
+              <aside className="go-score-estimate" aria-live="polite">
+                <header><strong>当前形势估算</strong><small>中国规则面积计分 · 非最终裁定</small></header>
+                <div><span>黑方（你）<b>{liveScore.black.toFixed(1)}</b></span><span>白方（Tim）<b>{liveScore.white.toFixed(1)}</b></span><span>暂时领先<b>{liveScore.winner === 1 ? "黑" : "白"} {liveScore.margin.toFixed(1)} 目</b></span></div>
+                <p>复杂死子不会自动协商移除；若双方仍有死棋，请先在棋盘上提净，再结束棋局。</p>
+              </aside>
+            )}
+            {showEndConfirm && !gameResult && (
+              <aside className="go-end-confirm" role="dialog" aria-label="确认结束棋局">
+                <strong>现在结束并按当前盘面数子？</strong>
+                <p>确认后本局不能继续落子。建议先处理尚未提净的死子。</p>
+                <div><button type="button" onClick={() => setShowEndConfirm(false)}>继续对弈</button><button type="button" onClick={() => finishGame("manual", gameBoard)}>确认结算</button></div>
+              </aside>
+            )}
             <details className="go-move-log">
               <summary>查看落子记录（{moveLog.length}）</summary>
               <ol>{moveLog.map((item, index) => <li key={`${item}-${index}`}>{String(index + 1).padStart(2, "0")} · {item}</li>)}</ol>
@@ -1041,7 +1078,7 @@ export function GoClassroom({ onExit }: GoClassroomProps) {
                 <Image src={selectedOpponent.image} alt="" width={252} height={252} sizes="126px" />
                 <small>GAME REVIEW</small>
                 <h2>{gameResult.winner === 1 ? "你赢下了这盘练习！" : gameResult.reason === "resign" ? "这盘先记到这里" : `${selectedOpponent.name} 赢下此局`}</h2>
-                <p>{gameResult.reason === "resign" ? "认输也是围棋的一部分。复盘最薄弱的一块棋，再开一局会更有效。" : `自动数子：黑 ${gameResult.score.black.toFixed(1)}，白 ${gameResult.score.white.toFixed(1)}，相差 ${gameResult.score.margin.toFixed(1)} 目。`}</p>
+                <p>{gameResult.reason === "resign" ? "认输也是围棋的一部分。复盘最薄弱的一块棋，再开一局会更有效。" : `${gameResult.reason === "manual" ? "手动结束数子" : "自动数子"}：黑 ${gameResult.score.black.toFixed(1)}，白 ${gameResult.score.white.toFixed(1)}，相差 ${gameResult.score.margin.toFixed(1)} 目。`}</p>
                 <div><span>黑棋子 {gameResult.score.blackStones}</span><span>白棋子 {gameResult.score.whiteStones}</span><span>单官 {gameResult.score.dame}</span></div>
                 <button className="go-primary-button" type="button" onClick={() => startGame(selectedOpponent)}><span>再来一盘</span><b>↻</b></button>
                 <button type="button" onClick={() => setScreen("opponents")}>换一个 Tim Boss</button>

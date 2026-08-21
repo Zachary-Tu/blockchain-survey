@@ -299,6 +299,11 @@
 .go-correct-pulse, .go-variation-number { position: absolute; z-index: 5; display: grid; place-items: center; width: 58%; aspect-ratio: 1; border-radius: 50%; background: #0a6f57; color: white; font: normal 700 clamp(7px, calc(62px / var(--go-board-size)), 13px)/1 var(--font-geist-mono), monospace; }
 .go-variation-number { width: 46%; background: #6855b7; }
 .is-correct-move .go-variation-number { display: none; }
+.go-candidate-label { position: absolute; z-index: 6; display: grid; place-items: center; width: 64%; aspect-ratio: 1; border: 2px solid rgba(255,255,255,.92); border-radius: 50%; background: #235c86; color: white; box-shadow: 0 2px 0 #12364f, 0 0 9px rgba(70, 174, 255, .7); font: normal 800 clamp(8px, calc(70px / var(--go-board-size)), 14px)/1 var(--font-geist-mono), monospace; }
+.is-selected .go-candidate-label { background: #c9534f; box-shadow: 0 2px 0 #712b2b, 0 0 10px rgba(255, 103, 94, .8); }
+.is-correct-move .go-candidate-label { background: #08755b; box-shadow: 0 2px 0 #064638, 0 0 11px rgba(66, 232, 178, .8); }
+.go-target-marker { position: absolute; z-index: 7; width: 32%; aspect-ratio: 1; border: 2px solid #ff675f; border-radius: 2px; transform: rotate(45deg); box-shadow: 0 0 8px rgba(255, 82, 77, .9); pointer-events: none; }
+.has-black .go-target-marker, .has-white .go-target-marker { width: 26%; background: rgba(255, 93, 84, .45); }
 
 .go-result { padding-top: 30px; }
 .go-result-heading { text-align: center; padding: 0 8px 20px; }
@@ -371,6 +376,18 @@
 .go-game-actions button { min-height: 44px; border: 1px solid rgba(255,255,255,.11); border-radius: 13px; background: rgba(255,255,255,.045); color: #b5c4ca; font-size: 9px; cursor: pointer; }
 .go-game-actions button:first-child { border-color: rgba(100, 225, 202, .25); color: #7ce1ce; }
 .go-game-actions button:disabled { opacity: .42; cursor: not-allowed; }
+.go-score-estimate, .go-end-confirm { margin-top: 9px; padding: 12px; border: 1px solid rgba(104, 222, 202, .22); border-radius: 15px; background: linear-gradient(145deg, rgba(20, 62, 73, .55), rgba(7, 20, 31, .82)); }
+.go-score-estimate header { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.go-score-estimate header strong, .go-end-confirm > strong { color: #d9fff7; font-size: 10px; }
+.go-score-estimate header small { color: #65808c; font-size: 7px; }
+.go-score-estimate > div { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 9px; }
+.go-score-estimate > div span { display: grid; gap: 3px; padding: 8px 5px; border-radius: 9px; background: rgba(255,255,255,.045); color: #718995; text-align: center; font-size: 7px; }
+.go-score-estimate > div b { color: #f1fbf9; font-size: 10px; }
+.go-score-estimate p, .go-end-confirm p { margin: 9px 0 0; color: #708995; font-size: 8px; line-height: 1.55; }
+.go-end-confirm { border-color: rgba(255, 173, 91, .28); }
+.go-end-confirm > div { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 10px; }
+.go-end-confirm button { min-height: 39px; border: 1px solid rgba(255,255,255,.1); border-radius: 10px; background: rgba(255,255,255,.045); color: #a8bcc4; cursor: pointer; }
+.go-end-confirm button:last-child { border-color: rgba(255, 173, 91, .32); background: rgba(255, 153, 75, .12); color: #ffc58f; }
 .go-move-log { margin-top: 9px; border: 1px solid rgba(255,255,255,.09); border-radius: 13px; background: rgba(255,255,255,.025); }
 .go-move-log summary { padding: 11px 12px; color: #7e949f; font-size: 9px; cursor: pointer; }
 .go-move-log ol { max-height: 155px; overflow: auto; margin: 0; padding: 0 12px 12px 34px; color: #9baeb6; font: 8px/1.8 var(--font-geist-mono), monospace; }

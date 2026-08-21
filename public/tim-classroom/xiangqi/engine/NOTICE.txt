@@ -1,0 +1,14 @@
+Fairy-Stockfish WebAssembly 1.1.11
+Copyright (C) the Stockfish and Fairy-Stockfish contributors.
+License: GNU General Public License version 3.0 (GPL-3.0).
+
+Exact distributed package source and build scripts:
+https://github.com/fairy-stockfish/fairy-stockfish.wasm/tree/nnue
+
+Core engine source:
+https://github.com/fairy-stockfish/Fairy-Stockfish
+
+License text:
+https://github.com/fairy-stockfish/fairy-stockfish.wasm/blob/nnue/Copying.txt
+
+The Tim Classroom integration does not modify the upstream engine binary.

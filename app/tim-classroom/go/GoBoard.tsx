@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 
 import type { GoBoardState, GoPoint } from "./goEngine";
 import { pointLabel } from "./goEngine";
+import type { GoCandidatePoint } from "./goTypes";
 
 type GoBoardProps = {
   board: GoBoardState;
@@ -11,6 +12,8 @@ type GoBoardProps = {
   selectedMove?: GoPoint | null;
   correctMoves?: GoPoint[];
   variation?: GoPoint[];
+  candidateMoves?: GoCandidatePoint[];
+  targetPoints?: GoPoint[];
   label?: string;
   compact?: boolean;
 };
@@ -39,6 +42,8 @@ export function GoBoard({
   selectedMove,
   correctMoves = [],
   variation = [],
+  candidateMoves = [],
+  targetPoints = [],
   label = "围棋棋盘",
   compact = false,
 }: GoBoardProps) {
@@ -62,6 +67,8 @@ export function GoBoard({
           const point = { row: rowIndex, col: colIndex };
           const correctIndex = correctMoves.findIndex((item) => samePoint(item, point));
           const variationIndex = variation.findIndex((item) => samePoint(item, point));
+          const candidate = candidateMoves.find((item) => samePoint(item, point));
+          const isTarget = targetPoints.some((item) => samePoint(item, point));
           const classes = [
             "go-intersection",
             stone === 1 ? "has-black" : stone === 2 ? "has-white" : "",
@@ -69,6 +76,8 @@ export function GoBoard({
             samePoint(selectedMove, point) ? "is-selected" : "",
             correctIndex >= 0 ? "is-correct-move" : "",
             variationIndex >= 0 ? "is-variation" : "",
+            candidate ? "is-candidate" : "",
+            isTarget ? "is-target" : "",
           ].filter(Boolean).join(" ");
           return (
             <button
@@ -80,6 +89,8 @@ export function GoBoard({
               aria-label={`${pointLabel(point, size)}${stone === 1 ? "，黑棋" : stone === 2 ? "，白棋" : "，空点"}`}
             >
               {stone !== 0 && <span className="go-board-stone" aria-hidden="true" />}
+              {candidate && <i className="go-candidate-label" aria-hidden="true">{candidate.label}</i>}
+              {isTarget && <i className="go-target-marker" aria-hidden="true" />}
               {correctIndex >= 0 && <i className="go-correct-pulse" aria-hidden="true">✓</i>}
               {variationIndex >= 0 && <i className="go-variation-number" aria-hidden="true">{variationIndex + 1}</i>}
             </button>

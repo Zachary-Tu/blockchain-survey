@@ -240,6 +240,7 @@
 .tim-course-convex { background: linear-gradient(115deg, #0aa993, #2879d7); }
 .tim-course-love { background: linear-gradient(115deg, #b137b8, #f04f91); }
 .tim-course-go { background: linear-gradient(115deg, #087f78, #255cb1 58%, #6047a8); }
+.tim-course-xiangqi { background: linear-gradient(115deg, #7c2d28, #a95337 55%, #71542d); }
 
 .tim-course::after {
   content: "";
@@ -1332,6 +1333,7 @@
 .tim-rank-bars .bar-convex { background: linear-gradient(90deg, #0aa993, #2879d7); }
 .tim-rank-bars .bar-love { background: linear-gradient(90deg, #b137b8, #f04f91); }
 .tim-rank-bars .bar-go { background: linear-gradient(90deg, #078679, #3469c4); }
+.tim-rank-bars .bar-xiangqi { background: linear-gradient(90deg, #8d342c, #d79b50); }
 
 .tim-class-fact {
   display: grid;

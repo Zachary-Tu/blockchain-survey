@@ -54,6 +54,11 @@ type NeuralClient = {
   getEngineInfo: () => { backend: string | null; modelName: string | null };
 };
 
+type NeuralModule = {
+  getKataGoEngineClient: () => NeuralClient;
+  resetKataGoEngineClientForTests: () => void;
+};
+
 export type GoAiResult = {
   move: GoPoint | null;
   engine: "neural-mcts" | "tactical-fallback";
@@ -98,27 +103,34 @@ let clientPromise: Promise<NeuralClient> | null = null;
 let modelLoadQueue: Promise<void> = Promise.resolve();
 let activeModelUrl: string | null = null;
 let strongModelFailure: string | null = null;
+let neuralModule: NeuralModule | null = null;
+let timeoutStrikes = 0;
 
 const searchBudgets: Record<GoOpponent["id"], Record<number, SearchBudget>> = {
   normal: {
-    9: { visits: 48, maxTimeMs: 750, maxChildren: 24, lossWindow: 3.2, candidateLimit: 8 },
-    13: { visits: 36, maxTimeMs: 850, maxChildren: 28, lossWindow: 3.0, candidateLimit: 8 },
-    19: { visits: 24, maxTimeMs: 950, maxChildren: 32, lossWindow: 2.8, candidateLimit: 7 },
+    9: { visits: 22, maxTimeMs: 420, maxChildren: 18, lossWindow: 3.2, candidateLimit: 8 },
+    13: { visits: 18, maxTimeMs: 480, maxChildren: 20, lossWindow: 3.0, candidateLimit: 8 },
+    19: { visits: 14, maxTimeMs: 560, maxChildren: 22, lossWindow: 2.8, candidateLimit: 7 },
   },
   hero: {
-    9: { visits: 128, maxTimeMs: 1300, maxChildren: 32, lossWindow: 1.6, candidateLimit: 5 },
-    13: { visits: 88, maxTimeMs: 1450, maxChildren: 36, lossWindow: 1.5, candidateLimit: 5 },
-    19: { visits: 56, maxTimeMs: 1600, maxChildren: 40, lossWindow: 1.4, candidateLimit: 5 },
+    9: { visits: 42, maxTimeMs: 620, maxChildren: 24, lossWindow: 1.6, candidateLimit: 5 },
+    13: { visits: 32, maxTimeMs: 700, maxChildren: 26, lossWindow: 1.5, candidateLimit: 5 },
+    19: { visits: 24, maxTimeMs: 780, maxChildren: 28, lossWindow: 1.4, candidateLimit: 5 },
   },
   emperor: {
-    9: { visits: 320, maxTimeMs: 2100, maxChildren: 44, lossWindow: 0.65, candidateLimit: 3 },
-    13: { visits: 210, maxTimeMs: 2300, maxChildren: 48, lossWindow: 0.6, candidateLimit: 3 },
-    19: { visits: 128, maxTimeMs: 2500, maxChildren: 52, lossWindow: 0.55, candidateLimit: 3 },
+    9: { visits: 72, maxTimeMs: 850, maxChildren: 30, lossWindow: 0.65, candidateLimit: 3 },
+    13: { visits: 54, maxTimeMs: 930, maxChildren: 32, lossWindow: 0.6, candidateLimit: 3 },
+    19: { visits: 38, maxTimeMs: 1050, maxChildren: 34, lossWindow: 0.55, candidateLimit: 3 },
+  },
+  robot: {
+    9: { visits: 118, maxTimeMs: 1150, maxChildren: 38, lossWindow: 0.22, candidateLimit: 2 },
+    13: { visits: 82, maxTimeMs: 1300, maxChildren: 40, lossWindow: 0.18, candidateLimit: 2 },
+    19: { visits: 56, maxTimeMs: 1450, maxChildren: 42, lossWindow: 0.14, candidateLimit: 2 },
   },
   saiyan: {
-    9: { visits: 720, maxTimeMs: 3300, maxChildren: 64, lossWindow: 0, candidateLimit: 1 },
-    13: { visits: 440, maxTimeMs: 3600, maxChildren: 64, lossWindow: 0, candidateLimit: 1 },
-    19: { visits: 260, maxTimeMs: 3900, maxChildren: 64, lossWindow: 0, candidateLimit: 1 },
+    9: { visits: 180, maxTimeMs: 1550, maxChildren: 48, lossWindow: 0, candidateLimit: 1 },
+    13: { visits: 126, maxTimeMs: 1750, maxChildren: 50, lossWindow: 0, candidateLimit: 1 },
+    19: { visits: 84, maxTimeMs: 1950, maxChildren: 52, lossWindow: 0, candidateLimit: 1 },
   },
 };
 
@@ -131,8 +143,17 @@ function backendPreference(): "webgpu" | "wasm" {
   return navigatorWithGpu?.gpu ? "webgpu" : "wasm";
 }
 
+function deviceCanSafelyLoadStrongModel() {
+  const device = globalThis.navigator as Navigator & { gpu?: unknown; deviceMemory?: number };
+  const memory = device?.deviceMemory ?? 4;
+  const cores = device?.hardwareConcurrency ?? 4;
+  return Boolean(device?.gpu) && memory >= 4 && cores >= 4 && timeoutStrikes === 0;
+}
+
 function modelForOpponent(opponentId: GoOpponent["id"]): ModelProfile {
-  return opponentId === "emperor" || opponentId === "saiyan" ? strongModel : compactModel;
+  return (opponentId === "robot" || opponentId === "saiyan") && deviceCanSafelyLoadStrongModel()
+    ? strongModel
+    : compactModel;
 }
 
 export function getGoAiModelProfile(opponentId: GoOpponent["id"]) {
@@ -147,13 +168,48 @@ export function getGoAiModelProfile(opponentId: GoOpponent["id"]) {
 async function getEngineClient(): Promise<NeuralClient> {
   if (!clientPromise) {
     clientPromise = import("web-katrain-engine/src/engine/katago/client")
-      .then((module) => module.getKataGoEngineClient() as NeuralClient)
+      .then((module) => {
+        neuralModule = module as unknown as NeuralModule;
+        return neuralModule.getKataGoEngineClient();
+      })
       .catch((error: unknown) => {
         clientPromise = null;
         throw error;
       });
   }
   return clientPromise;
+}
+
+function resetEngineClient() {
+  try {
+    neuralModule?.resetKataGoEngineClientForTests();
+  } catch {
+    // A worker may already have terminated. Resetting our references is still safe.
+  }
+  clientPromise = null;
+  activeModelUrl = null;
+  modelLoadQueue = Promise.resolve();
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = globalThis.setTimeout(() => {
+      timeoutStrikes += 1;
+      resetEngineClient();
+      reject(new Error(`${label}超时，已重启围棋引擎`));
+    }, timeoutMs);
+    promise.then(
+      (value) => {
+        globalThis.clearTimeout(timer);
+        timeoutStrikes = Math.max(0, timeoutStrikes - 1);
+        resolve(value);
+      },
+      (error) => {
+        globalThis.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 }
 
 async function loadEngine(model: ModelProfile): Promise<NeuralClient> {
@@ -164,7 +220,7 @@ async function loadEngine(model: ModelProfile): Promise<NeuralClient> {
     .catch(() => undefined)
     .then(async () => {
       if (activeModelUrl === model.url) return;
-      await client.init(model.url, backendPreference());
+      await withTimeout(client.init(model.url, backendPreference()), 12_000, "模型加载");
       activeModelUrl = model.url;
     });
   modelLoadQueue = load;
@@ -248,7 +304,7 @@ function chooseTeachingCandidate(
     .slice(0, budget.candidateLimit);
   if (pool.length <= 1) return top;
 
-  const temperature = opponentId === "normal" ? 1.65 : opponentId === "hero" ? 0.85 : 0.35;
+  const temperature = opponentId === "normal" ? 1.65 : opponentId === "hero" ? 0.85 : opponentId === "emperor" ? 0.35 : 0.15;
   const weights = pool.map((candidate) => {
     const searchConfidence = Math.sqrt(Math.max(1, candidate.visits));
     const policyConfidence = Math.max(0.015, candidate.prior ?? 0.015);
@@ -304,7 +360,7 @@ export async function requestGoAiMove(args: {
 
   const analyzeWithModel = async (model: ModelProfile) => {
     const client = await loadEngine(model);
-    const analysis = await client.analyze({
+    const analysis = await withTimeout(client.analyze({
       analysisGroup: "interactive",
       modelUrl: model.url,
       backend: backendPreference(),
@@ -315,8 +371,8 @@ export async function requestGoAiMove(args: {
       moveHistory: args.moveHistory,
       komi: 7.5,
       rules: "chinese",
-      topK: 12,
-      analysisPvLen: 12,
+      topK: 10,
+      analysisPvLen: 10,
       visits: budget.visits,
       maxTimeMs: budget.maxTimeMs,
       maxChildren: budget.maxChildren,
@@ -324,7 +380,7 @@ export async function requestGoAiMove(args: {
       nnRandomize: false,
       conservativePass: true,
       ownershipMode: "none",
-    });
+    }), budget.maxTimeMs + 2_500, "落子搜索");
     return { client, analysis };
   };
 
@@ -377,6 +433,8 @@ export async function requestGoAiMove(args: {
         ? `强化网络在此设备不可用，已自动改用轻量网络并保留本档搜索预算。原因：${degradedReason}`
         : args.opponentId === "saiyan"
           ? "使用 b10 强化网络，并采用最高访问数下的搜索第一候选。"
+          : args.opponentId === "robot"
+            ? `使用 ${activeModel.publicLabel} 精确搜索，只在几乎等价的前两候选中择一。`
           : `使用 ${activeModel.publicLabel}，从不超过 ${budget.lossWindow.toFixed(1)} 目损失的合理候选中按本档棋力选择。`,
     };
   } catch (error) {

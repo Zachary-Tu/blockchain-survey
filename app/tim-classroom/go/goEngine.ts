@@ -301,7 +301,7 @@ export function chooseAiMove(
     return tacticalGap >= 5 ? scored[0].point : scored[Math.min(moveNumber % 2, scored.length - 1)].point;
   }
 
-  const candidateLimit = opponentId === "saiyan" ? 10 : 7;
+  const candidateLimit = opponentId === "saiyan" ? 10 : opponentId === "robot" ? 9 : 7;
   const candidates = scored.slice(0, Math.min(candidateLimit, scored.length)).map((candidate) => {
     const result = playMove(board, aiColor, candidate.point, positionHistory);
     const nextHistory = [...positionHistory, boardHash(result.board)];
@@ -311,9 +311,10 @@ export function chooseAiMove(
       nextHistory,
       moveNumber + 1,
     );
-    let total = candidate.score - replyPenalty * (opponentId === "saiyan" ? 0.55 : 0.35);
-    if (opponentId === "saiyan" && board.length <= 13) {
-      total += rolloutValue(result.board, aiColor, nextHistory, 6) * 1.2;
+    let total = candidate.score - replyPenalty * (opponentId === "saiyan" ? 0.58 : opponentId === "robot" ? 0.48 : 0.35);
+    if ((opponentId === "robot" || opponentId === "saiyan") && board.length <= 13) {
+      const rolloutDepth = opponentId === "saiyan" ? 5 : 3;
+      total += rolloutValue(result.board, aiColor, nextHistory, rolloutDepth) * (opponentId === "saiyan" ? 1.2 : 0.72);
     }
     return { point: candidate.point, score: total };
   });

@@ -39,6 +39,21 @@ export type GoPuzzleRefutation = {
   explanation: string;
 };
 
+export type GoCandidatePoint = GoPoint & {
+  label: "A" | "B" | "C" | "D";
+};
+
+export type GoPuzzleObjective = {
+  kind: "capture-target" | "save-target" | "connect-targets" | "make-eye" | "occupy-vital";
+  label: string;
+  targetColor: 1 | 2;
+  anchors: GoPoint[];
+  goalPoints?: GoPoint[];
+  minLiberties?: number;
+  maxPlayerMoves: number;
+  region: { top: number; left: number; bottom: number; right: number };
+};
+
 type GoQuestionBase = {
   id: string;
   family: string;
@@ -55,12 +70,17 @@ export type GoChoiceQuestion = GoQuestionBase & {
 
 export type GoBoardQuestion = GoQuestionBase & {
   type: "board";
+  mode: "candidate" | "objective";
   task: GoPuzzleTask;
   boardSize: number;
   stones: GoSetupStone[];
   toPlay: 1 | 2;
   /** Alternating moves beginning with `toPlay`. Every line is a complete valid variation. */
   solutionLines: GoPoint[][];
+  /** All labelled points shown to the learner in candidate mode. */
+  candidateMoves?: GoCandidatePoint[];
+  /** Goal checked from the resulting board rather than against one memorized coordinate. */
+  objective?: GoPuzzleObjective;
   /** Teaching notes corresponding to the canonical line, one note per move where available. */
   stepNotes: string[];
   hint: string;
@@ -72,7 +92,7 @@ export type GoBoardQuestion = GoQuestionBase & {
 export type GoQuestion = GoChoiceQuestion | GoBoardQuestion;
 
 export type GoOpponent = {
-  id: "normal" | "hero" | "emperor" | "saiyan";
+  id: "normal" | "hero" | "emperor" | "robot" | "saiyan";
   name: string;
   rank: string;
   description: string;

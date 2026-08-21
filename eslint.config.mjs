@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    "public/tim-classroom/xiangqi/engine/stockfish.js",
+    "public/tim-classroom/xiangqi/engine/stockfish.worker.js",
   ]),
   eslint.configs.recommended,
   ...tseslint.configs.recommended,

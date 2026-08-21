@@ -7,9 +7,10 @@ import Image from "next/image";
 import { buildQuizAttempt, courses, difficultyOrder } from "./classroomConfig";
 import type { CourseKey, QuizQuestion, ReportProfile } from "./classroomConfig";
 import { GoClassroom } from "./go/GoClassroom";
+import { XiangqiClassroom } from "./xiangqi/XiangqiClassroom";
 import type { DifficultyKey } from "./quizTypes";
 
-type Screen = "home" | "difficulty" | "quiz" | "result" | "go";
+type Screen = "home" | "difficulty" | "quiz" | "result" | "go" | "xiangqi";
 
 type DimensionStat = {
   key: string;
@@ -28,6 +29,7 @@ const sampleScores = [
   { label: "凸函数小课堂", rate: 76, color: "convex" },
   { label: "恋爱小课堂", rate: 88, color: "love" },
   { label: "围棋小课堂", rate: 74, color: "go" },
+  { label: "象棋小课堂", rate: 79, color: "xiangqi" },
 ];
 
 const optionLetters = ["A", "B", "C", "D"];
@@ -224,6 +226,9 @@ export function TimClassroom() {
   if (screen === "go") {
     return <GoClassroom onExit={goHome} />;
   }
+  if (screen === "xiangqi") {
+    return <XiangqiClassroom onExit={goHome} />;
+  }
 
   return (
     <main className="tim-classroom" data-screen={screen}>
@@ -244,7 +249,7 @@ export function TimClassroom() {
             <div className="tim-hero">
               <p className="tim-kicker">TIM CLASS · RANDOM 10</p>
               <h1 id="tim-classroom-title">Tim小课堂</h1>
-              <p>五门课程，多档挑战。随机答题、互动落子，生成你的专属学习报告。</p>
+              <p>六门课程，多档挑战。随机答题、互动棋谱与人机对弈，生成你的专属学习报告。</p>
 
               <div className="tim-avatar-row" aria-hidden="true">
                 {courses.map((item) => (
@@ -297,6 +302,27 @@ export function TimClassroom() {
                 <Image src="/tim-classroom/go/opponents/normal-tim.png" alt="" aria-hidden="true" width={140} height={164} sizes="70px" />
                 <span className="tim-course-arrow" aria-hidden="true">→</span>
               </button>
+              <button
+                className="tim-course tim-course-xiangqi"
+                type="button"
+                onClick={() => {
+                  resetAttempt();
+                  setScreen("xiangqi");
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                aria-label="选择象棋小课堂：与少年、樵夫和仙人 Tim 进行中国象棋人机对弈"
+              >
+                <span className="tim-course-index">06</span>
+                <span className="tim-course-copy">
+                  <small>XIANGQI 601 · ARENA</small>
+                  <strong>象棋小课堂</strong>
+                  <span>完整规则与人机对弈</span>
+                  <em>少年 · 樵夫 · NNUE 仙人</em>
+                </span>
+                <span className="tim-course-count">3 档 · 红方先行</span>
+                <Image src="/tim-classroom/xiangqi/opponents/young-tim.png" alt="" aria-hidden="true" width={140} height={164} sizes="70px" />
+                <span className="tim-course-arrow" aria-hidden="true">→</span>
+              </button>
             </div>
 
             <button className="tim-scoreboard-link" type="button" onClick={() => setShowScoreboard(true)}>
@@ -304,9 +330,9 @@ export function TimClassroom() {
             </button>
 
             <footer className="tim-footer">
-              <span>{totalBankCount} 套能力题库 + 围棋 10 级 · 随机练习</span>
-              <span>每次重测都会重新抽题，围棋另含互动棋盘与 AI 对弈。</span>
-              <small>© TIM CLASSROOM · v5.0 · {totalQuestionCount + 300} 题池</small>
+              <span>{totalBankCount} 套能力题库 + 围棋 10 级 + 象棋竞技场</span>
+              <span>围棋含动态棋谱与五档 AI；象棋含三档完整规则人机对弈。</span>
+              <small>© TIM CLASSROOM · v6.0 · {totalQuestionCount + 600} 题池</small>
             </footer>
           </>
         )}
@@ -582,7 +608,7 @@ export function TimClassroom() {
               </div>
               <div className="tim-class-fact">
                 <img src="/tim-classroom/tim-smile.png" alt="微笑的 Tim" />
-                <p><strong>Tim 的观察</strong>五门课堂都能即时反馈；围棋另有十级教学、错题重练与 AI 对弈。</p>
+                <p><strong>Tim 的观察</strong>六门课堂都能即时反馈；围棋另有十级动态棋谱，象棋提供三档完整人机对弈。</p>
               </div>
               <button className="tim-next-button" type="button" onClick={() => setShowScoreboard(false)}><span>知道了，去答题</span><span>→</span></button>
             </section>

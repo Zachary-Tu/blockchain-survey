@@ -90,7 +90,7 @@ test("server-renders the modular research platform", async () => {
   assert.doesNotMatch(html, /codex-preview|starter loading skeleton/i);
 });
 
-test("server-renders Tim Classroom with five course tracks and Go training", async () => {
+test("server-renders Tim Classroom with six course tracks, Go training, and Xiangqi", async () => {
   const response = await render("/tim-classroom");
   assert.equal(response.status, 200);
   const html = await response.text();
@@ -99,18 +99,19 @@ test("server-renders Tim Classroom with five course tracks and Go training", asy
     "utf8",
   );
 
-  assert.match(html, /<title>Tim小课堂｜五门课程、围棋教学与AI对弈<\/title>/i);
-  assert.match(html, /五门课程，多档挑战/);
+  assert.match(html, /<title>Tim小课堂｜六门课程、围棋与象棋AI对弈<\/title>/i);
+  assert.match(html, /六门课程，多档挑战/);
   assert.match(html, /运动小课堂/);
   assert.match(html, /图论小课堂/);
   assert.match(html, /凸函数小课堂/);
   assert.match(html, /恋爱小课堂/);
   assert.match(html, /围棋小课堂/);
-  assert.match(html, /12(?:<!-- -->)? 套能力题库 \+ 围棋 10 级/);
-  assert.match(html, /540(?:<!-- -->)? 题池/);
+  assert.match(html, /象棋小课堂/);
+  assert.match(html, /12(?:<!-- -->)? 套能力题库 \+ 围棋 10 级 \+ 象棋竞技场/);
+  assert.match(html, /840(?:<!-- -->)? 题池/);
   assert.match(html, /og-tim-classroom-v2\.png/);
   assert.match(html, /class="tim-classroom" data-screen="home"/);
-  assert.doesNotMatch(html, /四门课程|三门课程|240 题池|180 题池/);
+  assert.doesNotMatch(html, /五门课程|四门课程|三门课程|540 题池|240 题池|180 题池/);
   assert.match(classroomCss, /url\("\/tim-classroom\/home-background\.png"\)/);
   assert.match(classroomCss, /\.tim-phone\[data-screen="home"\]/);
 });

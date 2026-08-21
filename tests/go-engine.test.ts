@@ -55,10 +55,10 @@ test("中国面积计分保持有限且胜负一致", () => {
   assert.equal(score.whiteStones, 3);
 });
 
-test("四档本地降级搜索都给出确定且合法的着法", () => {
+test("五档本地降级搜索都给出确定且合法的着法", () => {
   const board = boardFrom([[2,2,1],[2,3,2],[3,2,1],[4,4,2]], 5);
   const history = [boardHash(board)];
-  const opponents: GoOpponent["id"][] = ["normal", "hero", "emperor", "saiyan"];
+  const opponents: GoOpponent["id"][] = ["normal", "hero", "emperor", "robot", "saiyan"];
   for (const opponent of opponents) {
     const first = chooseAiMove(board, 2, opponent, history, 8);
     const second = chooseAiMove(board, 2, opponent, history, 8);
