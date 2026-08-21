@@ -219,7 +219,7 @@ export function TimClassroom() {
   const selectedWasCorrect = selectedOption === question.correct;
 
   return (
-    <main className="tim-classroom">
+    <main className="tim-classroom" data-screen={screen}>
       <section
         className="tim-phone"
         data-course={screen === "home" ? "home" : course.key}

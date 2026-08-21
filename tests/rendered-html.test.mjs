@@ -94,6 +94,10 @@ test("server-renders Tim Classroom with four randomized course tracks", async ()
   const response = await render("/tim-classroom");
   assert.equal(response.status, 200);
   const html = await response.text();
+  const classroomCss = await readFile(
+    new URL("../app/tim-classroom/tim-classroom.css", import.meta.url),
+    "utf8",
+  );
 
   assert.match(html, /<title>Tim小课堂｜四门随机10题与能力报告<\/title>/i);
   assert.match(html, /四门课程、三档挑战/);
@@ -104,7 +108,10 @@ test("server-renders Tim Classroom with four randomized course tracks", async ()
   assert.match(html, /12(?:<!-- -->)? 套题库/);
   assert.match(html, /240(?:<!-- -->)? 题池/);
   assert.match(html, /og-tim-classroom-v2\.png/);
+  assert.match(html, /class="tim-classroom" data-screen="home"/);
   assert.doesNotMatch(html, /三门课程|180 题池/);
+  assert.match(classroomCss, /url\("\/tim-classroom\/home-background\.png"\)/);
+  assert.match(classroomCss, /\.tim-phone\[data-screen="home"\]/);
 });
 
 test("server-renders a standalone fixed M1 pilot without the researcher console", async () => {
