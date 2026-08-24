@@ -125,7 +125,7 @@ test("server-renders a standalone fixed M1 pilot without the researcher console"
   assert.match(html, /M1 · 初批实验/);
   assert.match(html, /观察曲线/);
   assert.match(html, /六条时间序列/);
-  assert.match(html, /六条曲线，同层完成/);
+  assert.match(html, /六条曲线，同页完成/);
   assert.match(html, /匿名参与者编号/);
   assert.match(html, /进入实验说明/);
   assert.doesNotMatch(html, /RESEARCHER CONSOLE/);
@@ -145,7 +145,7 @@ test("server-renders the standalone human M1 main experiment", async () => {
   assert.match(html, /M1 MAIN STUDY · PARTICIPANT ENTRY/);
   assert.match(html, /观察曲线/);
   assert.match(html, /六条时间序列/);
-  assert.match(html, /六条曲线，同层完成/);
+  assert.match(html, /六条曲线，同页完成/);
   assert.match(html, /匿名参与者编号/);
   assert.doesNotMatch(html, /初批实验/);
   assert.doesNotMatch(html, /RESEARCHER CONSOLE/);
@@ -263,7 +263,7 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
         expertise: "none",
         experimentalArm: "m1-main",
         protocolVersion: "boundary-lab-modular-v4.1",
-        studyConfig: { entryMode: "m1", mainStudyProtocol: "m1-human-main-v2-layer-major-six-assets", disclosureFlowOrder: "disclosure-major", randomizedPlan: plan },
+        studyConfig: { entryMode: "m1", mainStudyProtocol: "m1-human-main-v3-six-assets-single-page", disclosureFlowOrder: "disclosure-major", layerPresentation: "simultaneous-six-asset-page-v1", randomizedPlan: plan },
       }),
     });
     assert.equal(sessionResponse.status, 201);
@@ -503,9 +503,14 @@ test("implements a configuration-aware participant briefing without future discl
   assert.match(source, /DISCLOSURE_PATHS\[disclosurePath\]\.length - 1/);
   assert.match(source, /participantBriefingVersion: isV4 \? "participant-briefing-v1"/);
   assert.match(source, /experimentalArm: isM1Main \? "m1-main"/);
-  assert.match(source, /mainStudyProtocol: isM1Main \? "m1-human-main-v2-layer-major-six-assets"/);
+  assert.match(source, /mainStudyProtocol: isM1Main \? "m1-human-main-v3-six-assets-single-page"/);
   assert.match(source, /disclosureFlowOrder: usesLayerMajorDisclosureFlow \? "disclosure-major"/);
+  assert.match(source, /nextPlan\.length === 6 \? "simultaneous-six-asset-page-v1" : "simultaneous-multi-asset-page-v1"/);
+  assert.match(source, /responseTimingProtocol: usesLayerMajorDisclosureFlow \? "layer-start-to-last-asset-interaction-v1"/);
   assert.match(source, /uncertaintyControl: isV4 \? "continuous-range-knob-v1"/);
+  assert.match(source, /NEW INFORMATION · 新信息已解锁/);
+  assert.match(source, /mod-six-asset-grid/);
+  assert.match(source, /submitDisclosureLayer/);
 });
 
 test("keeps the agent boundary judgment separate from post-judgment annotations", async () => {
