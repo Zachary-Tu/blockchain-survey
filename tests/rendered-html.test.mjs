@@ -124,7 +124,8 @@ test("server-renders a standalone fixed M1 pilot without the researcher console"
   assert.match(html, /<title>Boundary Lab｜M1 初批实验<\/title>/i);
   assert.match(html, /M1 · 初批实验/);
   assert.match(html, /观察曲线/);
-  assert.match(html, /四条时间序列/);
+  assert.match(html, /六条时间序列/);
+  assert.match(html, /六条曲线，同层完成/);
   assert.match(html, /匿名参与者编号/);
   assert.match(html, /进入实验说明/);
   assert.doesNotMatch(html, /RESEARCHER CONSOLE/);
@@ -143,7 +144,8 @@ test("server-renders the standalone human M1 main experiment", async () => {
   assert.match(html, /M1 · 主实验/);
   assert.match(html, /M1 MAIN STUDY · PARTICIPANT ENTRY/);
   assert.match(html, /观察曲线/);
-  assert.match(html, /四条时间序列/);
+  assert.match(html, /六条时间序列/);
+  assert.match(html, /六条曲线，同层完成/);
   assert.match(html, /匿名参与者编号/);
   assert.doesNotMatch(html, /初批实验/);
   assert.doesNotMatch(html, /RESEARCHER CONSOLE/);
@@ -182,9 +184,10 @@ test("server-renders the consolidated agent console as the primary agent entry",
   assert.match(pilotHtml, /<title>Boundary Lab｜M1 Agent 初批实验<\/title>/i);
   assert.match(pilotHtml, /LOCKED_PROTOCOL/);
   assert.match(pilotHtml, /T2 \/ 2 boundaries \/ 3 stages/);
-  assert.match(pilotHtml, /BTC, ETH, SOL, BNB \/ randomized/);
+  assert.match(pilotHtml, /BTC, ETH, SOL, BNB, XRP, DOGE \/ randomized/);
+  assert.match(pilotHtml, /disclosure-major \/ six series per layer/);
   assert.match(pilotHtml, /expected responses/);
-  assert.match(pilotHtml, />28</);
+  assert.match(pilotHtml, />42</);
   assert.match(pilotHtml, /model_or_agent_name/);
   assert.match(pilotHtml, /不得查看源代码、网络请求、完整数据包、未来披露或外部资料/);
   assert.doesNotMatch(pilotHtml, /RESEARCHER CONSOLE/);
@@ -220,7 +223,7 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
     const api = (pathname, init = {}) => mf.dispatchFetch(`http://localhost${pathname}`, init);
 
     const disclosureKeys = ["G0", "GI1", "GI2", "DI1", "DI2", "DI3", "DI4"];
-    const plan = ["bitcoin", "ethereum", "solana", "bnb"].map((assetId, order) => ({
+    const plan = ["bitcoin", "ethereum", "solana", "bnb", "xrp", "dogecoin"].map((assetId, order) => ({
       id: `human-m1-${assetId}`,
       order,
       disclosures: disclosureKeys,
@@ -259,8 +262,8 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
         participantCode: "SYSTEM-E2E",
         expertise: "none",
         experimentalArm: "m1-main",
-        protocolVersion: "boundary-lab-modular-v4",
-        studyConfig: { entryMode: "m1", mainStudyProtocol: "m1-human-main-v1", randomizedPlan: plan },
+        protocolVersion: "boundary-lab-modular-v4.1",
+        studyConfig: { entryMode: "m1", mainStudyProtocol: "m1-human-main-v2-layer-major-six-assets", disclosureFlowOrder: "disclosure-major", randomizedPlan: plan },
       }),
     });
     assert.equal(sessionResponse.status, 201);
@@ -272,8 +275,8 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
       { index: 20, ratio: 0.7, date: "2023-01-01" },
     ];
     const boundaryIntervals = [
-      { boundaryIndex: 0, centerRatio: 0.3, halfWidthRatio: 0.05, widthRatio: 0.1, lowerRatio: 0.25, upperRatio: 0.35, lowerIndex: 8, upperIndex: 12, lowerDate: "2020-10-01", upperDate: "2021-04-01" },
-      { boundaryIndex: 1, centerRatio: 0.7, halfWidthRatio: 0.05, widthRatio: 0.1, lowerRatio: 0.65, upperRatio: 0.75, lowerIndex: 18, upperIndex: 22, lowerDate: "2022-10-01", upperDate: "2023-04-01" },
+      { boundaryIndex: 0, centerRatio: 0.3, halfWidthRatio: 0.037, widthRatio: 0.074, lowerRatio: 0.263, upperRatio: 0.337, lowerIndex: 8, upperIndex: 12, lowerDate: "2020-10-01", upperDate: "2021-04-01" },
+      { boundaryIndex: 1, centerRatio: 0.7, halfWidthRatio: 0.037, widthRatio: 0.074, lowerRatio: 0.663, upperRatio: 0.737, lowerIndex: 18, upperIndex: 22, lowerDate: "2022-10-01", upperDate: "2023-04-01" },
     ];
     const cueByDisclosure = {
       G0: "g0_trend_slope",
@@ -285,9 +288,9 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
       DI4: "di4_boundary_refinement",
     };
 
-    for (const trial of plan) {
-      for (let disclosureIndex = 0; disclosureIndex < disclosureKeys.length; disclosureIndex += 1) {
-        const disclosureKey = disclosureKeys[disclosureIndex];
+    for (let disclosureIndex = 0; disclosureIndex < disclosureKeys.length; disclosureIndex += 1) {
+      const disclosureKey = disclosureKeys[disclosureIndex];
+      for (const trial of plan) {
         const response = await api("/api/modular-responses", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -295,7 +298,7 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
             sessionId: session.id,
             trialId: trial.id,
             trialOrder: trial.order,
-            responseVersion: "v4",
+            responseVersion: "v4.1",
             moduleKey: "disclosure",
             taskType: "T2",
             stimulusType: "crypto",
@@ -338,8 +341,8 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
     assert.equal(completion.status, 200);
     assert.deepEqual(await completion.json(), {
       ok: true,
-      responseCount: 28,
-      expectedResponseCount: 28,
+      responseCount: 42,
+      expectedResponseCount: 42,
     });
 
     const forbiddenExport = await api("/api/research-export?scope=human-m1", {
@@ -361,9 +364,9 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
     assert.match(csv, /"包含,逗号与""引号"""/);
     assert.match(csv, /m1-main/);
     assert.doesNotMatch(csv, /AGENT-E2E-001/);
-    assert.equal(csv.split("\r\n").length, 29);
+    assert.equal(csv.split("\r\n").length, 43);
 
-    const agentPlan = ["bitcoin", "ethereum", "solana", "bnb"].map((assetId, order) => ({
+    const agentPlan = ["bitcoin", "ethereum", "solana", "bnb", "xrp", "dogecoin"].map((assetId, order) => ({
       id: `agent-console-${assetId}`,
       order,
       disclosures: disclosureKeys,
@@ -377,10 +380,11 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
         expertise: "none",
         modelName: "AgentModel-Test-1",
         experimentalArm: "agent-disclosure",
-        protocolVersion: "boundary-lab-modular-v4",
+        protocolVersion: "boundary-lab-modular-v4.1",
         studyConfig: {
           entryMode: "agent-console",
-          agentInterfaceVersion: "agent-native-json-v1",
+          agentInterfaceVersion: "agent-native-json-v2-layer-major-six-assets",
+          disclosureFlowOrder: "disclosure-major",
           agentMetadata: { provider: "test", temperature: "0", promptVersion: "agent-protocol-v1" },
           randomizedPlan: agentPlan,
         },
@@ -390,9 +394,9 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
     const { session: agentSession } = await agentSessionResponse.json();
     assert.ok(agentSession.id);
 
-    for (const trial of agentPlan) {
-      for (let disclosureIndex = 0; disclosureIndex < disclosureKeys.length; disclosureIndex += 1) {
-        const disclosureKey = disclosureKeys[disclosureIndex];
+    for (let disclosureIndex = 0; disclosureIndex < disclosureKeys.length; disclosureIndex += 1) {
+      const disclosureKey = disclosureKeys[disclosureIndex];
+      for (const trial of agentPlan) {
         const response = await api("/api/modular-responses", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -400,7 +404,7 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
             sessionId: agentSession.id,
             trialId: trial.id,
             trialOrder: trial.order,
-            responseVersion: "agent-v1",
+            responseVersion: "agent-v2",
             moduleKey: "disclosure",
             taskType: "T2",
             stimulusType: "crypto",
@@ -411,7 +415,7 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
             windowMode: "whole",
             disclosureIndex,
             disclosureKey,
-            disclosureState: { key: disclosureKey, agentInterfaceVersion: "agent-native-json-v1" },
+            disclosureState: { key: disclosureKey, agentInterfaceVersion: "agent-native-json-v2-layer-major-six-assets" },
             stimulusWindow: { mode: "whole" },
             cueSchemaVersion: "disclosure-specific-cues-v2",
             boundaries,
@@ -443,8 +447,8 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
     assert.equal(agentCompletion.status, 200);
     assert.deepEqual(await agentCompletion.json(), {
       ok: true,
-      responseCount: 28,
-      expectedResponseCount: 28,
+      responseCount: 42,
+      expectedResponseCount: 42,
     });
 
     const agentExportResponse = await api("/api/research-export?scope=agent-console", {
@@ -453,8 +457,8 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
     assert.equal(agentExportResponse.status, 200, await agentExportResponse.clone().text());
     assert.match(agentExportResponse.headers.get("content-disposition") ?? "", /boundary-lab-agent-console/);
     const agentCsv = await agentExportResponse.text();
-    assert.equal(agentCsv.split("\r\n").length, 29);
-    assert.match(agentCsv, /agent-v1/);
+    assert.equal(agentCsv.split("\r\n").length, 43);
+    assert.match(agentCsv, /agent-v2/);
     assert.match(agentCsv, /agent-disclosure/);
     assert.match(agentCsv, /AgentModel-Test-1/);
     assert.doesNotMatch(agentCsv, /SYSTEM-E2E/);
@@ -465,7 +469,7 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
     assert.equal(combinedExportResponse.status, 200, await combinedExportResponse.clone().text());
     assert.match(combinedExportResponse.headers.get("content-disposition") ?? "", /boundary-lab-all/);
     const combinedCsv = await combinedExportResponse.text();
-    assert.equal(combinedCsv.split("\r\n").length, 57);
+    assert.equal(combinedCsv.split("\r\n").length, 85);
     assert.match(combinedCsv, /SYSTEM-E2E/);
     assert.match(combinedCsv, /AGENT-E2E-001/);
     assert.match(combinedCsv, /m1-main/);
@@ -499,7 +503,9 @@ test("implements a configuration-aware participant briefing without future discl
   assert.match(source, /DISCLOSURE_PATHS\[disclosurePath\]\.length - 1/);
   assert.match(source, /participantBriefingVersion: isV4 \? "participant-briefing-v1"/);
   assert.match(source, /experimentalArm: isM1Main \? "m1-main"/);
-  assert.match(source, /mainStudyProtocol: isM1Main \? "m1-human-main-v1"/);
+  assert.match(source, /mainStudyProtocol: isM1Main \? "m1-human-main-v2-layer-major-six-assets"/);
+  assert.match(source, /disclosureFlowOrder: usesLayerMajorDisclosureFlow \? "disclosure-major"/);
+  assert.match(source, /uncertaintyControl: isV4 \? "continuous-range-knob-v1"/);
 });
 
 test("keeps the agent boundary judgment separate from post-judgment annotations", async () => {
@@ -513,8 +519,10 @@ test("keeps the agent boundary judgment separate from post-judgment annotations"
   assert.match(source, /VALIDATE BOUNDARIES \+ REVEAL ANNOTATION/);
   assert.match(source, /先提交边界与不确定范围；通过校验后才会显示线索代码与影响评分/);
   assert.match(source, /actorType: "agent"/);
-  assert.match(source, /responseVersion: "agent-v1"/);
-  assert.match(source, /agentInterfaceVersion: "agent-native-json-v1"/);
+  assert.match(source, /responseVersion: "agent-v2"/);
+  assert.match(source, /agentInterfaceVersion: "agent-native-json-v2-layer-major-six-assets"/);
+  assert.match(source, /allowed_uncertainty_half_width_range/);
+  assert.match(source, /SUBMIT \+ NEXT SERIES \/ SAME LAYER/);
   assert.match(source, /information_snapshot/);
   assert.match(source, /robustness_factor/);
   assert.match(source, /不得查看源代码、网络请求、完整数据包、未来披露或外部资料/);
@@ -565,15 +573,19 @@ test("keeps all preceding interfaces available for rollback", async () => {
   assert.doesNotMatch(predecessorHtml, /完整可用数据/);
 });
 
-test("ships the fourth-edition full and curated window protocol", async () => {
+test("ships the fourth-edition six-asset, priority-event, and window protocol", async () => {
   const raw = await readFile(
-    new URL("../public/data/research-stimuli-modular-v7.json", import.meta.url),
+    new URL("../public/data/research-stimuli-modular-v8.json", import.meta.url),
     "utf8",
   );
   const stimulus = JSON.parse(raw);
 
-  assert.equal(stimulus.protocolVersion, "boundary-lab-modular-v4");
-  assert.equal(stimulus.datasetVersion, "research-stimuli-modular-v7");
+  assert.equal(stimulus.protocolVersion, "boundary-lab-modular-v4.1");
+  assert.equal(stimulus.datasetVersion, "research-stimuli-modular-v8");
+  assert.deepEqual(
+    stimulus.assets.map((asset) => asset.id),
+    ["bitcoin", "ethereum", "solana", "bnb", "xrp", "dogecoin"],
+  );
   assert.deepEqual(
     { start: stimulus.curatedWindow.start, end: stimulus.curatedWindow.end },
     { start: "2020-01-01", end: "2024-12-31" },
@@ -581,13 +593,22 @@ test("ships the fourth-edition full and curated window protocol", async () => {
   assert.match(stimulus.curatedWindow.rule, /without interpolation/);
   assert.deepEqual(
     stimulus.assets.map((asset) => asset.metrics.price.resolutions.daily.points[0].date),
-    ["2010-10-21", "2015-11-16", "2020-07-19", "2017-11-02"],
+    ["2010-10-21", "2015-11-16", "2020-07-19", "2017-11-02", "2013-11-13", "2014-03-26"],
   );
   for (const asset of stimulus.assets) {
     const source = asset.metrics.price.source;
     assert.equal(source.availableWindow.start, asset.metrics.price.resolutions.daily.points[0].date);
     assert.equal(source.observationCount, asset.metrics.price.resolutions.daily.points.length);
+    assert.ok(asset.events.length > 0);
+    assert.ok(asset.events.every((event) => Number.isInteger(event.sourcePriority)));
+    assert.ok(asset.events.every((event) => event.sourceId));
   }
+  assert.equal(stimulus.dataset.eventSource.file, "events_20260527.zip");
+  assert.equal(stimulus.dataset.eventSource.sha256, "cc9d1f5d06fa2aeb447c57abeb1c42c560195967d33e7a4f90629333c3bc9438");
+  assert.deepEqual(stimulus.modularProtocol.eventDisclosureProtocol.DI3.sourcePriorities, [1, 2]);
+  assert.deepEqual(stimulus.modularProtocol.eventDisclosureProtocol.DI4.sourcePriorities, [3, 4, 5]);
+  assert.equal(stimulus.modularProtocol.eventDisclosureProtocol.DI3.maximumNewEvents, 10);
+  assert.equal(stimulus.modularProtocol.eventDisclosureProtocol.DI4.maximumNewEvents, 10);
 });
 
 test("freezes the literature-grounded cue taxonomy with stable codes", async () => {

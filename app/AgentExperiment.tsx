@@ -6,18 +6,23 @@ import {
   CUE_SCHEMA_VERSION,
   CUE_SETS,
   DISCLOSURE_COPY,
+  EVENT_SELECTION_PROTOCOL,
+  MAX_EVENTS_PER_DISCLOSURE,
   METRIC_LABEL,
   MODULES,
   ModularChart,
   SNAPSHOT_OPTIONS,
   STAGE_DEFINITION,
   TASKS,
-  WIDTHS,
+  UNCERTAINTY_MAX,
+  UNCERTAINTY_MIN,
+  UNCERTAINTY_STEP,
   boundaryRecords,
   disclosureVisibility,
   initialBoundaries,
   intervalRecords,
   makeTrialPlan,
+  selectDisclosureEvents,
   type BoundaryRecord,
   type Bundle,
   type DisclosureKey,
@@ -64,10 +69,8 @@ type AgentAnswer = {
   boundaryIntervals: IntervalRecord[];
 };
 
-const HALF_WIDTHS = WIDTHS.map((option) => option.value);
-
 function matchesHalfWidth(value: number) {
-  return HALF_WIDTHS.some((option) => Math.abs(option - value) < 0.0001);
+  return Number.isFinite(value) && value >= UNCERTAINTY_MIN && value <= UNCERTAINTY_MAX;
 }
 
 function sameNumbers(first: number[], second: number[]) {
@@ -161,7 +164,7 @@ export function AgentExperiment({ mode }: { mode: AgentMode }) {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/data/research-stimuli-modular-v7.json")
+    fetch("/data/research-stimuli-modular-v8.json")
       .then((response) => {
         if (!response.ok) throw new Error("研究刺激数据加载失败");
         return response.json() as Promise<Bundle>;
@@ -211,10 +214,21 @@ export function AgentExperiment({ mode }: { mode: AgentMode }) {
       )
     : disclosureVisibility("G0", "domain");
   const allEvents = currentControl?.events ?? currentAsset?.events ?? [];
-  const visibleEvents = allEvents.filter((event) => {
-    if (!points.length || event.date < points[0].date || event.date > points[points.length - 1].date) return false;
-    return (visibility.highEvents && event.priority === "high") || (visibility.lowEvents && event.priority === "low");
-  });
+  const eventWindowStart = points[0]?.date ?? "0000-01-01";
+  const eventWindowEnd = points[points.length - 1]?.date ?? "9999-12-31";
+  const coreEvents = selectDisclosureEvents(allEvents, "core", eventWindowStart, eventWindowEnd);
+  const supplementaryEvents = selectDisclosureEvents(allEvents, "supplementary", eventWindowStart, eventWindowEnd);
+  const visibleEvents = [
+    ...(visibility.highEvents ? coreEvents : []),
+    ...(visibility.lowEvents ? supplementaryEvents : []),
+  ].sort((first, second) => first.date.localeCompare(second.date));
+  const newlyDisclosedEvents = currentDisclosure === "DI3"
+    ? coreEvents
+    : currentDisclosure === "DI4"
+      ? supplementaryEvents
+      : currentDisclosure === "FULL"
+        ? visibleEvents
+        : [];
   const displayName = currentControl?.nameZh ?? currentAsset?.nameZh ?? "匿名序列";
   const displaySymbol = currentControl?.symbol ?? currentAsset?.symbol ?? "";
   const displayIntro = currentControl?.intro ?? currentAsset?.intro ?? "";
@@ -230,6 +244,14 @@ export function AgentExperiment({ mode }: { mode: AgentMode }) {
     setPreviewWidths(preview?.widths ?? []);
     setError("");
   };
+
+  const priorAnswerForPosition = (
+    nextTrial: TrialPlan,
+    nextDisclosureIndex: number,
+    answerPool: AgentAnswer[],
+  ) => answerPool
+    .filter((answer) => answer.trialId === nextTrial.id && answer.disclosureIndex < nextDisclosureIndex)
+    .sort((first, second) => second.disclosureIndex - first.disclosureIndex)[0];
 
   useEffect(() => {
     if (phase !== "experiment") return;
@@ -263,15 +285,21 @@ export function AgentExperiment({ mode }: { mode: AgentMode }) {
         } : null,
         observation_count_shown_below_chart: points.length,
         events: visibleEvents.map((event) => ({
+          source_id: event.sourceId ?? null,
           date: event.date,
           title: event.title,
           description: event.description,
-          priority: event.priority,
-          source_url: event.sourceUrl,
+          source_priority: event.sourcePriority ?? (event.priority === "high" ? 1 : 3),
+          priority_band: event.priorityBand ?? event.priority,
         })),
+        newly_disclosed_event_ids: newlyDisclosedEvents.map((event) => event.sourceId ?? `${event.date}:${event.title}`),
       },
       previous_submitted_boundaries: previousAnswer?.boundaries ?? [],
-      allowed_uncertainty_half_widths: HALF_WIDTHS,
+      allowed_uncertainty_half_width_range: {
+        minimum: UNCERTAINTY_MIN,
+        maximum: UNCERTAINTY_MAX,
+        human_slider_increment: UNCERTAINTY_STEP,
+      },
       response_stage: responseStage,
       allowed_cue_tags: responseStage === "annotation"
         ? activeCueSet.options.map((option) => ({
@@ -321,7 +349,7 @@ export function AgentExperiment({ mode }: { mode: AgentMode }) {
         typeof boundary.uncertainty_half_width !== "number" ||
         !matchesHalfWidth(boundary.uncertainty_half_width)
       ) {
-        throw new Error("每个 boundary 都必须含 0—1 之间的 ratio，以及一个允许的 uncertainty_half_width。");
+        throw new Error(`每个 boundary 都必须含 0—1 之间的 ratio，以及 ${UNCERTAINTY_MIN}—${UNCERTAINTY_MAX} 之间的连续 uncertainty_half_width。`);
       }
       pairs.push({ ratio: boundary.ratio, width: boundary.uncertainty_half_width });
     }
@@ -398,7 +426,13 @@ export function AgentExperiment({ mode }: { mode: AgentMode }) {
           cueSchemaVersion: CUE_SCHEMA_VERSION,
           cueTaxonomyUrl: "/data/cue-taxonomy-v4-v2.json",
           entryMode: isPilot ? "agent-pilot" : "agent-console",
-          agentInterfaceVersion: "agent-native-json-v1",
+          agentInterfaceVersion: "agent-native-json-v2-layer-major-six-assets",
+          disclosureFlowOrder: moduleKey === "disclosure" || isPilot ? "disclosure-major" : "asset-major",
+          uncertaintyControl: "continuous-range-json-v1",
+          eventSelectionProtocol: EVENT_SELECTION_PROTOCOL,
+          maximumNewEventsPerDisclosure: MAX_EVENTS_PER_DISCLOSURE,
+          eventPriorityBands: { DI3: [1, 2], DI4: [3, 4, 5] },
+          assetCount: nextPlan.length,
           agentMetadata: {
             provider: provider.trim() || null,
             temperature: temperature.trim() || null,
@@ -540,7 +574,16 @@ export function AgentExperiment({ mode }: { mode: AgentMode }) {
         ...(visibility.highEvents ? ["high"] : []),
         ...(visibility.lowEvents ? ["low"] : []),
       ],
-      agentInterfaceVersion: "agent-native-json-v1",
+      visibleSourcePriorities: [...new Set(visibleEvents.map((event) => event.sourcePriority ?? (event.priority === "high" ? 1 : 3)))].sort((first, second) => first - second),
+      eventProtocol: {
+        version: EVENT_SELECTION_PROTOCOL,
+        sourceDataset: "events_20260527.zip",
+        priorityBands: { core: [1, 2], supplementary: [3, 4, 5] },
+        maximumNewEventsPerDisclosure: MAX_EVENTS_PER_DISCLOSURE,
+        overflowRule: "chronological-even-spacing-with-endpoints",
+        newlyDisclosedEventIds: newlyDisclosedEvents.map((event) => event.sourceId ?? `${event.date}:${event.title}`),
+      },
+      agentInterfaceVersion: "agent-native-json-v2-layer-major-six-assets",
     };
     const stimulusWindow = {
       mode: currentTrial.windowMode,
@@ -559,7 +602,7 @@ export function AgentExperiment({ mode }: { mode: AgentMode }) {
           sessionId,
           trialId: currentTrial.id,
           trialOrder: currentTrial.order,
-          responseVersion: "agent-v1",
+          responseVersion: "agent-v2",
           moduleKey: currentTrial.module,
           taskType: currentTrial.taskType,
           stimulusType,
@@ -601,9 +644,25 @@ export function AgentExperiment({ mode }: { mode: AgentMode }) {
         boundaries: currentBoundaryRecords,
         boundaryIntervals: currentIntervalRecords,
       };
-      setAnswers((value) => [...value, answer]);
+      const nextAnswers = [...answers, answer];
+      setAnswers(nextAnswers);
 
-      if (disclosureIndex < currentTrial.disclosures.length - 1) {
+      if (currentTrial.module === "disclosure") {
+        if (trialIndex < plan.length - 1) {
+          const nextTrialIndex = trialIndex + 1;
+          const nextTrial = plan[nextTrialIndex];
+          prepareStep(nextTrial.taskType, priorAnswerForPosition(nextTrial, disclosureIndex, nextAnswers));
+          setTrialIndex(nextTrialIndex);
+        } else if (disclosureIndex < currentTrial.disclosures.length - 1) {
+          const nextDisclosureIndex = disclosureIndex + 1;
+          const nextTrial = plan[0];
+          prepareStep(nextTrial.taskType, priorAnswerForPosition(nextTrial, nextDisclosureIndex, nextAnswers));
+          setTrialIndex(0);
+          setDisclosureIndex(nextDisclosureIndex);
+        } else {
+          await completeSession();
+        }
+      } else if (disclosureIndex < currentTrial.disclosures.length - 1) {
         prepareStep(currentTrial.taskType, answer);
         setDisclosureIndex((value) => value + 1);
       } else if (trialIndex < plan.length - 1) {
@@ -631,7 +690,7 @@ export function AgentExperiment({ mode }: { mode: AgentMode }) {
         </header>
         <section className="agent-setup">
           <div className="agent-intro">
-            <p>AGENT-NATIVE EXPERIMENT INTERFACE v1</p>
+            <p>AGENT-NATIVE EXPERIMENT INTERFACE v2</p>
             <h1>{isPilot ? "M1 Agent 初批实验" : "Agent 全模块实验"}</h1>
             <p>{isPilot ? "曲线与披露状态和人类版本一致。差别仅在作答通道：Agent 读取当前观察对象和同一张图，以严格 JSON 提交答案，不使用拖拽、奖励页或视觉化控件。" : "这里汇总原研究控制台的 M1—M4 条件。为本次 Agent 运行锁定模块、任务、指标和呈现条件后，Agent 将读取当前观察对象与同一张图，并以严格 JSON 逐步提交。"}</p>
           </div>
@@ -642,10 +701,11 @@ export function AgentExperiment({ mode }: { mode: AgentMode }) {
               <dl>
                 <div><dt>module</dt><dd>M1 / disclosure</dd></div>
                 <div><dt>task</dt><dd>T2 / 2 boundaries / 3 stages</dd></div>
-                <div><dt>stimuli</dt><dd>BTC, ETH, SOL, BNB / randomized</dd></div>
+                <div><dt>stimuli</dt><dd>BTC, ETH, SOL, BNB, XRP, DOGE / randomized</dd></div>
                 <div><dt>display</dt><dd>price / weekly / linear / whole window</dd></div>
                 <div><dt>disclosures</dt><dd>G0 + GI1 + GI2 + DI1 + DI2 + DI3 + DI4</dd></div>
-                <div><dt>expected responses</dt><dd>28</dd></div>
+                <div><dt>flow</dt><dd>disclosure-major / six series per layer</dd></div>
+                <div><dt>expected responses</dt><dd>42</dd></div>
               </dl>
             </section>
           ) : (
@@ -723,7 +783,7 @@ export function AgentExperiment({ mode }: { mode: AgentMode }) {
     <main className="agent-site agent-runner">
       <header className="agent-header">
         <span>Boundary Lab / Agent Runtime</span>
-        <code>SESSION {sessionId.slice(0, 8)} · TRIAL {trialIndex + 1}/{plan.length} · STEP {disclosureIndex + 1}/{currentTrial.disclosures.length}</code>
+        <code>SESSION {sessionId.slice(0, 8)} · LAYER {disclosureIndex + 1}/{currentTrial.disclosures.length} · SERIES {trialIndex + 1}/{plan.length}</code>
       </header>
 
       <section className="agent-observation-meta">
@@ -754,7 +814,7 @@ export function AgentExperiment({ mode }: { mode: AgentMode }) {
             onBoundaryInteraction={() => {}}
             interactive={false}
           />
-          {visibleEvents.length > 0 && <section className="agent-events"><h2>VISIBLE_EVENTS</h2>{visibleEvents.map((event) => <article key={`${event.date}-${event.title}`}><code>{event.date} / {event.priority}</code><strong>{event.title}</strong><p>{event.description}</p>{event.sourceUrl && <a href={event.sourceUrl} target="_blank" rel="noreferrer">source</a>}</article>)}</section>}
+          {visibleEvents.length > 0 && <section className="agent-events"><h2>VISIBLE_EVENTS · NEW {newlyDisclosedEvents.length} / MAX {MAX_EVENTS_PER_DISCLOSURE}</h2>{visibleEvents.map((event) => <article key={event.sourceId ?? `${event.date}-${event.title}`}><code>{event.date} / P{event.sourcePriority ?? (event.priority === "high" ? 1 : 3)}{newlyDisclosedEvents.includes(event) ? " / NEW" : " / RETAINED"}</code><strong>{event.title}</strong><p>{event.description}</p></article>)}</section>}
         </div>
 
         <aside className="agent-io">
@@ -773,7 +833,7 @@ export function AgentExperiment({ mode }: { mode: AgentMode }) {
           ) : (
             <>
               <button className="agent-secondary" type="button" onClick={editStagedBoundaries} disabled={busy}>EDIT BOUNDARIES</button>
-              <button className="agent-primary" type="button" onClick={(event) => submitAgentResponse(event.timeStamp)} disabled={busy}>{busy ? "PERSISTING…" : disclosureIndex < currentTrial.disclosures.length - 1 ? "SUBMIT + NEXT DISCLOSURE" : trialIndex < plan.length - 1 ? "SUBMIT + NEXT TRIAL" : "SUBMIT + COMPLETE"}</button>
+              <button className="agent-primary" type="button" onClick={(event) => submitAgentResponse(event.timeStamp)} disabled={busy}>{busy ? "PERSISTING…" : currentTrial.module === "disclosure" ? trialIndex < plan.length - 1 ? "SUBMIT + NEXT SERIES / SAME LAYER" : disclosureIndex < currentTrial.disclosures.length - 1 ? "SUBMIT + NEXT DISCLOSURE LAYER" : "SUBMIT + COMPLETE" : disclosureIndex < currentTrial.disclosures.length - 1 ? "SUBMIT + NEXT DISCLOSURE" : trialIndex < plan.length - 1 ? "SUBMIT + NEXT TRIAL" : "SUBMIT + COMPLETE"}</button>
             </>
           )}
           <p className="agent-lock">IMMUTABLE AFTER SUBMIT · DATABASE WRITE PER RESPONSE</p>
