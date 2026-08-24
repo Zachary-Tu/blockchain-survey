@@ -12,7 +12,8 @@ const TASKS: Map<string, { family: "placement" | "evaluation"; count: number }> 
 ]);
 const RESOLUTIONS = new Set(["daily", "weekly", "monthly", "yearly"]);
 const SCALES = new Set(["linear", "log"]);
-const UNCERTAINTY_HALF_WIDTHS = [0.01, 0.025, 0.05, 0.08, 0.12];
+const UNCERTAINTY_HALF_WIDTH_MIN = 0.005;
+const UNCERTAINTY_HALF_WIDTH_MAX = 0.2;
 
 function finiteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -98,11 +99,8 @@ function validBoundaryIntervals(
       typeof interval.upperDate !== "string" ||
       !finiteNumber(center) ||
       Math.abs(interval.centerRatio - center) > 0.002 ||
-      interval.halfWidthRatio <= 0 ||
-      interval.halfWidthRatio > 0.2 ||
-      !UNCERTAINTY_HALF_WIDTHS.some(
-        (option) => Math.abs(option - interval.halfWidthRatio!) < 0.0001,
-      ) ||
+      interval.halfWidthRatio < UNCERTAINTY_HALF_WIDTH_MIN ||
+      interval.halfWidthRatio > UNCERTAINTY_HALF_WIDTH_MAX ||
       interval.lowerRatio < 0 ||
       interval.upperRatio > 1 ||
       interval.lowerRatio > interval.centerRatio ||

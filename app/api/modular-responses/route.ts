@@ -9,7 +9,7 @@ const RESOLUTIONS = new Set(["daily", "weekly", "monthly", "yearly"]);
 const SCALES = new Set(["linear", "log"]);
 const WINDOWS = new Set(["whole", "truncated"]);
 const DISCLOSURES = new Set(["G0", "GI1", "GI2", "DI1", "DI2", "DI3", "DI4", "FULL"]);
-const RESPONSE_VERSIONS = new Set(["v4", "pre-v4", "agent-v1"]);
+const RESPONSE_VERSIONS = new Set(["v4", "v4.1", "pre-v4", "agent-v1", "agent-v2"]);
 const V4_CUES_V1 = new Set([
   "curve_trend_slope",
   "curve_level_shift",
@@ -39,7 +39,8 @@ const V4_CUES_V2_BY_DISCLOSURE: Record<string, Set<string>> = {
   FULL: new Set(["full_curve_structure", "full_axes_time", "full_metric_type", "full_asset_context", "full_events"]),
 };
 const V4_CUE_SCHEMAS = new Set(["visual-cpd-event-segmentation-v1", "disclosure-specific-cues-v2"]);
-const UNCERTAINTY_HALF_WIDTHS = [0.01, 0.025, 0.05, 0.08, 0.12];
+const UNCERTAINTY_HALF_WIDTH_MIN = 0.005;
+const UNCERTAINTY_HALF_WIDTH_MAX = 0.2;
 
 type Boundary = {
   index?: number;
@@ -109,7 +110,8 @@ function validIntervals(value: unknown, boundaries: Boundary[]): value is Bounda
       finiteNumber(center) &&
       Math.abs(interval.centerRatio - center) <= 0.002 &&
       finiteNumber(interval.halfWidthRatio) &&
-      UNCERTAINTY_HALF_WIDTHS.some((option) => Math.abs(option - interval.halfWidthRatio!) < 0.0001) &&
+      interval.halfWidthRatio >= UNCERTAINTY_HALF_WIDTH_MIN &&
+      interval.halfWidthRatio <= UNCERTAINTY_HALF_WIDTH_MAX &&
       finiteNumber(interval.widthRatio) &&
       finiteNumber(interval.lowerRatio) &&
       finiteNumber(interval.upperRatio) &&
@@ -189,7 +191,7 @@ export async function POST(request: Request) {
       uncertaintyAdjustmentCount?: number;
     };
     const responseVersion = payload.responseVersion ?? "pre-v4";
-    const isStructuredResponse = responseVersion === "v4" || responseVersion === "agent-v1";
+    const isStructuredResponse = ["v4", "v4.1", "agent-v1", "agent-v2"].includes(responseVersion);
 
     if (
       !payload.sessionId ||
