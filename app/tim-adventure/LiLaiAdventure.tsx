@@ -8,7 +8,6 @@ type Screen = "cover" | "journey" | "complete";
 
 type Failure = {
   school: string;
-  reason: string;
 };
 
 const avatars = {
@@ -122,13 +121,11 @@ export function LiLaiAdventure() {
     const target = chapters[landedCount];
     const landed = isSuccessfulLanding(powerRef.current, target);
     if (!landed) {
-      const tooWeak = powerRef.current < target.min;
       setMisses((value) => value + 1);
       setPower(0);
       powerRef.current = 0;
       setFailure({
         school: target.school,
-        reason: tooWeak ? "这一次蓄力还不够。" : "这一次用力过头了。",
       });
       return;
     }
@@ -266,7 +263,7 @@ export function LiLaiAdventure() {
             <section className="lai-failure-dialog" role="dialog" aria-modal="true" aria-labelledby="lai-failure-title">
               <span>MISS · {failure.school}</span>
               <h2 id="lai-failure-title">不破不立！<br />屡败屡战！</h2>
-              <p>{failure.reason}<br />回到中学校园，从第一跃重新开始。</p>
+              <p>收拾行装，重整旗鼓</p>
               <button ref={failureButtonRef} className="lai-primary" type="button" onClick={restartAfterFailure}>继续向前！</button>
             </section>
           </div>

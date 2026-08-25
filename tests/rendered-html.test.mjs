@@ -156,7 +156,8 @@ test("server-renders Li Lai Adventure as one vertical three-campus jump stage", 
   assert.match(component, /不破不立！/);
   assert.match(component, /屡败屡战！/);
   assert.match(component, /继续向前！/);
-  assert.match(component, /回到中学校园，从第一跃重新开始/);
+  assert.match(component, /收拾行装，重整旗鼓/);
+  assert.doesNotMatch(component, /这一次蓄力还不够|这一次用力过头|回到中学校园/);
   assert.doesNotMatch(component, /lai-level-head|lai-campus-marker|lai-spark-trail/);
   assert.match(adventureCss, /object-fit:\s*contain/);
   assert.match(adventureCss, /grid-template-rows:\s*minmax\(0, 1fr\) auto/);
