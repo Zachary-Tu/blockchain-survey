@@ -249,7 +249,7 @@ export function TimClassroom() {
             <div className="tim-hero">
               <p className="tim-kicker">TIM CLASS · RANDOM 10</p>
               <h1 id="tim-classroom-title">Tim小课堂</h1>
-              <p>六门课程，多档挑战。随机答题、互动棋谱与人机对弈，生成你的专属学习报告。</p>
+              <p>六门课程与一场校园冒险。随机答题、互动棋谱、人机对弈和像素人生三跃都在这里。</p>
 
               <div className="tim-avatar-row" aria-hidden="true">
                 {courses.map((item) => (
@@ -260,7 +260,7 @@ export function TimClassroom() {
               </div>
             </div>
 
-            <div className="tim-course-list" aria-label="选择一门小课堂">
+            <div className="tim-course-list" aria-label="选择一门小课堂或校园游戏">
               {courses.map((item, index) => (
                 <button
                   className={`tim-course tim-course-${item.key}`}
@@ -323,6 +323,22 @@ export function TimClassroom() {
                 <Image src="/tim-classroom/xiangqi/opponents/young-tim.png" alt="" aria-hidden="true" width={140} height={164} sizes="70px" />
                 <span className="tim-course-arrow" aria-hidden="true">→</span>
               </button>
+              <a
+                className="tim-course tim-course-adventure"
+                href="/tim-adventure"
+                aria-label="进入李来历险记：蓄力跳过北大、普林斯顿与 MIT 三段学习轨迹"
+              >
+                <span className="tim-course-index">GAME</span>
+                <span className="tim-course-copy">
+                  <small>PIXEL CAMPUS QUEST</small>
+                  <strong>李来历险记</strong>
+                  <span>北大 → 普林斯顿 → MIT</span>
+                  <em>蓄力跳跃 · 三校换装 · 无限重试</em>
+                </span>
+                <span className="tim-course-count">人生三跃 · 1–3 星</span>
+                <Image src="/tim-adventure/tim-pku-basketball.png" alt="" aria-hidden="true" width={512} height={768} sizes="70px" />
+                <span className="tim-course-arrow" aria-hidden="true">→</span>
+              </a>
             </div>
 
             <button className="tim-scoreboard-link" type="button" onClick={() => setShowScoreboard(true)}>
@@ -330,9 +346,9 @@ export function TimClassroom() {
             </button>
 
             <footer className="tim-footer">
-              <span>{totalBankCount} 套能力题库 + 围棋 10 级 + 象棋竞技场</span>
-              <span>围棋含动态棋谱与五档 AI；象棋含三档完整规则人机对弈。</span>
-              <small>© TIM CLASSROOM · v6.0 · {totalQuestionCount + 600} 题池</small>
+              <span>{totalBankCount} 套能力题库 + 双棋竞技场 + 李来历险记</span>
+              <span>答题、棋谱、AI 对弈与北大—普林斯顿—MIT 像素人生三跃。</span>
+              <small>© TIM CLASSROOM · v7.0 · {totalQuestionCount + 600} 题池</small>
             </footer>
           </>
         )}
@@ -608,7 +624,7 @@ export function TimClassroom() {
               </div>
               <div className="tim-class-fact">
                 <img src="/tim-classroom/tim-smile.png" alt="微笑的 Tim" />
-                <p><strong>Tim 的观察</strong>六门课堂都能即时反馈；围棋另有十级动态棋谱，象棋提供三档完整人机对弈。</p>
+                <p><strong>Tim 的观察</strong>六门课堂都能即时反馈；围棋与象棋可人机对弈，李来历险记则用蓄力跳跃串起三段校园人生。</p>
               </div>
               <button className="tim-next-button" type="button" onClick={() => setShowScoreboard(false)}><span>知道了，去答题</span><span>→</span></button>
             </section>

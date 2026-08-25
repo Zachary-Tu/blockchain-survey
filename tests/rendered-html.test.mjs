@@ -90,7 +90,7 @@ test("server-renders the modular research platform", async () => {
   assert.doesNotMatch(html, /codex-preview|starter loading skeleton/i);
 });
 
-test("server-renders Tim Classroom with six course tracks, Go training, and Xiangqi", async () => {
+test("server-renders Tim Classroom with six course tracks, board games, and Li Lai Adventure", async () => {
   const response = await render("/tim-classroom");
   assert.equal(response.status, 200);
   const html = await response.text();
@@ -99,21 +99,55 @@ test("server-renders Tim Classroom with six course tracks, Go training, and Xian
     "utf8",
   );
 
-  assert.match(html, /<title>Tim小课堂｜六门课程、围棋与象棋AI对弈<\/title>/i);
-  assert.match(html, /六门课程，多档挑战/);
+  assert.match(html, /<title>Tim小课堂｜六门课程、双棋 AI 与李来历险记<\/title>/i);
+  assert.match(html, /六门课程与一场校园冒险/);
   assert.match(html, /运动小课堂/);
   assert.match(html, /图论小课堂/);
   assert.match(html, /凸函数小课堂/);
   assert.match(html, /恋爱小课堂/);
   assert.match(html, /围棋小课堂/);
   assert.match(html, /象棋小课堂/);
-  assert.match(html, /12(?:<!-- -->)? 套能力题库 \+ 围棋 10 级 \+ 象棋竞技场/);
+  assert.match(html, /李来历险记/);
+  assert.match(html, /北大 → 普林斯顿 → MIT/);
+  assert.match(html, /12(?:<!-- -->)? 套能力题库 \+ 双棋竞技场 \+ 李来历险记/);
   assert.match(html, /840(?:<!-- -->)? 题池/);
   assert.match(html, /og-tim-classroom-v2\.png/);
   assert.match(html, /class="tim-classroom" data-screen="home"/);
   assert.doesNotMatch(html, /五门课程|四门课程|三门课程|540 题池|240 题池|180 题池/);
   assert.match(classroomCss, /url\("\/tim-classroom\/home-background\.png"\)/);
   assert.match(classroomCss, /\.tim-phone\[data-screen="home"\]/);
+  assert.match(classroomCss, /\.tim-course-adventure/);
+});
+
+test("server-renders Li Lai Adventure as one vertical three-campus jump stage", async () => {
+  const response = await render("/tim-adventure");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  const component = await readFile(
+    new URL("../app/tim-adventure/LiLaiAdventure.tsx", import.meta.url),
+    "utf8",
+  );
+  const adventureCss = await readFile(
+    new URL("../app/tim-adventure/li-lai-adventure.css", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(html, /<title>李来历险记｜北大、普林斯顿与 MIT 人生三跃<\/title>/i);
+  assert.match(html, /人生/);
+  assert.match(html, /三跃/);
+  assert.match(html, /北大/);
+  assert.match(html, /普林斯顿/);
+  assert.match(html, /MIT/);
+  assert.match(html, /journey-campuses\.webp/);
+  assert.match(html, /tim-pku-basketball\.png/);
+  assert.match(component, /tim-princeton-student\.png/);
+  assert.match(component, /tim-mit-scholar\.png/);
+  assert.match(component, /setPointerCapture/);
+  assert.match(component, /可无限重试/);
+  assert.match(adventureCss, /object-fit:\s*contain/);
+  assert.match(adventureCss, /\.lai-marker-pku/);
+  assert.match(adventureCss, /\.lai-marker-princeton/);
+  assert.match(adventureCss, /\.lai-marker-mit/);
 });
 
 test("server-renders a standalone fixed M1 pilot without the researcher console", async () => {
