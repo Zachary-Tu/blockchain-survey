@@ -9,6 +9,8 @@ type ExportRow = {
   response: typeof modularResponses.$inferSelect;
 };
 
+type SessionRow = typeof experimentSessions.$inferSelect;
+
 function researcherEmails() {
   const value = (env as Cloudflare.Env & { RESEARCHER_EMAILS?: string })
     .RESEARCHER_EMAILS;
@@ -55,6 +57,19 @@ const COLUMNS: CsvColumn<ExportRow>[] = [
   { key: "experimental_arm", value: (row) => row.session.experimentalArm },
   { key: "protocol_version", value: (row) => row.session.protocolVersion },
   { key: "study_config_json", value: (row) => row.session.studyConfigJson },
+  { key: "device_type", value: (row) => row.session.deviceType },
+  { key: "screen_width", value: (row) => row.session.screenWidth },
+  { key: "screen_height", value: (row) => row.session.screenHeight },
+  { key: "initial_viewport_width", value: (row) => row.session.viewportWidth },
+  { key: "initial_viewport_height", value: (row) => row.session.viewportHeight },
+  { key: "device_pixel_ratio", value: (row) => row.session.devicePixelRatio },
+  { key: "client_platform", value: (row) => row.session.clientPlatform },
+  { key: "browser_language", value: (row) => row.session.browserLanguage },
+  { key: "client_timezone", value: (row) => row.session.clientTimezone },
+  { key: "pointer_type", value: (row) => row.session.pointerType },
+  { key: "touch_points", value: (row) => row.session.touchPoints },
+  { key: "screen_orientation", value: (row) => row.session.screenOrientation },
+  { key: "user_agent", value: (row) => row.session.userAgent },
   { key: "response_id", value: (row) => row.response.id },
   { key: "trial_id", value: (row) => row.response.trialId },
   { key: "trial_order", value: (row) => row.response.trialOrder },
@@ -90,9 +105,43 @@ const COLUMNS: CsvColumn<ExportRow>[] = [
   { key: "first_uncertainty_ms", value: (row) => row.response.firstUncertaintyMs },
   { key: "adjustment_count", value: (row) => row.response.adjustmentCount },
   { key: "uncertainty_adjustment_count", value: (row) => row.response.uncertaintyAdjustmentCount },
+  { key: "client_started_at", value: (row) => row.response.clientStartedAt },
+  { key: "client_submitted_at", value: (row) => row.response.clientSubmittedAt },
+  { key: "response_viewport_width", value: (row) => row.response.responseViewportWidth },
+  { key: "response_viewport_height", value: (row) => row.response.responseViewportHeight },
+  { key: "response_orientation", value: (row) => row.response.responseOrientation },
+  { key: "page_hidden_ms", value: (row) => row.response.pageHiddenMs },
+  { key: "active_elapsed_ms", value: (row) => row.response.activeElapsedMs },
   { key: "disclosure_state_json", value: (row) => row.response.disclosureStateJson },
   { key: "stimulus_window_json", value: (row) => row.response.stimulusWindowJson },
   { key: "response_created_at", value: (row) => row.response.createdAt },
+];
+
+const SESSION_COLUMNS: CsvColumn<SessionRow>[] = [
+  { key: "session_id", value: (row) => row.id },
+  { key: "session_status", value: (row) => row.status },
+  { key: "session_started_at", value: (row) => row.startedAt },
+  { key: "session_completed_at", value: (row) => row.completedAt },
+  { key: "actor_type", value: (row) => row.actorType },
+  { key: "participant_code", value: (row) => row.participantCode },
+  { key: "expertise", value: (row) => row.expertise },
+  { key: "model_name", value: (row) => row.modelName },
+  { key: "experimental_arm", value: (row) => row.experimentalArm },
+  { key: "protocol_version", value: (row) => row.protocolVersion },
+  { key: "device_type", value: (row) => row.deviceType },
+  { key: "screen_width", value: (row) => row.screenWidth },
+  { key: "screen_height", value: (row) => row.screenHeight },
+  { key: "initial_viewport_width", value: (row) => row.viewportWidth },
+  { key: "initial_viewport_height", value: (row) => row.viewportHeight },
+  { key: "device_pixel_ratio", value: (row) => row.devicePixelRatio },
+  { key: "client_platform", value: (row) => row.clientPlatform },
+  { key: "browser_language", value: (row) => row.browserLanguage },
+  { key: "client_timezone", value: (row) => row.clientTimezone },
+  { key: "pointer_type", value: (row) => row.pointerType },
+  { key: "touch_points", value: (row) => row.touchPoints },
+  { key: "screen_orientation", value: (row) => row.screenOrientation },
+  { key: "user_agent", value: (row) => row.userAgent },
+  { key: "study_config_json", value: (row) => row.studyConfigJson },
 ];
 
 export async function GET(request: Request) {
@@ -126,6 +175,35 @@ export async function GET(request: Request) {
       requestedScope === "agent-console"
       ? requestedScope
       : "all";
+    const table = url.searchParams.get("table") === "sessions" ? "sessions" : "responses";
+    const date = new Date().toISOString().slice(0, 10);
+    if (table === "sessions") {
+      const sessionBase = getDb().select().from(experimentSessions);
+      const sessionRows = scope === "pilot"
+        ? await sessionBase.where(eq(experimentSessions.experimentalArm, "pilot-m1")).orderBy(asc(experimentSessions.startedAt))
+        : scope === "human-m1"
+          ? await sessionBase.where(eq(experimentSessions.experimentalArm, "m1-main")).orderBy(asc(experimentSessions.startedAt))
+          : scope === "agent-console"
+            ? await sessionBase.where(inArray(experimentSessions.experimentalArm, [
+                "agent-disclosure",
+                "agent-framing",
+                "agent-cross-series",
+                "agent-robustness",
+              ])).orderBy(asc(experimentSessions.startedAt))
+            : scope === "m1"
+              ? await sessionBase.where(inArray(experimentSessions.experimentalArm, ["pilot-m1", "agent-pilot-m1"])).orderBy(asc(experimentSessions.startedAt))
+              : scope === "agent"
+                ? await sessionBase.where(eq(experimentSessions.actorType, "agent")).orderBy(asc(experimentSessions.startedAt))
+                : await sessionBase.orderBy(asc(experimentSessions.startedAt));
+      const filename = `boundary-lab-${scope}-sessions-${date}.csv`;
+      return new Response(buildCsv(sessionRows, SESSION_COLUMNS), {
+        headers: {
+          "Cache-Control": "no-store",
+          "Content-Disposition": `attachment; filename="${filename}"`,
+          "Content-Type": "text/csv; charset=utf-8",
+        },
+      });
+    }
     const base = getDb()
       .select({ session: experimentSessions, response: modularResponses })
       .from(modularResponses)
@@ -159,7 +237,6 @@ export async function GET(request: Request) {
                   asc(modularResponses.disclosureIndex),
                 );
 
-    const date = new Date().toISOString().slice(0, 10);
     const filename = `boundary-lab-${scope}-${date}.csv`;
     return new Response(buildCsv(rows, COLUMNS), {
       headers: {

@@ -19,7 +19,7 @@ export type WindowMode = "whole" | "truncated";
 export type DisclosurePath = "general" | "domain" | "combined";
 export type DisclosureKey = "G0" | "GI1" | "GI2" | "DI1" | "DI2" | "DI3" | "DI4" | "FULL";
 export type RobustnessFactor = "resolution" | "scale" | "window" | "controls";
-type Phase = "setup" | "briefing" | "experiment" | "review" | "complete";
+type Phase = "setup" | "briefing" | "transition" | "experiment" | "review" | "complete";
 type EntryMode = "console" | "pilot" | "m1";
 
 export type Point = { date: string; value: number };
@@ -39,12 +39,16 @@ export type MetricData = {
   resolutions: Partial<Record<Resolution, ResolutionData>>;
 };
 export type EventAnnotation = {
+  sourceId?: string;
   date: string;
   title: string;
   description: string;
   category: string;
   sourceUrl: string;
   priority: "high" | "low";
+  sourcePriority?: number;
+  priorityBand?: "core" | "supplementary";
+  priorityProtocol?: string;
 };
 export type Asset = {
   id: string;
@@ -76,6 +80,7 @@ export type ControlSeries = {
 export type Bundle = {
   protocolVersion: string;
   datasetVersion?: string;
+  dataset?: Record<string, unknown>;
   requestedWindow: { start: string; end: string };
   curatedWindow?: { start: string; end: string; rule: string; rationale?: string };
   sourceWindows?: Record<string, { start: string; end: string }>;
@@ -140,6 +145,113 @@ type ModularAnswer = {
   adjustmentCount: number;
   uncertaintyAdjustmentCount: number;
 };
+
+type LayerAssetDraft = {
+  boundaries: number[];
+  widths: Array<number | null>;
+  singleStageConfirmed: boolean;
+  influence: number;
+  influenceTouched: boolean;
+  noChangeConfirmed: boolean;
+  cueTags: string[];
+  rationale: string;
+  firstMoveAt: number | null;
+  firstUncertaintyAt: number | null;
+  lastInteractionAt: number | null;
+  adjustmentCount: number;
+  uncertaintyAdjustmentCount: number;
+  clientStartedAt?: string;
+  clientSubmittedAt?: string;
+  responseViewportWidth?: number;
+  responseViewportHeight?: number;
+  responseOrientation?: string;
+  pageHiddenMs?: number;
+  activeElapsedMs?: number;
+};
+
+type DeviceInfo = {
+  deviceType: "mobile" | "tablet" | "desktop" | "unknown";
+  userAgent: string;
+  platform: string;
+  browserLanguage: string;
+  timezone: string;
+  screenWidth: number | null;
+  screenHeight: number | null;
+  viewportWidth: number | null;
+  viewportHeight: number | null;
+  devicePixelRatio: number | null;
+  touchPoints: number;
+  pointerType: "coarse" | "fine" | "none" | "unknown";
+  orientation: string;
+};
+
+function currentOrientation() {
+  if (typeof window === "undefined") return "unknown";
+  return window.screen.orientation?.type ||
+    (window.innerWidth >= window.innerHeight ? "landscape" : "portrait");
+}
+
+function collectDeviceInfo(): DeviceInfo {
+  if (typeof window === "undefined" || typeof navigator === "undefined") {
+    return {
+      deviceType: "unknown",
+      userAgent: "",
+      platform: "",
+      browserLanguage: "",
+      timezone: "",
+      screenWidth: null,
+      screenHeight: null,
+      viewportWidth: null,
+      viewportHeight: null,
+      devicePixelRatio: null,
+      touchPoints: 0,
+      pointerType: "unknown",
+      orientation: "unknown",
+    };
+  }
+  const clientNavigator = navigator as Navigator & {
+    userAgentData?: { mobile?: boolean; platform?: string };
+  };
+  const coarse = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+  const fine = window.matchMedia?.("(pointer: fine)").matches ?? false;
+  const touchPoints = Math.max(0, navigator.maxTouchPoints || 0);
+  const minimumScreenDimension = Math.min(window.screen.width, window.screen.height);
+  const mobileSignal = clientNavigator.userAgentData?.mobile === true ||
+    /Android|iPhone|iPod|IEMobile|Mobile/i.test(navigator.userAgent);
+  const tabletSignal = /iPad|Tablet/i.test(navigator.userAgent) ||
+    (coarse && touchPoints > 0 && minimumScreenDimension >= 600 && minimumScreenDimension <= 1366);
+  const deviceType: DeviceInfo["deviceType"] = tabletSignal
+    ? "tablet"
+    : mobileSignal
+      ? "mobile"
+      : "desktop";
+  const pointerType: DeviceInfo["pointerType"] = coarse
+    ? "coarse"
+    : fine
+      ? "fine"
+      : "none";
+  let timezone = "";
+  try {
+    timezone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "";
+  } catch {
+    timezone = "";
+  }
+  return {
+    deviceType,
+    userAgent: navigator.userAgent,
+    platform: clientNavigator.userAgentData?.platform || navigator.platform || "",
+    browserLanguage: navigator.language || "",
+    timezone,
+    screenWidth: window.screen.width || null,
+    screenHeight: window.screen.height || null,
+    viewportWidth: window.innerWidth || null,
+    viewportHeight: window.innerHeight || null,
+    devicePixelRatio: Number.isFinite(window.devicePixelRatio) ? window.devicePixelRatio : null,
+    touchPoints,
+    pointerType,
+    orientation: currentOrientation(),
+  };
+}
 
 type ProtocolVariant = "v4" | "pre-v4";
 export type CueOption = { code: string; label: string; exclusive?: boolean };
@@ -219,8 +331,8 @@ export const DISCLOSURE_COPY: Record<DisclosureKey, { title: string; short: stri
   GI2: { title: "时间与单位", short: "GI2", description: "在序列类型基础上披露真实时间轴与数值单位。" },
   DI1: { title: "资产名称", short: "DI1", description: "只披露该加密资产的名称。" },
   DI2: { title: "资产基础介绍", short: "DI2", description: "在资产名称基础上增加一段中性背景。" },
-  DI3: { title: "高优先级事件", short: "DI3", description: "增加预先编码的高优先级历史事件。" },
-  DI4: { title: "低优先级事件", short: "DI4", description: "进一步增加低优先级历史事件。" },
+  DI3: { title: "核心事件", short: "DI3", description: "增加事件表中 priority 1–2 的核心历史事件。" },
+  DI4: { title: "补充事件", short: "DI4", description: "在核心事件基础上增加 priority 3–5 的补充事件。" },
   FULL: { title: "完整信息包", short: "FULL", description: "同时显示序列类型、坐标、资产背景与全部事件。" },
 };
 
@@ -306,7 +418,7 @@ export const CUE_SETS: Record<DisclosureKey, CueSet> = {
     ],
   },
   DI3: {
-    eyebrow: "本步新增 · 高优先级事件",
+    eyebrow: "本步新增 · 核心事件",
     question: "新增的重要事件主要怎样影响了判断？",
     note: "请报告事件日期与曲线变化之间实际使用的对应关系。",
     options: [
@@ -318,7 +430,7 @@ export const CUE_SETS: Record<DisclosureKey, CueSet> = {
     ],
   },
   DI4: {
-    eyebrow: "本步新增 · 低优先级事件",
+    eyebrow: "本步新增 · 补充事件",
     question: "新增的补充事件主要怎样影响了判断？",
     note: "请只报告本步新增事件带来的细化、扰动或相互印证。",
     options: [
@@ -342,13 +454,12 @@ export const CUE_SETS: Record<DisclosureKey, CueSet> = {
     ],
   },
 };
-export const WIDTHS = [
-  { value: 0.01, label: "很窄", width: "2%" },
-  { value: 0.025, label: "较窄", width: "5%" },
-  { value: 0.05, label: "中等", width: "10%" },
-  { value: 0.08, label: "较宽", width: "16%" },
-  { value: 0.12, label: "很宽", width: "24%" },
-] as const;
+export const UNCERTAINTY_MIN = 0.005;
+export const UNCERTAINTY_MAX = 0.2;
+export const UNCERTAINTY_STEP = 0.005;
+export const UNCERTAINTY_DEFAULT = 0.05;
+export const MAX_EVENTS_PER_DISCLOSURE = 10;
+export const EVENT_SELECTION_PROTOCOL = "events-20260527-priority-bands-even-spacing-v1";
 
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(maximum, Math.max(minimum, value));
@@ -361,6 +472,35 @@ function shuffled<T>(items: T[]) {
     [copy[index], copy[target]] = [copy[target], copy[index]];
   }
   return copy;
+}
+
+function eventSourcePriority(event: EventAnnotation) {
+  if (typeof event.sourcePriority === "number") return event.sourcePriority;
+  return event.priority === "high" ? 1 : 3;
+}
+
+export function selectDisclosureEvents(
+  events: EventAnnotation[],
+  band: "core" | "supplementary",
+  startDate: string,
+  endDate: string,
+  limit = MAX_EVENTS_PER_DISCLOSURE,
+) {
+  const candidates = events
+    .filter((event) => {
+      const priority = eventSourcePriority(event);
+      const inBand = band === "core" ? priority <= 2 : priority >= 3;
+      return inBand && event.date >= startDate && event.date <= endDate;
+    })
+    .sort((first, second) =>
+      first.date.localeCompare(second.date) ||
+      (first.sourceId ?? first.title).localeCompare(second.sourceId ?? second.title),
+    );
+  if (candidates.length <= limit) return candidates;
+  if (limit <= 1) return candidates.slice(0, Math.max(0, limit));
+  return Array.from({ length: limit }, (_, index) =>
+    candidates[Math.round(index * (candidates.length - 1) / (limit - 1))],
+  );
 }
 
 export function initialBoundaries(task: TaskType) {
@@ -410,8 +550,9 @@ export function intervalRecords(values: number[], widths: Array<number | null>, 
   return values.flatMap((centerRatio, boundaryIndex) => {
     const halfWidthRatio = widths[boundaryIndex];
     if (halfWidthRatio === null || halfWidthRatio === undefined) return [];
-    const lowerRatio = clamp(centerRatio - halfWidthRatio, 0, 1);
-    const upperRatio = clamp(centerRatio + halfWidthRatio, 0, 1);
+    if (halfWidthRatio > centerRatio || halfWidthRatio > 1 - centerRatio) return [];
+    const lowerRatio = centerRatio - halfWidthRatio;
+    const upperRatio = centerRatio + halfWidthRatio;
     const lowerIndex = clamp(Math.round(lowerRatio * (points.length - 1)), 0, points.length - 1);
     const upperIndex = clamp(Math.round(upperRatio * (points.length - 1)), 0, points.length - 1);
     return [{
@@ -959,6 +1100,15 @@ function BoundaryEditor({
     const upper = index === boundaries.length - 1 ? 0.985 : boundaries[index + 1] - 0.02;
     const next = [...boundaries];
     next[index] = clamp(value, lower, upper);
+    const maximumSymmetricWidth = Math.max(
+      UNCERTAINTY_MIN,
+      Math.min(UNCERTAINTY_MAX, next[index], 1 - next[index]),
+    );
+    const nextWidths = [...widths];
+    if (nextWidths[index] !== null && (nextWidths[index] ?? 0) > maximumSymmetricWidth) {
+      nextWidths[index] = maximumSymmetricWidth;
+      onWidthsChange(nextWidths);
+    }
     onBoundaryInteraction();
     onBoundariesChange(next);
   };
@@ -984,6 +1134,10 @@ function BoundaryEditor({
 
       {boundaries.map((ratio, index) => {
         const point = points[clamp(Math.round(ratio * (points.length - 1)), 0, points.length - 1)];
+        const maximumSymmetricWidth = Math.max(
+          UNCERTAINTY_MIN,
+          Math.min(UNCERTAINTY_MAX, ratio, 1 - ratio),
+        );
         return (
           <article className="mod-boundary-row" key={`editor-${index}`}>
             <div className="mod-boundary-row-head">
@@ -1001,27 +1155,36 @@ function BoundaryEditor({
             />
             <div className="mod-uncertainty-question">
               <span>你认为最佳分界线大致落在哪个范围？</span>
-              <small>范围越宽，表示位置越不确定</small>
+              <small>拖动旋钮连续调整；范围越宽，表示位置越不确定</small>
             </div>
-            <div className="mod-width-options" role="radiogroup" aria-label={`分界点 ${index + 1} 的不确定范围`}>
-              {WIDTHS.map((option) => (
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={widths[index] === option.value}
-                  className={widths[index] === option.value ? "is-selected" : ""}
-                  key={option.value}
-                  onClick={() => {
-                    const next = [...widths];
-                    next[index] = option.value;
-                    onUncertaintyInteraction();
-                    onWidthsChange(next);
-                  }}
-                >
-                  <i style={{ width: option.width }} />
-                  <span>{option.label}</span>
-                </button>
-              ))}
+            <div className={`mod-uncertainty-slider ${widths[index] === null ? "is-unset" : ""}`}>
+              <div className="mod-uncertainty-readout">
+                <span>更精确</span>
+                <output htmlFor={`mod-uncertainty-${index}`}>
+                  {widths[index] === null
+                    ? "请拖动确认"
+                    : `±${((widths[index] ?? 0) * 100).toFixed(1)}% 时间窗`}
+                </output>
+                <span>更宽泛</span>
+              </div>
+              <input
+                id={`mod-uncertainty-${index}`}
+                aria-label={`调整分界点 ${index + 1} 的不确定范围`}
+                type="range"
+                min={UNCERTAINTY_MIN}
+                max={maximumSymmetricWidth}
+                step={UNCERTAINTY_STEP}
+                value={Math.min(widths[index] ?? UNCERTAINTY_DEFAULT, maximumSymmetricWidth)}
+                onChange={(event) => {
+                  const next = [...widths];
+                  next[index] = Number(event.target.value);
+                  onUncertaintyInteraction();
+                  onWidthsChange(next);
+                }}
+              />
+              <div className="mod-uncertainty-scale" aria-hidden="true">
+                <span>总宽度 1%</span><i /><span>总宽度 {(maximumSymmetricWidth * 200).toFixed(1)}%</span>
+              </div>
             </div>
           </article>
         );
@@ -1085,9 +1248,26 @@ function downloadText(filename: string, value: string, type: string) {
   URL.revokeObjectURL(url);
 }
 
-function downloadSessionCsv(sessionId: string, answers: ModularAnswer[]) {
+function downloadSessionCsv(
+  sessionId: string,
+  answers: ModularAnswer[],
+  deviceInfo: DeviceInfo | null,
+) {
   const csv = buildCsv(answers, [
     { key: "session_id", value: () => sessionId },
+    { key: "device_type", value: () => deviceInfo?.deviceType ?? "unknown" },
+    { key: "screen_width", value: () => deviceInfo?.screenWidth ?? "" },
+    { key: "screen_height", value: () => deviceInfo?.screenHeight ?? "" },
+    { key: "initial_viewport_width", value: () => deviceInfo?.viewportWidth ?? "" },
+    { key: "initial_viewport_height", value: () => deviceInfo?.viewportHeight ?? "" },
+    { key: "device_pixel_ratio", value: () => deviceInfo?.devicePixelRatio ?? "" },
+    { key: "client_platform", value: () => deviceInfo?.platform ?? "" },
+    { key: "browser_language", value: () => deviceInfo?.browserLanguage ?? "" },
+    { key: "client_timezone", value: () => deviceInfo?.timezone ?? "" },
+    { key: "pointer_type", value: () => deviceInfo?.pointerType ?? "unknown" },
+    { key: "touch_points", value: () => deviceInfo?.touchPoints ?? 0 },
+    { key: "screen_orientation", value: () => deviceInfo?.orientation ?? "unknown" },
+    { key: "user_agent", value: () => deviceInfo?.userAgent ?? "" },
     { key: "trial_id", value: (row) => row.trialId },
     { key: "trial_order", value: (row) => row.trialOrder },
     { key: "disclosure_index", value: (row) => row.disclosureIndex },
@@ -1114,6 +1294,13 @@ function downloadSessionCsv(sessionId: string, answers: ModularAnswer[]) {
     { key: "first_uncertainty_ms", value: (row) => row.firstUncertaintyMs },
     { key: "adjustment_count", value: (row) => row.adjustmentCount },
     { key: "uncertainty_adjustment_count", value: (row) => row.uncertaintyAdjustmentCount },
+    { key: "client_started_at", value: (row) => row.clientStartedAt },
+    { key: "client_submitted_at", value: (row) => row.clientSubmittedAt },
+    { key: "response_viewport_width", value: (row) => row.responseViewportWidth },
+    { key: "response_viewport_height", value: (row) => row.responseViewportHeight },
+    { key: "response_orientation", value: (row) => row.responseOrientation },
+    { key: "page_hidden_ms", value: (row) => row.pageHiddenMs },
+    { key: "active_elapsed_ms", value: (row) => row.activeElapsedMs },
     { key: "disclosure_state_json", value: (row) => JSON.stringify(row.disclosureState) },
     { key: "stimulus_window_json", value: (row) => JSON.stringify(row.stimulusWindow) },
   ]);
@@ -1139,6 +1326,319 @@ function participantVariantLabel(
   return `曲线 ${trial.order + 1}`;
 }
 
+function resolveLayerTrialContext(
+  bundle: Bundle,
+  trial: TrialPlan,
+  disclosureKey: DisclosureKey,
+  disclosurePath: DisclosurePath,
+) {
+  const asset = bundle.assets.find((candidate) => candidate.id === trial.assetId);
+  const control = bundle.controls.find((candidate) => candidate.id === trial.controlId);
+  const metricData = control
+    ? {
+        name: control.metric.name,
+        unit: control.metric.unit,
+        definition: control.metric.definition,
+        resolutions: control.metric.resolutions,
+      }
+    : asset?.metrics[trial.metric];
+  const sourcePoints = metricData?.resolutions[trial.resolution]?.points ?? [];
+  const curatedStart = bundle.curatedWindow?.start ?? "2020-01-01";
+  const curatedEnd = bundle.curatedWindow?.end ?? "2024-12-31";
+  const points = trial.windowMode === "truncated"
+    ? sourcePoints.filter((point) => point.date >= curatedStart && point.date <= curatedEnd)
+    : sourcePoints;
+  const sourceWindow = sourcePoints.length
+    ? { start: sourcePoints[0].date, end: sourcePoints[sourcePoints.length - 1].date, observationCount: sourcePoints.length }
+    : null;
+  const displayedWindow = points.length
+    ? { start: points[0].date, end: points[points.length - 1].date, observationCount: points.length }
+    : null;
+  const visibility = disclosureVisibility(disclosureKey, disclosurePath);
+  const allEvents = control?.events ?? asset?.events ?? [];
+  const eventWindowStart = points[0]?.date ?? "0000-01-01";
+  const eventWindowEnd = points[points.length - 1]?.date ?? "9999-12-31";
+  const coreEvents = selectDisclosureEvents(allEvents, "core", eventWindowStart, eventWindowEnd);
+  const supplementaryEvents = selectDisclosureEvents(allEvents, "supplementary", eventWindowStart, eventWindowEnd);
+  const visibleEvents = [
+    ...(visibility.highEvents ? coreEvents : []),
+    ...(visibility.lowEvents ? supplementaryEvents : []),
+  ].sort((first, second) => first.date.localeCompare(second.date));
+  const newlyDisclosedEvents = disclosureKey === "DI3"
+    ? coreEvents
+    : disclosureKey === "DI4"
+      ? supplementaryEvents
+      : disclosureKey === "FULL"
+        ? visibleEvents
+        : [];
+
+  return {
+    asset,
+    control,
+    metricData,
+    sourcePoints,
+    points,
+    sourceWindow,
+    displayedWindow,
+    visibility,
+    visibleEvents,
+    newlyDisclosedEvents,
+    retainedEventCount: Math.max(0, visibleEvents.length - newlyDisclosedEvents.length),
+    displayName: control?.nameZh ?? asset?.nameZh ?? "匿名序列",
+    displaySymbol: control?.symbol ?? asset?.symbol ?? "",
+    displayIntro: control?.intro ?? asset?.intro ?? "",
+  };
+}
+
+function makeLayerAssetDraft(trial: TrialPlan, previousAnswer?: ModularAnswer): LayerAssetDraft {
+  const boundaries = previousAnswer
+    ? previousAnswer.boundaries.map((boundary) => boundary.ratio)
+    : initialBoundaries(trial.taskType);
+  const widths = previousAnswer
+    ? boundaries.map((_, index) =>
+        previousAnswer.boundaryIntervals.find((interval) => interval.boundaryIndex === index)?.halfWidthRatio ?? null,
+      )
+    : Array(boundaries.length).fill(null);
+  return {
+    boundaries,
+    widths,
+    singleStageConfirmed: previousAnswer?.singleStageConfirmed ?? false,
+    influence: 3,
+    influenceTouched: false,
+    noChangeConfirmed: false,
+    cueTags: [],
+    rationale: "",
+    firstMoveAt: null,
+    firstUncertaintyAt: null,
+    lastInteractionAt: null,
+    adjustmentCount: 0,
+    uncertaintyAdjustmentCount: 0,
+  };
+}
+
+function validateLayerAssetDraft(
+  trial: TrialPlan,
+  draft: LayerAssetDraft | undefined,
+  previousAnswer: ModularAnswer | undefined,
+  disclosureIndex: number,
+) {
+  if (!draft) return "本条曲线尚未完成作答。";
+  const orderedBoundaries = [...draft.boundaries].sort((first, second) => first - second);
+  if (trial.taskType === "T1") {
+    if (orderedBoundaries.length === 0 && !draft.singleStageConfirmed) {
+      return "请确认整条曲线只有一个阶段，或增加至少一个分界点。";
+    }
+    if (orderedBoundaries.length > 5) return "自由分期最多允许五个分界点（六个阶段）。";
+  } else if (orderedBoundaries.length !== 2) {
+    return "当前任务需要恰好两个分界点。";
+  }
+  if (orderedBoundaries.length > 0 && (
+    draft.widths.length !== orderedBoundaries.length ||
+    draft.widths.some((value) => value === null)
+  )) {
+    return "请拖动旋钮，为每个分界点确认一个连续的不确定范围。";
+  }
+  const previousRatios = previousAnswer?.boundaries.map((boundary) => boundary.ratio) ?? [];
+  const sameAsPrevious = previousAnswer
+    ? sameNumbers(orderedBoundaries, previousRatios) &&
+      draft.widths.length === previousAnswer.boundaryIntervals.length &&
+      draft.widths.every((value, index) => value === previousAnswer.boundaryIntervals[index]?.halfWidthRatio)
+    : false;
+  if (disclosureIndex > 0 && sameAsPrevious && !draft.noChangeConfirmed) {
+    return "分界点和范围与上一层相同；请确认这是有意保持不变，或继续调整。";
+  }
+  if (draft.cueTags.length === 0) {
+    return "请选择至少一项本层实际使用的判断线索。";
+  }
+  return "";
+}
+
+function LayerAssetResponseCard({
+  bundle,
+  trial,
+  disclosureKey,
+  disclosureIndex,
+  disclosurePath,
+  draft,
+  previousAnswer,
+  validationError,
+  onChange,
+}: {
+  bundle: Bundle;
+  trial: TrialPlan;
+  disclosureKey: DisclosureKey;
+  disclosureIndex: number;
+  disclosurePath: DisclosurePath;
+  draft: LayerAssetDraft;
+  previousAnswer?: ModularAnswer;
+  validationError?: string;
+  onChange: (updater: (current: LayerAssetDraft) => LayerAssetDraft) => void;
+}) {
+  const context = resolveLayerTrialContext(bundle, trial, disclosureKey, disclosurePath);
+  const activeCueSet = CUE_SETS[disclosureKey];
+  const previousRatios = previousAnswer?.boundaries.map((boundary) => boundary.ratio) ?? [];
+  const sameAsPrevious = previousAnswer
+    ? sameNumbers([...draft.boundaries].sort((first, second) => first - second), previousRatios) &&
+      draft.widths.length === previousAnswer.boundaryIntervals.length &&
+      draft.widths.every((value, index) => value === previousAnswer.boundaryIntervals[index]?.halfWidthRatio)
+    : false;
+  const responseShapeReady = trial.taskType === "T1"
+    ? (draft.boundaries.length === 0
+        ? draft.singleStageConfirmed
+        : draft.widths.length === draft.boundaries.length && draft.widths.every((value) => value !== null))
+    : draft.boundaries.length === 2 && draft.widths.length === 2 && draft.widths.every((value) => value !== null);
+  const complete = validateLayerAssetDraft(trial, draft, previousAnswer, disclosureIndex) === "";
+  const noChangeId = `mod-no-change-${trial.id}-${disclosureIndex}`;
+
+  const markBoundaryInteraction = () => {
+    const now = performance.now();
+    onChange((current) => ({
+      ...current,
+      firstMoveAt: current.firstMoveAt ?? now,
+      lastInteractionAt: now,
+      adjustmentCount: current.adjustmentCount + 1,
+      noChangeConfirmed: false,
+    }));
+  };
+  const markUncertaintyInteraction = () => {
+    const now = performance.now();
+    onChange((current) => ({
+      ...current,
+      firstUncertaintyAt: current.firstUncertaintyAt ?? now,
+      lastInteractionAt: now,
+      uncertaintyAdjustmentCount: current.uncertaintyAdjustmentCount + 1,
+      noChangeConfirmed: false,
+    }));
+  };
+  const toggleCue = (cue: CueOption) => {
+    const exclusiveCodes = new Set(activeCueSet.options.filter((option) => option.exclusive).map((option) => option.code));
+    onChange((current) => {
+      if (cue.exclusive) {
+        return { ...current, cueTags: current.cueTags.includes(cue.code) ? [] : [cue.code], lastInteractionAt: performance.now() };
+      }
+      const withoutExclusive = current.cueTags.filter((code) => !exclusiveCodes.has(code));
+      return {
+        ...current,
+        cueTags: withoutExclusive.includes(cue.code)
+          ? withoutExclusive.filter((code) => code !== cue.code)
+          : [...withoutExclusive, cue.code],
+        lastInteractionAt: performance.now(),
+      };
+    });
+  };
+
+  if (!context.metricData || !context.points.length) {
+    return <article className="mod-layer-asset-card is-invalid"><p className="mod-error">这条曲线的数据无法载入。</p></article>;
+  }
+
+  return (
+    <article className={`mod-layer-asset-card ${complete ? "is-ready" : ""} ${validationError ? "is-invalid" : ""}`} id={`layer-card-${trial.id}`}>
+      <header className="mod-layer-card-head">
+        <div>
+          <span className="mod-layer-card-number">CURVE {String(trial.order + 1).padStart(2, "0")}</span>
+          <h2>{context.visibility.asset ? `${context.displayName}（${context.displaySymbol}）` : context.visibility.metric ? context.metricData.name : `匿名曲线 ${trial.order + 1}`}</h2>
+          <p>{context.visibility.intro ? context.displayIntro : context.visibility.metric ? context.metricData.definition : "请只根据当前可见的信息判断阶段结构。"}</p>
+        </div>
+        <span className={`mod-layer-card-status ${complete ? "is-complete" : ""}`}>{complete ? "已完成" : "待完成"}</span>
+      </header>
+
+      <div className="mod-condition-chips mod-layer-card-chips">
+        <span>{context.visibility.metric ? context.metricData.name : "指标：？"}</span>
+        <span>{context.visibility.axes ? `${RESOLUTION_LABEL[trial.resolution]} · ${trial.scaleMode === "log" ? "对数" : "线性"}` : "坐标：？"}</span>
+        <span>{context.visibility.asset ? context.displaySymbol : "资产：？"}</span>
+      </div>
+
+      {trial.taskType === "T3" && <div className="mod-definition"><span>统一阶段定义</span><p>{STAGE_DEFINITION}</p></div>}
+
+      <ModularChart
+        points={context.points}
+        metric={trial.metric}
+        unit={context.metricData.unit}
+        resolution={trial.resolution}
+        scaleMode={trial.scaleMode}
+        visibility={context.visibility}
+        boundaries={draft.boundaries}
+        widths={draft.widths}
+        previousBoundaries={disclosureIndex > 0 ? previousRatios : []}
+        events={context.visibleEvents}
+        taskType={trial.taskType}
+        onBoundariesChange={(values) => onChange((current) => ({
+          ...current,
+          boundaries: values,
+          widths: current.widths.length === values.length ? current.widths : Array(values.length).fill(null),
+        }))}
+        onBoundaryInteraction={markBoundaryInteraction}
+      />
+
+      {(disclosureKey === "DI3" || disclosureKey === "DI4") && (
+        <section className="mod-event-panel mod-layer-event-panel">
+          <div className="mod-event-panel-head"><span className="mod-kicker">本层新增 · {disclosureKey === "DI3" ? "核心事件" : "补充事件"}</span><strong>{context.newlyDisclosedEvents.length} 项 · 上限 {MAX_EVENTS_PER_DISCLOSURE}</strong></div>
+          {context.retainedEventCount > 0 && <p className="mod-event-retained">上一层的 {context.retainedEventCount} 个事件继续保留；下方只列出本层新增内容。</p>}
+          {context.newlyDisclosedEvents.length ? (
+            <div className="mod-event-list">
+              {context.newlyDisclosedEvents.map((event) => (
+                <article key={event.sourceId ?? `${event.date}-${event.title}`}><time>{event.date}</time><span className={eventSourcePriority(event) <= 2 ? "is-high" : ""}>P{eventSourcePriority(event)}</span><h3>{event.title}</h3><p>{event.description}</p></article>
+              ))}
+            </div>
+          ) : <p className="mod-event-empty">当前显示时间窗内没有属于本层优先级范围的事件。</p>}
+        </section>
+      )}
+
+      <div className="mod-layer-card-response">
+        <BoundaryEditor
+          taskType={trial.taskType}
+          boundaries={draft.boundaries}
+          widths={draft.widths}
+          points={context.points}
+          singleStageConfirmed={draft.singleStageConfirmed}
+          onSingleStageConfirmed={(value) => onChange((current) => ({ ...current, singleStageConfirmed: value, lastInteractionAt: performance.now() }))}
+          onBoundariesChange={(values) => onChange((current) => ({ ...current, boundaries: values }))}
+          onWidthsChange={(values) => onChange((current) => ({ ...current, widths: values }))}
+          onBoundaryInteraction={markBoundaryInteraction}
+          onUncertaintyInteraction={markUncertaintyInteraction}
+        />
+
+        {disclosureIndex > 0 && (
+          <section className="mod-question-block is-new">
+            <span className="mod-new-flag">NEW · 本层新增信息</span>
+            <h3>这一层新增的信息，对你的判断影响有多大？</h3>
+            <Rating value={draft.influence} onChange={(value) => onChange((current) => ({ ...current, influence: value, influenceTouched: true, lastInteractionAt: performance.now() }))} left="几乎没有" right="影响很大" label={`曲线 ${trial.order + 1} 新增信息影响`} />
+            {sameAsPrevious && (
+              <div className="mod-confirm-row compact"><input id={noChangeId} type="checkbox" checked={draft.noChangeConfirmed} onChange={(event) => onChange((current) => ({ ...current, noChangeConfirmed: event.target.checked, lastInteractionAt: performance.now() }))} /><label htmlFor={noChangeId}><strong>我确认有意保持不变</strong><small>分界点和范围与上一层一致。</small></label></div>
+            )}
+          </section>
+        )}
+
+        {responseShapeReady ? (
+          <section className="mod-question-block">
+            <h3>{activeCueSet.question}<small>可多选</small></h3>
+            <div className="mod-cue-groups">
+              <div className="mod-cue-group">
+                <span>{activeCueSet.eyebrow}</span>
+                <div className="mod-cue-list">
+                  {activeCueSet.options.map((cue) => (
+                    <button type="button" key={cue.code} className={draft.cueTags.includes(cue.code) ? "is-selected" : ""} aria-pressed={draft.cueTags.includes(cue.code)} onClick={() => toggleCue(cue)}>{cue.label}</button>
+                  ))}
+                </div>
+              </div>
+              <p className="mod-cue-note">{activeCueSet.note} 至少选择一项；“没有改变”与其他选项互斥。</p>
+            </div>
+            <label className="mod-rationale"><span>还想补充什么？<small>可不填</small></span><textarea value={draft.rationale} maxLength={1000} onChange={(event) => onChange((current) => ({ ...current, rationale: event.target.value, lastInteractionAt: performance.now() }))} placeholder="例如：这里开始由持续上涨转为高位震荡……" /><i>{draft.rationale.length}/1000</i></label>
+          </section>
+        ) : (
+          <section className="mod-question-block mod-cue-awaiting">
+            <span className="mod-kicker">完成分界判断后出现</span>
+            <h3>判断依据</h3>
+            <p>先确定分界点及其大致范围，随后再记录你实际使用的线索，避免选项提前影响分界。</p>
+          </section>
+        )}
+      </div>
+
+      {validationError && <p className="mod-error mod-layer-card-error" role="alert">{validationError}</p>}
+    </article>
+  );
+}
+
 export function ExperimentModular({
   protocolVariant = "v4",
   entryMode = "console",
@@ -1155,6 +1655,8 @@ export function ExperimentModular({
   const [loadError, setLoadError] = useState("");
   const [phase, setPhase] = useState<Phase>("setup");
   const [moduleKey, setModuleKey] = useState<ModuleKey>("disclosure");
+  const usesLayerMajorDisclosureFlow = isV4 && moduleKey === "disclosure";
+  const usesFixedM1SequentialPages = usesLayerMajorDisclosureFlow && isFixedM1;
   const [taskType, setTaskType] = useState<TaskType>("T2");
   const [metric, setMetric] = useState<MetricKey>("price");
   const [resolution, setResolution] = useState<Resolution>("weekly");
@@ -1184,6 +1686,9 @@ export function ExperimentModular({
   const [cueTags, setCueTags] = useState<string[]>([]);
   const [rationale, setRationale] = useState("");
   const [answers, setAnswers] = useState<ModularAnswer[]>([]);
+  const [layerDrafts, setLayerDrafts] = useState<Record<string, LayerAssetDraft>>({});
+  const [layerValidationErrors, setLayerValidationErrors] = useState<Record<string, string>>({});
+  const [batchProgress, setBatchProgress] = useState({ completed: 0, total: 0 });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [adjustmentCount, setAdjustmentCount] = useState(0);
@@ -1191,10 +1696,15 @@ export function ExperimentModular({
   const stepStartedAt = useRef(0);
   const firstMoveAt = useRef<number | null>(null);
   const firstUncertaintyAt = useRef<number | null>(null);
+  const layerStartedAt = useRef(0);
+  const sessionDeviceInfo = useRef<DeviceInfo | null>(null);
+  const stepStartedWallAt = useRef("");
+  const stepHiddenStartedAt = useRef<number | null>(null);
+  const stepHiddenAccumulatedMs = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
-    fetch(isV4 ? "/data/research-stimuli-modular-v7.json" : "/data/research-stimuli-modular-v6.json")
+    fetch(isV4 ? "/data/research-stimuli-modular-v8.json" : "/data/research-stimuli-modular-v6.json")
       .then((response) => {
         if (!response.ok) throw new Error("研究刺激数据加载失败");
         return response.json() as Promise<Bundle>;
@@ -1213,8 +1723,22 @@ export function ExperimentModular({
   useEffect(() => {
     if (phase !== "experiment") return;
     stepStartedAt.current = performance.now();
+    stepStartedWallAt.current = new Date().toISOString();
     firstMoveAt.current = null;
     firstUncertaintyAt.current = null;
+    stepHiddenAccumulatedMs.current = 0;
+    stepHiddenStartedAt.current = document.hidden ? performance.now() : null;
+    const handleVisibilityChange = () => {
+      const now = performance.now();
+      if (document.hidden) {
+        if (stepHiddenStartedAt.current === null) stepHiddenStartedAt.current = now;
+      } else if (stepHiddenStartedAt.current !== null) {
+        stepHiddenAccumulatedMs.current += now - stepHiddenStartedAt.current;
+        stepHiddenStartedAt.current = null;
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [phase, trialIndex, disclosureIndex]);
 
   const currentTrial = plan[trialIndex];
@@ -1258,10 +1782,22 @@ export function ExperimentModular({
       )
     : disclosureVisibility("G0", "domain");
   const allEvents = currentControl?.events ?? currentAsset?.events ?? [];
-  const visibleEvents = allEvents.filter((event) => {
-    if (!points.length || event.date < points[0].date || event.date > points[points.length - 1].date) return false;
-    return (visibility.highEvents && event.priority === "high") || (visibility.lowEvents && event.priority === "low");
-  });
+  const eventWindowStart = points[0]?.date ?? "0000-01-01";
+  const eventWindowEnd = points[points.length - 1]?.date ?? "9999-12-31";
+  const coreEvents = selectDisclosureEvents(allEvents, "core", eventWindowStart, eventWindowEnd);
+  const supplementaryEvents = selectDisclosureEvents(allEvents, "supplementary", eventWindowStart, eventWindowEnd);
+  const visibleEvents = [
+    ...(visibility.highEvents ? coreEvents : []),
+    ...(visibility.lowEvents ? supplementaryEvents : []),
+  ].sort((first, second) => first.date.localeCompare(second.date));
+  const newlyDisclosedEvents = currentDisclosure === "DI3"
+    ? coreEvents
+    : currentDisclosure === "DI4"
+      ? supplementaryEvents
+      : currentDisclosure === "FULL"
+        ? visibleEvents
+        : [];
+  const retainedEventCount = Math.max(0, visibleEvents.length - newlyDisclosedEvents.length);
   const displayName = currentControl?.nameZh ?? currentAsset?.nameZh ?? "匿名序列";
   const displaySymbol = currentControl?.symbol ?? currentAsset?.symbol ?? "";
   const displayIntro = currentControl?.intro ?? currentAsset?.intro ?? "";
@@ -1280,11 +1816,24 @@ export function ExperimentModular({
     setNoChangeConfirmed(false);
   };
 
-  const resetResponseState = (nextTask: TaskType, preserve = false) => {
-    const nextBoundaries = preserve ? boundaries : initialBoundaries(nextTask);
+  const resetResponseState = (
+    nextTask: TaskType,
+    preserve = false,
+    seedAnswer?: ModularAnswer,
+  ) => {
+    const nextBoundaries = seedAnswer
+      ? seedAnswer.boundaries.map((boundary) => boundary.ratio)
+      : preserve
+        ? boundaries
+        : initialBoundaries(nextTask);
+    const seededWidths = seedAnswer
+      ? nextBoundaries.map((_, index) =>
+          seedAnswer.boundaryIntervals.find((interval) => interval.boundaryIndex === index)?.halfWidthRatio ?? null,
+        )
+      : null;
     setBoundaries(nextBoundaries);
-    setWidths(preserve ? widths : Array(nextBoundaries.length).fill(null));
-    setSingleStageConfirmed(preserve ? singleStageConfirmed : false);
+    setWidths(seededWidths ?? (preserve ? widths : Array(nextBoundaries.length).fill(null)));
+    setSingleStageConfirmed(seedAnswer ? seedAnswer.singleStageConfirmed : preserve ? singleStageConfirmed : false);
     if (!isV4) {
       setConfidence(3);
       setConfidenceTouched(false);
@@ -1301,6 +1850,32 @@ export function ExperimentModular({
     firstUncertaintyAt.current = null;
   };
 
+  const priorAnswerForPosition = (
+    nextTrial: TrialPlan,
+    nextDisclosureIndex: number,
+    answerPool: ModularAnswer[],
+  ) => answerPool
+    .filter((answer) => answer.trialId === nextTrial.id && answer.disclosureIndex < nextDisclosureIndex)
+    .sort((first, second) => second.disclosureIndex - first.disclosureIndex)[0];
+
+  const enterCurrentDisclosureLayer = () => {
+    if (usesFixedM1SequentialPages) {
+      setPhase("experiment");
+      window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+      return;
+    }
+    const nextDrafts = Object.fromEntries(plan.map((trial) => [
+      trial.id,
+      makeLayerAssetDraft(trial, priorAnswerForPosition(trial, disclosureIndex, answers)),
+    ]));
+    setLayerDrafts(nextDrafts);
+    setLayerValidationErrors({});
+    setBatchProgress({ completed: 0, total: plan.length });
+    layerStartedAt.current = performance.now();
+    setPhase("experiment");
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+  };
+
   const toggleCue = (cue: CueOption) => {
     const exclusiveCodes = new Set(activeCueSet.options.filter((option) => option.exclusive).map((option) => option.code));
     setCueTags((value) => {
@@ -1314,6 +1889,8 @@ export function ExperimentModular({
 
   const createSession = async (nextPlan: TrialPlan[]) => {
     if (!bundle) throw new Error("研究刺激数据尚未载入。");
+    const deviceInfo = collectDeviceInfo();
+    sessionDeviceInfo.current = deviceInfo;
     const response = await fetch("/api/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1324,6 +1901,7 @@ export function ExperimentModular({
         experimentalArm: isM1Main ? "m1-main" : isPilot ? "pilot-m1" : moduleKey,
         protocolVersion: bundle.protocolVersion,
         modelName: actorType === "agent" ? modelName : null,
+        deviceInfo,
         studyConfig: {
           module: moduleKey,
           taskType,
@@ -1336,12 +1914,27 @@ export function ExperimentModular({
           robustnessFactor,
           windowMode: isV4 ? windowMode : "whole",
           windowProtocol: isV4 ? bundle.curatedWindow ?? null : null,
-          participantBriefingVersion: isV4 ? "participant-briefing-v1" : null,
-          cueSchemaVersion: isV4 ? CUE_SCHEMA_VERSION : "legacy-cues-v1",
-          cueTaxonomyUrl: isV4 ? "/data/cue-taxonomy-v4-v2.json" : null,
+          participantBriefingVersion: isV4 ? "participant-briefing-v2-device-telemetry" : null,
+          cueSchemaVersion: isFixedM1 ? "none" : isV4 ? CUE_SCHEMA_VERSION : "legacy-cues-v1",
+          cueTaxonomyUrl: isFixedM1 ? null : isV4 ? "/data/cue-taxonomy-v4-v2.json" : null,
           entryMode,
-          pilotProtocol: isPilot ? "m1-pilot-v1" : null,
-          mainStudyProtocol: isM1Main ? "m1-human-main-v1" : null,
+          pilotProtocol: isPilot ? "m1-pilot-v4-six-sequential-pages-minimal-response" : null,
+          mainStudyProtocol: isM1Main ? "m1-human-main-v4-six-sequential-pages-minimal-response" : null,
+          disclosureFlowOrder: usesLayerMajorDisclosureFlow ? "disclosure-major" : "asset-major",
+          layerPresentation: usesFixedM1SequentialPages
+            ? "sequential-single-asset-pages-v1"
+            : usesLayerMajorDisclosureFlow
+            ? nextPlan.length === 6 ? "simultaneous-six-asset-page-v1" : "simultaneous-multi-asset-page-v1"
+            : "single-stimulus-page",
+          responseTimingProtocol: usesFixedM1SequentialPages ? "step-start-to-submit-v1" : usesLayerMajorDisclosureFlow ? "layer-start-to-last-asset-interaction-v1" : "step-start-to-submit-v1",
+          deviceTelemetryProtocol: isFixedM1 ? "session-device-environment-v1" : null,
+          responseTelemetryProtocol: isFixedM1 ? "per-page-visible-time-v1" : null,
+          participantQuestionSet: isFixedM1 ? "boundaries-uncertainty-influence-v1" : "full-annotation-v2",
+          uncertaintyControl: isV4 ? "continuous-range-knob-v1" : "preset-widths-v1",
+          eventSelectionProtocol: isV4 ? EVENT_SELECTION_PROTOCOL : null,
+          maximumNewEventsPerDisclosure: isV4 ? MAX_EVENTS_PER_DISCLOSURE : null,
+          eventPriorityBands: isV4 ? { DI3: [1, 2], DI4: [3, 4, 5] } : null,
+          assetCount: nextPlan.length,
           randomizedPlan: nextPlan,
         },
       }),
@@ -1376,6 +1969,9 @@ export function ExperimentModular({
       setTrialIndex(0);
       setDisclosureIndex(0);
       setAnswers([]);
+      setLayerDrafts({});
+      setLayerValidationErrors({});
+      setBatchProgress({ completed: 0, total: nextPlan.length });
       resetResponseState(nextPlan[0].taskType, false);
       if (isV4) {
         setConsent(false);
@@ -1397,7 +1993,7 @@ export function ExperimentModular({
     setError("");
     try {
       setSessionId(await createSession(plan));
-      setPhase("experiment");
+      setPhase(usesLayerMajorDisclosureFlow ? "transition" : "experiment");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "实验启动失败");
     } finally {
@@ -1425,7 +2021,7 @@ export function ExperimentModular({
       return;
     }
     if (orderedBoundaries.length > 0 && currentIntervalRecords.length !== orderedBoundaries.length) {
-      setError("请为每个分界点选择一个大致的不确定范围。");
+      setError("请拖动旋钮，为每个分界点确认一个连续的不确定范围。");
       return;
     }
     const sameAsPrevious = previousAnswer
@@ -1437,7 +2033,7 @@ export function ExperimentModular({
       setError("本步分界点与范围均未改变。请确认这是有意保持不变，或继续调整。");
       return;
     }
-    if (isV4 && cueTags.length === 0) {
+    if (isV4 && !isFixedM1 && cueTags.length === 0) {
       setError("请选择至少一项本步实际使用的判断线索；如果新增信息没有影响，请选择“没有改变我的判断”。");
       return;
     }
@@ -1446,6 +2042,16 @@ export function ExperimentModular({
     setError("");
     const now = submitTimestamp;
     const elapsedMs = Math.max(0, Math.round(now - stepStartedAt.current));
+    const hiddenMsAtSubmit = stepHiddenAccumulatedMs.current +
+      (stepHiddenStartedAt.current === null ? 0 : Math.max(0, now - stepHiddenStartedAt.current));
+    const pageHiddenMs = Math.min(elapsedMs, Math.max(0, Math.round(hiddenMsAtSubmit)));
+    const activeElapsedMs = Math.max(0, elapsedMs - pageHiddenMs);
+    const clientStartedAt = stepStartedWallAt.current ||
+      new Date(performance.timeOrigin + now - elapsedMs).toISOString();
+    const clientSubmittedAt = new Date(performance.timeOrigin + now).toISOString();
+    const responseViewportWidth = Math.max(1, Math.round(window.innerWidth));
+    const responseViewportHeight = Math.max(1, Math.round(window.innerHeight));
+    const responseOrientation = currentOrientation();
     const stimulusType = currentControl?.kind ?? "crypto";
     const disclosureState = {
       key: currentDisclosure,
@@ -1460,6 +2066,19 @@ export function ExperimentModular({
         ...(visibility.highEvents ? ["high"] : []),
         ...(visibility.lowEvents ? ["low"] : []),
       ],
+      visibleSourcePriorities: [...new Set(visibleEvents.map(eventSourcePriority))].sort((first, second) => first - second),
+      eventProtocol: {
+        version: EVENT_SELECTION_PROTOCOL,
+        sourceDataset: "events_20260527.zip",
+        priorityBands: { core: [1, 2], supplementary: [3, 4, 5] },
+        maximumNewEventsPerDisclosure: MAX_EVENTS_PER_DISCLOSURE,
+        overflowRule: "chronological-even-spacing-with-endpoints",
+        activeNewBand: currentDisclosure === "DI3" ? "core" : currentDisclosure === "DI4" ? "supplementary" : null,
+        newlyDisclosedEventIds: newlyDisclosedEvents.map((event) => event.sourceId ?? `${event.date}:${event.title}`),
+        retainedEventIds: visibleEvents
+          .filter((event) => !newlyDisclosedEvents.includes(event))
+          .map((event) => event.sourceId ?? `${event.date}:${event.title}`),
+      },
     };
     const stimulusWindow = {
       mode: currentTrial.windowMode,
@@ -1489,9 +2108,9 @@ export function ExperimentModular({
           disclosureIndex,
           disclosureKey: currentDisclosure,
           disclosureState,
-          responseVersion: isV4 ? "v4" : "pre-v4",
+          responseVersion: isFixedM1 ? "v4.3" : isV4 ? "v4.1" : "pre-v4",
           stimulusWindow,
-          cueSchemaVersion: isV4 ? CUE_SCHEMA_VERSION : "legacy-cues-v1",
+          cueSchemaVersion: isFixedM1 ? "none" : isV4 ? CUE_SCHEMA_VERSION : "legacy-cues-v1",
           boundaries: currentBoundaryRecords,
           previousBoundaries: previousAnswer?.boundaries ?? [],
           boundaryIntervals: currentIntervalRecords,
@@ -1501,14 +2120,21 @@ export function ExperimentModular({
           influenceRating: currentTrial.module === "disclosure" && disclosureIndex > 0 ? influence : null,
           influenceTouched: currentTrial.module === "disclosure" && disclosureIndex > 0 ? influenceTouched : false,
           noChangeConfirmed,
-          cueTags,
-          rationale,
+          cueTags: isFixedM1 ? [] : cueTags,
+          rationale: isFixedM1 ? "" : rationale,
           elapsedMs,
           revealReadMs,
           firstMoveMs,
           firstUncertaintyMs,
           adjustmentCount,
           uncertaintyAdjustmentCount,
+          clientStartedAt,
+          clientSubmittedAt,
+          responseViewportWidth,
+          responseViewportHeight,
+          responseOrientation,
+          pageHiddenMs,
+          activeElapsedMs,
         }),
       });
       const payload = (await response.json()) as { error?: string };
@@ -1529,8 +2155,8 @@ export function ExperimentModular({
         influenceRating: currentTrial.module === "disclosure" && disclosureIndex > 0 ? influence : null,
         influenceTouched: currentTrial.module === "disclosure" && disclosureIndex > 0 ? influenceTouched : false,
         noChangeConfirmed,
-        cueTags,
-        rationale,
+        cueTags: isFixedM1 ? [] : cueTags,
+        rationale: isFixedM1 ? "" : rationale,
         stimulusType,
         resolution: currentTrial.resolution,
         scaleMode: currentTrial.scaleMode,
@@ -1543,9 +2169,28 @@ export function ExperimentModular({
         firstUncertaintyMs,
         adjustmentCount,
         uncertaintyAdjustmentCount,
+        clientStartedAt,
+        clientSubmittedAt,
+        responseViewportWidth,
+        responseViewportHeight,
+        responseOrientation,
+        pageHiddenMs,
+        activeElapsedMs,
       };
-      setAnswers((value) => [...value, answer]);
-      if (disclosureIndex < currentTrial.disclosures.length - 1) {
+      const nextAnswers = [...answers, answer];
+      setAnswers(nextAnswers);
+      if (usesLayerMajorDisclosureFlow) {
+        if (trialIndex < plan.length - 1) {
+          const nextTrialIndex = trialIndex + 1;
+          const nextTrial = plan[nextTrialIndex];
+          const seedAnswer = priorAnswerForPosition(nextTrial, disclosureIndex, nextAnswers);
+          setTrialIndex(nextTrialIndex);
+          resetResponseState(nextTrial.taskType, false, seedAnswer);
+          window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+        } else {
+          setPhase("review");
+        }
+      } else if (disclosureIndex < currentTrial.disclosures.length - 1) {
         setDisclosureIndex((value) => value + 1);
         resetResponseState(currentTrial.taskType, true);
       } else {
@@ -1558,8 +2203,184 @@ export function ExperimentModular({
     }
   };
 
+  const submitDisclosureLayer = async () => {
+    if (!bundle || !sessionId || !currentDisclosure || !plan.length) return;
+    const validationEntries = plan.map((trial) => {
+      const previous = priorAnswerForPosition(trial, disclosureIndex, answers);
+      return [trial.id, validateLayerAssetDraft(trial, layerDrafts[trial.id], previous, disclosureIndex)] as const;
+    });
+    const validationErrors = Object.fromEntries(validationEntries.filter(([, message]) => Boolean(message)));
+    if (Object.keys(validationErrors).length) {
+      setLayerValidationErrors(validationErrors);
+      setError(`还有 ${Object.keys(validationErrors).length} 条曲线尚未完成，请查看红色提示。`);
+      const firstInvalid = plan.find((trial) => validationErrors[trial.id]);
+      if (firstInvalid) document.getElementById(`layer-card-${firstInvalid.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+
+    setBusy(true);
+    setError("");
+    setLayerValidationErrors({});
+    let nextAnswers = [...answers];
+    const alreadySaved = plan.filter((trial) => nextAnswers.some((answer) => answer.trialId === trial.id && answer.disclosureIndex === disclosureIndex)).length;
+    setBatchProgress({ completed: alreadySaved, total: plan.length });
+
+    try {
+      for (const trial of plan) {
+        if (nextAnswers.some((answer) => answer.trialId === trial.id && answer.disclosureIndex === disclosureIndex)) continue;
+        const draft = layerDrafts[trial.id];
+        const context = resolveLayerTrialContext(bundle, trial, currentDisclosure, disclosurePath);
+        if (!draft || !context.metricData || !context.points.length) throw new Error(`曲线 ${trial.order + 1} 的数据无法载入。`);
+        const orderedPairs = draft.boundaries
+          .map((ratio, index) => ({ ratio, width: draft.widths[index] ?? null }))
+          .sort((first, second) => first.ratio - second.ratio);
+        const orderedBoundaries = orderedPairs.map((item) => item.ratio);
+        const orderedWidths = orderedPairs.map((item) => item.width);
+        const currentBoundaryRecords = boundaryRecords(orderedBoundaries, context.points);
+        const currentIntervalRecords = intervalRecords(orderedBoundaries, orderedWidths, context.points);
+        const previousAnswer = priorAnswerForPosition(trial, disclosureIndex, nextAnswers);
+        const now = performance.now();
+        const elapsedMs = Math.max(0, Math.round((draft.lastInteractionAt ?? now) - layerStartedAt.current));
+        const firstInteraction = draft.firstMoveAt ?? draft.firstUncertaintyAt ?? now;
+        const disclosureState = {
+          key: currentDisclosure,
+          path: disclosurePath,
+          visibility: context.visibility,
+          cueSchemaVersion: CUE_SCHEMA_VERSION,
+          cueSetKey: currentDisclosure,
+          sourceWindow: context.sourceWindow,
+          displayedWindow: context.displayedWindow,
+          curatedWindow: trial.windowMode === "truncated" ? bundle.curatedWindow ?? null : null,
+          layerPresentation: plan.length === 6 ? "simultaneous-six-asset-page-v1" : "simultaneous-multi-asset-page-v1",
+          timingProtocol: "layer-start-to-last-asset-interaction-v1",
+          visibleEventPriorities: [
+            ...(context.visibility.highEvents ? ["high"] : []),
+            ...(context.visibility.lowEvents ? ["low"] : []),
+          ],
+          visibleSourcePriorities: [...new Set(context.visibleEvents.map(eventSourcePriority))].sort((first, second) => first - second),
+          eventProtocol: {
+            version: EVENT_SELECTION_PROTOCOL,
+            sourceDataset: "events_20260527.zip",
+            priorityBands: { core: [1, 2], supplementary: [3, 4, 5] },
+            maximumNewEventsPerDisclosure: MAX_EVENTS_PER_DISCLOSURE,
+            overflowRule: "chronological-even-spacing-with-endpoints",
+            activeNewBand: currentDisclosure === "DI3" ? "core" : currentDisclosure === "DI4" ? "supplementary" : null,
+            newlyDisclosedEventIds: context.newlyDisclosedEvents.map((event) => event.sourceId ?? `${event.date}:${event.title}`),
+            retainedEventIds: context.visibleEvents
+              .filter((event) => !context.newlyDisclosedEvents.includes(event))
+              .map((event) => event.sourceId ?? `${event.date}:${event.title}`),
+          },
+        };
+        const stimulusWindow = {
+          mode: trial.windowMode,
+          source: context.sourceWindow,
+          displayed: context.displayedWindow,
+          curatedRule: trial.windowMode === "truncated" ? bundle.curatedWindow ?? null : null,
+        };
+        const stimulusType = context.control?.kind ?? "crypto";
+        const response = await fetch("/api/modular-responses", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId,
+            trialId: trial.id,
+            trialOrder: trial.order,
+            moduleKey: trial.module,
+            taskType: trial.taskType,
+            stimulusType,
+            assetId: trial.assetId,
+            metricType: trial.metric,
+            resolution: trial.resolution,
+            scaleMode: trial.scaleMode,
+            windowMode: trial.windowMode,
+            disclosureIndex,
+            disclosureKey: currentDisclosure,
+            disclosureState,
+            responseVersion: "v4.1",
+            stimulusWindow,
+            cueSchemaVersion: CUE_SCHEMA_VERSION,
+            boundaries: currentBoundaryRecords,
+            previousBoundaries: previousAnswer?.boundaries ?? [],
+            boundaryIntervals: currentIntervalRecords,
+            singleStageConfirmed: draft.singleStageConfirmed,
+            influenceRating: disclosureIndex > 0 ? draft.influence : null,
+            influenceTouched: disclosureIndex > 0 ? draft.influenceTouched : false,
+            noChangeConfirmed: draft.noChangeConfirmed,
+            cueTags: draft.cueTags,
+            rationale: draft.rationale,
+            elapsedMs,
+            revealReadMs: Math.max(0, Math.round(firstInteraction - layerStartedAt.current)),
+            firstMoveMs: draft.firstMoveAt === null ? null : Math.max(0, Math.round(draft.firstMoveAt - layerStartedAt.current)),
+            firstUncertaintyMs: draft.firstUncertaintyAt === null ? null : Math.max(0, Math.round(draft.firstUncertaintyAt - layerStartedAt.current)),
+            adjustmentCount: draft.adjustmentCount,
+            uncertaintyAdjustmentCount: draft.uncertaintyAdjustmentCount,
+          }),
+        });
+        const payload = (await response.json()) as { error?: string };
+        const alreadyRecorded = payload.error === "This trial disclosure has already been submitted.";
+        if (!response.ok && !alreadyRecorded) throw new Error(payload.error ?? `曲线 ${trial.order + 1} 记录失败`);
+
+        const answer: ModularAnswer = {
+          trialId: trial.id,
+          trialOrder: trial.order,
+          disclosureIndex,
+          disclosureKey: currentDisclosure,
+          taskType: trial.taskType,
+          assetId: trial.assetId,
+          metric: trial.metric,
+          boundaries: currentBoundaryRecords,
+          previousBoundaries: previousAnswer?.boundaries ?? [],
+          boundaryIntervals: currentIntervalRecords,
+          singleStageConfirmed: draft.singleStageConfirmed,
+          influenceRating: disclosureIndex > 0 ? draft.influence : null,
+          influenceTouched: disclosureIndex > 0 ? draft.influenceTouched : false,
+          noChangeConfirmed: draft.noChangeConfirmed,
+          cueTags: draft.cueTags,
+          rationale: draft.rationale,
+          stimulusType,
+          resolution: trial.resolution,
+          scaleMode: trial.scaleMode,
+          windowMode: trial.windowMode,
+          disclosureState,
+          stimulusWindow,
+          elapsedMs,
+          revealReadMs: Math.max(0, Math.round(firstInteraction - layerStartedAt.current)),
+          firstMoveMs: draft.firstMoveAt === null ? null : Math.max(0, Math.round(draft.firstMoveAt - layerStartedAt.current)),
+          firstUncertaintyMs: draft.firstUncertaintyAt === null ? null : Math.max(0, Math.round(draft.firstUncertaintyAt - layerStartedAt.current)),
+          adjustmentCount: draft.adjustmentCount,
+          uncertaintyAdjustmentCount: draft.uncertaintyAdjustmentCount,
+        };
+        nextAnswers = [...nextAnswers, answer];
+        setAnswers(nextAnswers);
+        setBatchProgress({
+          completed: plan.filter((candidate) => nextAnswers.some((candidateAnswer) => candidateAnswer.trialId === candidate.id && candidateAnswer.disclosureIndex === disclosureIndex)).length,
+          total: plan.length,
+        });
+      }
+      setTrialIndex(0);
+      setPhase("review");
+      window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+    } catch (reason) {
+      const saved = plan.filter((trial) => nextAnswers.some((answer) => answer.trialId === trial.id && answer.disclosureIndex === disclosureIndex)).length;
+      setError(`${reason instanceof Error ? reason.message : "本层记录失败"} 已安全保存 ${saved}/${plan.length} 条；请重试，已保存内容不会重复写入。`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const continueAfterReview = async () => {
-    if (trialIndex < plan.length - 1) {
+    if (usesLayerMajorDisclosureFlow && currentTrial && disclosureIndex < currentTrial.disclosures.length - 1) {
+      const nextDisclosureIndex = disclosureIndex + 1;
+      const nextTrial = plan[0];
+      const seedAnswer = priorAnswerForPosition(nextTrial, nextDisclosureIndex, answers);
+      setTrialIndex(0);
+      setDisclosureIndex(nextDisclosureIndex);
+      resetResponseState(nextTrial.taskType, false, seedAnswer);
+      setPhase("transition");
+      window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+      return;
+    }
+    if (!usesLayerMajorDisclosureFlow && trialIndex < plan.length - 1) {
       const nextIndex = trialIndex + 1;
       setTrialIndex(nextIndex);
       setDisclosureIndex(0);
@@ -1602,12 +2423,12 @@ export function ExperimentModular({
             <div className="mod-pilot-hero">
               <span className="mod-eyebrow">{studyEyebrow}</span>
               <h1>观察曲线，<br />标出你眼中的阶段。</h1>
-              <p>你将对四条时间序列进行判断。系统会先显示匿名曲线，再逐步加入信息；每一步都请根据当前画面重新确认两个分界点。</p>
+              <p>你将对六条时间序列进行判断。系统会先显示匿名曲线，再逐步加入信息；每一步都请根据当前画面重新确认两个分界点。</p>
             </div>
             <div className="mod-pilot-protocol" aria-label="本次实验流程摘要">
               <article><span>01</span><strong>固定三阶段</strong><p>每次用两个分界点，把曲线划分为三个阶段。</p></article>
-              <article><span>02</span><strong>四条匿名曲线</strong><p>每条曲线包含 1 次基线判断与 6 次信息更新。</p></article>
-              <article><span>03</span><strong>逐步独立提交</strong><p>每次提交都会立即保存，提交后不能返回修改。</p></article>
+              <article><span>02</span><strong>六条曲线，分别作答</strong><p>每个信息层包含六个连续页面，每页只判断一种资产。</p></article>
+              <article><span>03</span><strong>逐页独立提交</strong><p>每条曲线完成后立即安全写入数据库；提交后不能返回修改。</p></article>
             </div>
             <section className="mod-pilot-participant-card">
               <div>
@@ -1622,7 +2443,7 @@ export function ExperimentModular({
               {(loadError || error) && <p className="mod-error" role="alert">{loadError || error}</p>}
               <button className="mod-start" type="button" onClick={begin} disabled={!bundle || busy || Boolean(loadError)}>{busy ? "正在生成随机实验序列…" : "进入实验说明"}<span>→</span></button>
             </section>
-            <p className="mod-pilot-privacy">不采集真实姓名 · 后续实验信息不会在作答前提前显示</p>
+            <p className="mod-pilot-privacy">不采集真实姓名或精确位置 · 会记录设备类别、显示尺寸与匿名交互时间</p>
           </section>
         </main>
       );
@@ -1814,7 +2635,7 @@ export function ExperimentModular({
                     onChange={setDisclosurePath}
                     options={[
                       { value: "general", title: "一般信息 GI · 2 步", description: "序列类型 → 时间与单位；另含 1 次 G0 匿名基线" },
-                      { value: "domain", title: "领域信息 DI · 4 步", description: "币名 → 背景 → 高优先事件 → 补充事件；另含 G0 基线" },
+                      { value: "domain", title: "领域信息 DI · 4 步", description: "币名 → 背景 → 核心事件 → 补充事件；另含 G0 基线" },
                       { value: "combined", title: "组合路径 · 6 步", description: "先完成 2 步一般信息，再累积 4 步领域信息；另含 G0 基线" },
                     ]}
                   />
@@ -1853,7 +2674,7 @@ export function ExperimentModular({
                 <div><dt>数据窗口</dt><dd>{isV4 ? moduleKey === "robustness" && robustnessFactor === "window" ? "完整 vs 2020—2024" : windowMode === "truncated" ? "2020—2024（固定）" : "各序列全部可用观测" : "2018—2026"}</dd></div>
                 <div><dt>提交规则</dt><dd>每个判断单独写入数据库</dd></div>
               </dl>
-              <p>系统会把随机顺序、信息状态、实际显示窗口、分界点、不确定范围、线索编码和交互时间完整写入会话配置与响应表。</p>
+              <p>系统会把随机顺序、信息状态、实际显示窗口、分界点、不确定范围、设备环境和逐题交互时间写入会话表与响应表。</p>
             </aside>
           </div>
 
@@ -1927,15 +2748,15 @@ export function ExperimentModular({
               <span>03 · 本次流程</span>
               <h2>{plan.length} 条实验曲线</h2>
               {moduleKey === "disclosure" ? (
-                <p>每条曲线先完成 1 次匿名基线判断，随后经历 <strong>{disclosureUpdates} 次</strong>逐层信息更新。也就是{isM1Main ? "本次主实验协议预设的" : isPilot ? "本次初批协议预设的" : "操作台所选的"} {disclosureUpdates} 步披露，另加 1 次基线判断。</p>
+                <p>实验按信息层推进：每一层包含 <strong>{plan.length} 个连续的单曲线页面</strong>；依次提交全部曲线后才进入下一层。共包含 1 层匿名基线与 {disclosureUpdates} 层信息更新。</p>
               ) : (
                 <p>每条曲线只使用一个固定的信息状态，不会在同一轮中逐层追加内容。</p>
               )}
             </article>
             <article className="mod-briefing-card">
               <span>04 · 如何作答</span>
-              <h2>分界点 + 大致范围 + 判断线索</h2>
-              <p>先放置分界点，再为每个分界点选择你认为“最佳位置”可能落入的范围。完成图上判断后，页面会显示约 5 个与当前信息对应的线索标签。</p>
+              <h2>分界点 + 连续范围</h2>
+              <p>先放置分界点，再拖动范围旋钮，给出“最佳位置”可能落入的连续范围。除新增信息影响评分外，不再询问额外的判断理由。</p>
             </article>
             <article className="mod-briefing-card">
               <span>05 · 信息隔离</span>
@@ -1945,7 +2766,7 @@ export function ExperimentModular({
             <article className="mod-briefing-card">
               <span>06 · 记录方式</span>
               <h2>提交后锁定，不采集真实姓名</h2>
-              <p>研究会记录分界位置、不确定范围、线索选择和交互时间。每一步提交后不能返回修改；轮末反馈不是正确答案评分。</p>
+              <p>研究会记录分界位置、不确定范围、新增信息影响评分、每页作答时间，以及设备类别、屏幕/浏览器视口尺寸、平台、语言和时区等技术环境；不读取联系人、硬件序列号或精确位置。</p>
             </article>
           </div>
 
@@ -1956,7 +2777,7 @@ export function ExperimentModular({
             </div>
             <label className="mod-consent">
               <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
-              <span>{actorType === "agent" ? "执行主体已读取以上约束，并会只使用当前页面可见的信息作答。" : "我已阅读并理解以上说明，同意匿名记录本次判断结果与交互时间。"}</span>
+              <span>{actorType === "agent" ? "执行主体已读取以上约束，并会只使用当前页面可见的信息作答。" : "我已阅读并理解以上说明，同意匿名记录本次判断结果、逐页响应时间与设备技术环境。"}</span>
             </label>
             {error && <p className="mod-error" role="alert">{error}</p>}
             <button className="mod-start" type="button" onClick={startParticipantSession} disabled={!consent || busy}>
@@ -1972,48 +2793,118 @@ export function ExperimentModular({
     return <main className="mod-site mod-centered"><p>实验条件无法载入。请刷新页面后重试。</p></main>;
   }
 
+  if (phase === "transition" && usesLayerMajorDisclosureFlow) {
+    const previousDisclosure = disclosureIndex > 0 ? currentTrial.disclosures[disclosureIndex - 1] : null;
+    return (
+      <main className="mod-site mod-layer-transition-page">
+        <header className="mod-topbar">
+          <span className="mod-wordmark"><span>BOUNDARY</span> LAB <b>{editionMark}</b></span>
+          <span className="mod-transition-header-label">信息层切换 · {disclosureIndex + 1}/{currentTrial.disclosures.length}</span>
+        </header>
+        <DisclosureRail keys={currentTrial.disclosures} activeIndex={disclosureIndex} />
+        <section className="mod-transition-shell">
+          <div className="mod-transition-level">
+            <span>DISCLOSURE LEVEL</span>
+            <strong>{String(disclosureIndex + 1).padStart(2, "0")}</strong>
+            <small>/ {String(currentTrial.disclosures.length).padStart(2, "0")}</small>
+          </div>
+          <div className="mod-transition-copy">
+            <span className="mod-transition-new-label">NEW INFORMATION · 新信息已解锁</span>
+            <h1>{DISCLOSURE_COPY[currentDisclosure].title}</h1>
+            <p>{DISCLOSURE_COPY[currentDisclosure].description}</p>
+            <div className="mod-transition-shift" aria-label="信息状态变化">
+              <span>{previousDisclosure ? DISCLOSURE_COPY[previousDisclosure].title : "实验说明"}</span>
+              <i>→</i>
+              <strong>{DISCLOSURE_COPY[currentDisclosure].title}</strong>
+            </div>
+            <div className="mod-transition-assets" aria-label={`本层包含的 ${plan.length} 条曲线`}>
+              {plan.map((trial) => {
+                const asset = bundle.assets.find((candidate) => candidate.id === trial.assetId);
+                return <span key={trial.id}>{visibility.asset ? asset?.symbol ?? `曲线 ${trial.order + 1}` : `匿名曲线 ${trial.order + 1}`}</span>;
+              })}
+            </div>
+            <div className="mod-transition-notice">
+              <b>本层包含 {plan.length} 个连续页面</b>
+              <p>每页只显示一条曲线；虚线会保留该资产上一层的位置，便于判断是否需要移动。</p>
+            </div>
+            <button className="mod-start mod-transition-start" type="button" onClick={enterCurrentDisclosureLayer}>我已了解，进入本层第 1 条曲线<span>→</span></button>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   const trialAnswers = answers.filter((answer) => answer.trialId === currentTrial.id);
+  const layerAnswers = answers
+    .filter((answer) => answer.disclosureIndex === disclosureIndex)
+    .sort((first, second) => first.trialOrder - second.trialOrder);
+  const reviewAnswers = usesLayerMajorDisclosureFlow ? layerAnswers : trialAnswers;
   const currentModule = MODULES.find((item) => item.key === currentTrial.module) ?? MODULES[0];
-  const movement = trialAnswers.length > 1
-    ? trialAnswers.slice(1).reduce((sum, answer) => {
+  const movementAnswers = usesLayerMajorDisclosureFlow ? reviewAnswers : trialAnswers.slice(1);
+  const movement = movementAnswers.length
+    ? movementAnswers.reduce((sum, answer) => {
         const matched = Math.min(answer.boundaries.length, answer.previousBoundaries.length);
         return sum + answer.boundaries.slice(0, matched).reduce((inner, boundary, index) => inner + Math.abs(boundary.ratio - answer.previousBoundaries[index].ratio), 0);
       }, 0)
     : 0;
-  const averageRange = trialAnswers.length
-    ? trialAnswers.reduce((sum, answer) => sum + answer.boundaryIntervals.reduce((inner, interval) => inner + interval.widthRatio, 0), 0) /
-      Math.max(1, trialAnswers.reduce((sum, answer) => sum + answer.boundaryIntervals.length, 0))
+  const averageRange = reviewAnswers.length
+    ? reviewAnswers.reduce((sum, answer) => sum + answer.boundaryIntervals.reduce((inner, interval) => inner + interval.widthRatio, 0), 0) /
+      Math.max(1, reviewAnswers.reduce((sum, answer) => sum + answer.boundaryIntervals.length, 0))
     : 0;
+  const changedCurveCount = reviewAnswers.filter((answer) => {
+    if (!answer.previousBoundaries.length) return false;
+    const previousIntervals = answer.boundaryIntervals.map((interval) => interval.halfWidthRatio);
+    const priorIntervals = answers
+      .filter((candidate) => candidate.trialId === answer.trialId && candidate.disclosureIndex < answer.disclosureIndex)
+      .sort((first, second) => second.disclosureIndex - first.disclosureIndex)[0]
+      ?.boundaryIntervals.map((interval) => interval.halfWidthRatio) ?? [];
+    return !sameNumbers(answer.boundaries.map((boundary) => boundary.ratio), answer.previousBoundaries.map((boundary) => boundary.ratio)) ||
+      !sameNumbers(previousIntervals, priorIntervals);
+  }).length;
 
   if (phase === "review") {
     const first = trialAnswers[0];
     const last = trialAnswers[trialAnswers.length - 1];
+    const hasNextDisclosure = disclosureIndex < currentTrial.disclosures.length - 1;
     return (
       <main className="mod-site mod-review-page">
-        <header className="mod-topbar"><span className="mod-wordmark"><span>BOUNDARY</span> LAB <b>{editionMark}</b></span><span>{currentModule.number} · 试次 {trialIndex + 1}/{plan.length}</span></header>
+        <header className="mod-topbar"><span className="mod-wordmark"><span>BOUNDARY</span> LAB <b>{editionMark}</b></span><span>{usesLayerMajorDisclosureFlow ? `披露层 ${disclosureIndex + 1}/${currentTrial.disclosures.length}` : `${currentModule.number} · 试次 ${trialIndex + 1}/${plan.length}`}</span></header>
         <section className="mod-review-hero">
-          <span className="mod-eyebrow">MICRO REWARD · 本轮反馈</span>
-          <h1>你刚刚留下了一条<br />可测量的判断轨迹。</h1>
-          <p>这不是标准答案评分；它只把你在本轮中的阶段结构、上下文修正和不确定性可视化。</p>
+          <span className="mod-eyebrow">MICRO REWARD · {usesLayerMajorDisclosureFlow ? "本层反馈" : "本轮反馈"}</span>
+          <h1>{usesLayerMajorDisclosureFlow ? <>这一信息层的 {plan.length} 条曲线，<br />已经全部完成。</> : <>你刚刚留下了一条<br />可测量的判断轨迹。</>}</h1>
+          <p>这不是标准答案评分；它只把{usesLayerMajorDisclosureFlow ? `${plan.length} 条曲线在当前信息层的边界、不确定范围与修正情况` : "你在本轮中的阶段结构、上下文修正和不确定性"}可视化。</p>
         </section>
         <section className="mod-review-grid">
           <article className="mod-review-chart">
-            <div className="mod-review-title"><span>边界轨迹</span><strong>{trialAnswers.length} 次判断</strong></div>
+            <div className="mod-review-title"><span>{usesLayerMajorDisclosureFlow ? `本层 ${plan.length} 条曲线` : "边界轨迹"}</span><strong>{reviewAnswers.length} 次判断</strong></div>
             <div className="mod-track">
-              {trialAnswers.map((answer) => (
+              {reviewAnswers.map((answer) => {
+                const answerTrial = plan.find((trial) => trial.id === answer.trialId);
+                const answerAsset = bundle.assets.find((asset) => asset.id === answer.assetId);
+                const rowLabel = usesLayerMajorDisclosureFlow
+                  ? visibility.asset
+                    ? answerAsset?.symbol ?? `曲线 ${answer.trialOrder + 1}`
+                    : `曲线 ${answer.trialOrder + 1}`
+                  : DISCLOSURE_COPY[answer.disclosureKey].short;
+                return (
                 <div className="mod-track-row" key={`${answer.trialId}-${answer.disclosureIndex}`}>
-                  <span>{DISCLOSURE_COPY[answer.disclosureKey].short}</span>
+                  <span title={answerTrial?.variantLabel}>{rowLabel}</span>
                   <div>{answer.boundaries.map((boundary, boundaryIndex) => <i key={boundaryIndex} style={{ left: `${boundary.ratio * 100}%` }}><b>{boundaryIndex + 1}</b></i>)}</div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </article>
-          <article className="mod-review-stat is-dark"><small>累计边界位移</small><strong>{(movement * 100).toFixed(1)}<em>% 时间窗</em></strong><p>{trialAnswers.length > 1 ? "反映逐层信息带来的总修正幅度" : "该模块采用固定信息快照，因此没有层间位移"}</p></article>
+          <article className="mod-review-stat is-dark"><small>{usesLayerMajorDisclosureFlow ? "本层边界位移" : "累计边界位移"}</small><strong>{(movement * 100).toFixed(1)}<em>% 时间窗</em></strong><p>{disclosureIndex > 0 || (!usesLayerMajorDisclosureFlow && trialAnswers.length > 1) ? "反映相对上一信息状态的边界修正总量" : "匿名基线层用于建立初始判断，不计算层间位移"}</p></article>
           <article className="mod-review-stat"><small>平均不确定范围</small><strong>{(averageRange * 100).toFixed(1)}<em>% 时间窗</em></strong><p>范围越宽，表示你对精确边界位置保留越多余量</p></article>
-          <article className="mod-review-stat"><small>阶段数量</small><strong>{(last?.boundaries.length ?? first?.boundaries.length ?? 0) + 1}<em> 个阶段</em></strong><p>{first && last && first.boundaries.length !== last.boundaries.length ? `从 ${first.boundaries.length + 1} 个阶段修正为 ${last.boundaries.length + 1} 个阶段` : "本轮阶段数量保持稳定"}</p></article>
+          {usesLayerMajorDisclosureFlow ? (
+            <article className="mod-review-stat"><small>{disclosureIndex > 0 ? "发生修正的曲线" : "本层完成"}</small><strong>{disclosureIndex > 0 ? `${changedCurveCount}/${reviewAnswers.length}` : `${reviewAnswers.length}/${plan.length}`}<em>{disclosureIndex > 0 ? " 条曲线" : " 已提交"}</em></strong><p>{disclosureIndex > 0 ? "边界位置或不确定范围相对上一层发生改变" : `${plan.length} 条匿名基线均已独立写入`}</p></article>
+          ) : (
+            <article className="mod-review-stat"><small>阶段数量</small><strong>{(last?.boundaries.length ?? first?.boundaries.length ?? 0) + 1}<em> 个阶段</em></strong><p>{first && last && first.boundaries.length !== last.boundaries.length ? `从 ${first.boundaries.length + 1} 个阶段修正为 ${last.boundaries.length + 1} 个阶段` : "本轮阶段数量保持稳定"}</p></article>
+          )}
         </section>
         {error && <p className="mod-error mod-review-error" role="alert">{error}</p>}
-        <button className="mod-start mod-review-next" type="button" onClick={continueAfterReview} disabled={busy}>{trialIndex < plan.length - 1 ? "进入下一条曲线" : "完成本次模块"}<span>→</span></button>
+        <button className="mod-start mod-review-next" type="button" onClick={continueAfterReview} disabled={busy}>{usesLayerMajorDisclosureFlow ? hasNextDisclosure ? "进入下一信息层" : "完成本次模块" : trialIndex < plan.length - 1 ? "进入下一条曲线" : "完成本次模块"}<span>→</span></button>
       </main>
     );
   }
@@ -2024,13 +2915,87 @@ export function ExperimentModular({
         <section>
           <span className="mod-eyebrow">SESSION COMPLETE</span>
           <h1>{isM1Main ? "M1 主实验已完成。" : isPilot ? "M1 初批实验已完成。" : `${currentModule.number} 模块已完成。`}</h1>
-          <p>共记录 {answers.length} 次判断，覆盖 {plan.length} 条实验曲线。浏览器中的副本可以下载，服务器端记录已与会话编号关联。</p>
+          <p>共记录 {answers.length} 次判断，覆盖 {plan.length} 条实验曲线。浏览器中的副本可以下载；服务器端已保存逐题答案、设备环境与响应时间。</p>
           <div className="mod-session-code"><span>SESSION ID</span><code>{sessionId}</code></div>
           <div className="mod-complete-actions">
-            <button type="button" onClick={() => downloadSessionCsv(sessionId, answers)}>下载本次 CSV</button>
-            <button type="button" onClick={() => downloadJson(`boundary-lab-${sessionId}.json`, { protocolVersion: bundle.protocolVersion, sessionId, module: currentModule, plan, answers })}>下载本次 JSON</button>
+            <button type="button" onClick={() => downloadSessionCsv(sessionId, answers, sessionDeviceInfo.current)}>下载本次 CSV</button>
+            <button type="button" onClick={() => downloadJson(`boundary-lab-${sessionId}.json`, { protocolVersion: bundle.protocolVersion, sessionId, module: currentModule, deviceInfo: sessionDeviceInfo.current, plan, answers })}>下载本次 JSON</button>
             <button type="button" onClick={() => window.location.reload()}>{isM1Main ? "返回 M1 主实验入口" : isPilot ? "返回初批入口" : "返回模块首页"}</button>
           </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (phase === "experiment" && usesLayerMajorDisclosureFlow && !usesFixedM1SequentialPages) {
+    const completedDraftCount = plan.filter((trial) => {
+      const previous = priorAnswerForPosition(trial, disclosureIndex, answers);
+      return validateLayerAssetDraft(trial, layerDrafts[trial.id], previous, disclosureIndex) === "";
+    }).length;
+    const totalLayerCount = currentTrial.disclosures.length;
+    const layerProgress = totalLayerCount ? disclosureIndex / totalLayerCount * 100 : 0;
+    return (
+      <main className="mod-site mod-runner mod-layer-page">
+        <header className="mod-topbar">
+          <span className="mod-wordmark"><span>BOUNDARY</span> LAB <b>{editionMark}</b></span>
+          <div className="mod-run-progress"><span>M1 · 信息披露主实验</span><strong>披露层 {disclosureIndex + 1}/{totalLayerCount} · {plan.length} 条同页</strong><i><b style={{ width: `${layerProgress}%` }} /></i></div>
+          <span className="mod-session-mini">ID {sessionId.slice(0, 8)}</span>
+        </header>
+
+        <DisclosureRail keys={currentTrial.disclosures} activeIndex={disclosureIndex} />
+
+        <section className="mod-layer-exposure-banner" aria-live="polite">
+          <div className="mod-layer-exposure-index"><span>NEW</span><strong>{String(disclosureIndex + 1).padStart(2, "0")}</strong></div>
+          <div>
+            <span>本层新获得的信息 · INFORMATION UPDATE</span>
+            <h1>{DISCLOSURE_COPY[currentDisclosure].title}</h1>
+            <p>{DISCLOSURE_COPY[currentDisclosure].description}</p>
+          </div>
+          <aside><b>{plan.length} 条曲线已统一更新</b><small>请完成本页全部判断，再整层提交</small></aside>
+        </section>
+
+        <section className="mod-layer-task-strip">
+          <div><span className="mod-kicker">当前任务 · {currentTrial.taskType}</span><strong>{TASKS[currentTrial.taskType].title}</strong><p>{TASKS[currentTrial.taskType].description}</p></div>
+          <div><span>本页完成度</span><strong>{completedDraftCount}/{plan.length}</strong><small>达到 6/6 后即可提交本层</small></div>
+        </section>
+
+        <section className="mod-six-asset-grid" aria-label={`本层 ${plan.length} 条曲线的判断区域`}>
+          {plan.map((trial) => (
+            <LayerAssetResponseCard
+              key={`${trial.id}-${disclosureIndex}`}
+              bundle={bundle}
+              trial={trial}
+              disclosureKey={currentDisclosure}
+              disclosureIndex={disclosureIndex}
+              disclosurePath={disclosurePath}
+              draft={layerDrafts[trial.id] ?? makeLayerAssetDraft(trial, priorAnswerForPosition(trial, disclosureIndex, answers))}
+              previousAnswer={priorAnswerForPosition(trial, disclosureIndex, answers)}
+              validationError={layerValidationErrors[trial.id]}
+              onChange={(updater) => {
+                setLayerDrafts((current) => {
+                  const activeDraft = current[trial.id] ?? makeLayerAssetDraft(trial, priorAnswerForPosition(trial, disclosureIndex, answers));
+                  return { ...current, [trial.id]: updater(activeDraft) };
+                });
+                setLayerValidationErrors((current) => {
+                  if (!current[trial.id]) return current;
+                  const next = { ...current };
+                  delete next[trial.id];
+                  return next;
+                });
+                if (!busy) setError("");
+              }}
+            />
+          ))}
+        </section>
+
+        <section className="mod-layer-submit-bar">
+          <div>
+            <span>{busy ? "正在写入数据库" : "本层统一提交"}</span>
+            <strong>{busy ? `${batchProgress.completed}/${batchProgress.total} 条已安全记录` : `${completedDraftCount}/${plan.length} 条已完成`}</strong>
+            <small>数据库仍按“币种 × 信息层”保存独立记录，CSV 字段保持不变。</small>
+          </div>
+          {error && <p className="mod-error" role="alert">{error}</p>}
+          <button type="button" onClick={submitDisclosureLayer} disabled={busy}>{busy ? `正在安全记录 ${batchProgress.completed}/${batchProgress.total}…` : `提交本层 ${plan.length} 条判断，查看反馈`}<span>→</span></button>
         </section>
       </main>
     );
@@ -2047,16 +3012,50 @@ export function ExperimentModular({
   const runnerVariantLabel = isV4
     ? participantVariantLabel(currentTrial, visibility)
     : currentTrial.variantLabel;
+  const totalJudgments = plan.reduce((sum, trial) => sum + trial.disclosures.length, 0);
+  const completedJudgments = usesLayerMajorDisclosureFlow
+    ? disclosureIndex * plan.length + trialIndex
+    : plan.slice(0, trialIndex).reduce((sum, trial) => sum + trial.disclosures.length, 0) + disclosureIndex;
+  const runProgress = totalJudgments ? completedJudgments / totalJudgments * 100 : 0;
 
   return (
     <main className="mod-site mod-runner">
       <header className="mod-topbar">
         <span className="mod-wordmark"><span>BOUNDARY</span> LAB <b>{editionMark}</b></span>
-        <div className="mod-run-progress"><span>{currentModule.number} · {currentModule.title}</span><strong>曲线 {trialIndex + 1}/{plan.length}</strong><i><b style={{ width: `${((trialIndex + disclosureIndex / currentTrial.disclosures.length) / plan.length) * 100}%` }} /></i></div>
+        <div className="mod-run-progress"><span>{currentModule.number} · {currentModule.title}</span><strong>{usesLayerMajorDisclosureFlow ? `披露层 ${disclosureIndex + 1}/${currentTrial.disclosures.length} · 本层曲线 ${trialIndex + 1}/${plan.length}` : `曲线 ${trialIndex + 1}/${plan.length}`}</strong><i><b style={{ width: `${runProgress}%` }} /></i></div>
         <span className="mod-session-mini">ID {sessionId.slice(0, 8)}</span>
       </header>
 
       {currentTrial.module === "disclosure" ? <DisclosureRail keys={currentTrial.disclosures} activeIndex={disclosureIndex} /> : <DisclosureSnapshot active={currentDisclosure} />}
+
+      {usesFixedM1SequentialPages && (
+        <section className="mod-layer-exposure-banner is-sequential" aria-live="polite">
+          <div className="mod-layer-exposure-index"><span>LEVEL</span><strong>{String(disclosureIndex + 1).padStart(2, "0")}</strong></div>
+          <div>
+            <span>当前信息层 · INFORMATION STATE</span>
+            <h1>{DISCLOSURE_COPY[currentDisclosure].title}</h1>
+            <p>{DISCLOSURE_COPY[currentDisclosure].description}</p>
+          </div>
+          <aside><b>本层页面 {trialIndex + 1}/{plan.length}</b><small>本页只判断一条曲线，提交后进入下一条</small></aside>
+        </section>
+      )}
+
+      {usesLayerMajorDisclosureFlow && (
+        <section className="mod-layer-asset-progress" aria-label="当前披露层的曲线进度">
+          <div><span>本信息层</span><strong>{DISCLOSURE_COPY[currentDisclosure].title}</strong><small>{plan.length} 条曲线使用完全相同的信息状态</small></div>
+          <ol>
+            {plan.map((trial, index) => {
+              const asset = bundle.assets.find((candidate) => candidate.id === trial.assetId);
+              return (
+                <li className={index < trialIndex ? "is-complete" : index === trialIndex ? "is-current" : ""} key={trial.id}>
+                  <i>{index < trialIndex ? "✓" : index + 1}</i>
+                  <span>{visibility.asset ? asset?.symbol ?? `曲线 ${index + 1}` : `曲线 ${index + 1}`}</span>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+      )}
 
       <section className="mod-run-layout">
         <div className="mod-run-main">
@@ -2094,14 +3093,17 @@ export function ExperimentModular({
             onBoundaryInteraction={markBoundaryInteraction}
           />
 
-          {visibleEvents.length > 0 && (
+          {(currentDisclosure === "DI3" || currentDisclosure === "DI4" || newlyDisclosedEvents.length > 0) && (
             <section className="mod-event-panel">
-              <div className="mod-event-panel-head"><span className="mod-kicker">本步新增 · 历史事件</span><strong>{visibleEvents.length} 项</strong></div>
-              <div className="mod-event-list">
-                {visibleEvents.map((event) => (
-                  <article key={`${event.date}-${event.title}`}><time>{event.date}</time><span className={event.priority === "high" ? "is-high" : ""}>{event.priority === "high" ? "高优先" : "低优先"}</span><h3>{event.title}</h3><p>{event.description}</p>{event.sourceUrl && <a href={event.sourceUrl} target="_blank" rel="noreferrer">事件来源 ↗</a>}</article>
-                ))}
-              </div>
+              <div className="mod-event-panel-head"><span className="mod-kicker">本层新增 · {currentDisclosure === "DI3" ? "核心事件" : currentDisclosure === "DI4" ? "补充事件" : "历史事件"}</span><strong>{newlyDisclosedEvents.length} 项 · 上限 {MAX_EVENTS_PER_DISCLOSURE}</strong></div>
+              {retainedEventCount > 0 && <p className="mod-event-retained">上一层的 {retainedEventCount} 个事件标记继续保留在曲线上；下方只列出本层新增内容。</p>}
+              {newlyDisclosedEvents.length ? (
+                <div className="mod-event-list">
+                  {newlyDisclosedEvents.map((event) => (
+                    <article key={event.sourceId ?? `${event.date}-${event.title}`}><time>{event.date}</time><span className={eventSourcePriority(event) <= 2 ? "is-high" : ""}>P{eventSourcePriority(event)}</span><h3>{event.title}</h3><p>{event.description}</p></article>
+                  ))}
+                </div>
+              ) : <p className="mod-event-empty">当前显示时间窗内没有属于本层优先级范围的事件。</p>}
             </section>
           )}
         </div>
@@ -2144,7 +3146,7 @@ export function ExperimentModular({
             </section>
           )}
 
-          {(!isV4 || responseShapeReady) ? (
+          {!isFixedM1 && ((!isV4 || responseShapeReady) ? (
             <section className="mod-question-block">
               <h3>{isV4 ? activeCueSet.question : "这次判断主要参考了什么？"}<small>可多选</small></h3>
               {isV4 ? (
@@ -2176,10 +3178,10 @@ export function ExperimentModular({
               <h3>判断依据</h3>
               <p>先确定分界点及其大致范围，随后再记录你实际使用的线索，避免选项提前影响分界。</p>
             </section>
-          )}
+          ))}
 
           {error && <p className="mod-error" role="alert">{error}</p>}
-          <button className="mod-submit" type="button" onClick={(event) => submitResponse(event.timeStamp)} disabled={busy}>{busy ? "正在安全记录…" : disclosureIndex < currentTrial.disclosures.length - 1 ? "提交本步，揭示下一项信息" : "提交本轮，查看反馈"}<span>→</span></button>
+          <button className="mod-submit" type="button" onClick={() => submitResponse(performance.now())} disabled={busy}>{busy ? "正在安全记录…" : usesLayerMajorDisclosureFlow ? trialIndex < plan.length - 1 ? "提交本曲线，进入本层下一条" : "提交本层最后一条，查看本层反馈" : disclosureIndex < currentTrial.disclosures.length - 1 ? "提交本步，揭示下一项信息" : "提交本轮，查看反馈"}<span>→</span></button>
           <p className="mod-lock-note">提交后不能返回修改本步答案。</p>
         </aside>
       </section>

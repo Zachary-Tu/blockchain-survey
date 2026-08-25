@@ -38,6 +38,19 @@ export async function ensureExperimentSchema() {
           protocol_version TEXT NOT NULL,
           study_config_json TEXT NOT NULL DEFAULT '{}',
           model_name TEXT,
+          device_type TEXT NOT NULL DEFAULT 'unknown',
+          user_agent TEXT NOT NULL DEFAULT '',
+          client_platform TEXT NOT NULL DEFAULT '',
+          browser_language TEXT NOT NULL DEFAULT '',
+          client_timezone TEXT NOT NULL DEFAULT '',
+          screen_width INTEGER,
+          screen_height INTEGER,
+          viewport_width INTEGER,
+          viewport_height INTEGER,
+          device_pixel_ratio REAL,
+          touch_points INTEGER NOT NULL DEFAULT 0,
+          pointer_type TEXT NOT NULL DEFAULT 'unknown',
+          screen_orientation TEXT NOT NULL DEFAULT 'unknown',
           status TEXT NOT NULL DEFAULT 'active',
           started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           completed_at TEXT
@@ -141,6 +154,13 @@ export async function ensureExperimentSchema() {
           first_uncertainty_ms INTEGER,
           adjustment_count INTEGER NOT NULL DEFAULT 0,
           uncertainty_adjustment_count INTEGER NOT NULL DEFAULT 0,
+          client_started_at TEXT,
+          client_submitted_at TEXT,
+          response_viewport_width INTEGER,
+          response_viewport_height INTEGER,
+          response_orientation TEXT NOT NULL DEFAULT 'unknown',
+          page_hidden_ms INTEGER NOT NULL DEFAULT 0,
+          active_elapsed_ms INTEGER NOT NULL DEFAULT 0,
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (session_id) REFERENCES experiment_sessions(id) ON DELETE CASCADE
         )`),
@@ -178,12 +198,26 @@ export async function ensureExperimentSchema() {
     const existingSessionColumns = new Set(
       sessionColumnInfo.results.map((column) => column.name),
     );
-    if (!existingSessionColumns.has("study_config_json")) {
-      await d1
-        .prepare(
-          "ALTER TABLE experiment_sessions ADD COLUMN study_config_json TEXT NOT NULL DEFAULT '{}'",
-        )
-        .run();
+    const sessionAdditiveMigrations = [
+      ["study_config_json", "ALTER TABLE experiment_sessions ADD COLUMN study_config_json TEXT NOT NULL DEFAULT '{}'"],
+      ["device_type", "ALTER TABLE experiment_sessions ADD COLUMN device_type TEXT NOT NULL DEFAULT 'unknown'"],
+      ["user_agent", "ALTER TABLE experiment_sessions ADD COLUMN user_agent TEXT NOT NULL DEFAULT ''"],
+      ["client_platform", "ALTER TABLE experiment_sessions ADD COLUMN client_platform TEXT NOT NULL DEFAULT ''"],
+      ["browser_language", "ALTER TABLE experiment_sessions ADD COLUMN browser_language TEXT NOT NULL DEFAULT ''"],
+      ["client_timezone", "ALTER TABLE experiment_sessions ADD COLUMN client_timezone TEXT NOT NULL DEFAULT ''"],
+      ["screen_width", "ALTER TABLE experiment_sessions ADD COLUMN screen_width INTEGER"],
+      ["screen_height", "ALTER TABLE experiment_sessions ADD COLUMN screen_height INTEGER"],
+      ["viewport_width", "ALTER TABLE experiment_sessions ADD COLUMN viewport_width INTEGER"],
+      ["viewport_height", "ALTER TABLE experiment_sessions ADD COLUMN viewport_height INTEGER"],
+      ["device_pixel_ratio", "ALTER TABLE experiment_sessions ADD COLUMN device_pixel_ratio REAL"],
+      ["touch_points", "ALTER TABLE experiment_sessions ADD COLUMN touch_points INTEGER NOT NULL DEFAULT 0"],
+      ["pointer_type", "ALTER TABLE experiment_sessions ADD COLUMN pointer_type TEXT NOT NULL DEFAULT 'unknown'"],
+      ["screen_orientation", "ALTER TABLE experiment_sessions ADD COLUMN screen_orientation TEXT NOT NULL DEFAULT 'unknown'"],
+    ] as const;
+    for (const [column, statement] of sessionAdditiveMigrations) {
+      if (!existingSessionColumns.has(column)) {
+        await d1.prepare(statement).run();
+      }
     }
     const columnInfo = await d1
       .prepare("PRAGMA table_info(stage_decisions)")
@@ -231,6 +265,13 @@ export async function ensureExperimentSchema() {
       ["response_version", "ALTER TABLE modular_responses ADD COLUMN response_version TEXT NOT NULL DEFAULT 'pre-v4'"],
       ["stimulus_window_json", "ALTER TABLE modular_responses ADD COLUMN stimulus_window_json TEXT NOT NULL DEFAULT '{}'"],
       ["cue_schema_version", "ALTER TABLE modular_responses ADD COLUMN cue_schema_version TEXT NOT NULL DEFAULT 'legacy-cues-v1'"],
+      ["client_started_at", "ALTER TABLE modular_responses ADD COLUMN client_started_at TEXT"],
+      ["client_submitted_at", "ALTER TABLE modular_responses ADD COLUMN client_submitted_at TEXT"],
+      ["response_viewport_width", "ALTER TABLE modular_responses ADD COLUMN response_viewport_width INTEGER"],
+      ["response_viewport_height", "ALTER TABLE modular_responses ADD COLUMN response_viewport_height INTEGER"],
+      ["response_orientation", "ALTER TABLE modular_responses ADD COLUMN response_orientation TEXT NOT NULL DEFAULT 'unknown'"],
+      ["page_hidden_ms", "ALTER TABLE modular_responses ADD COLUMN page_hidden_ms INTEGER NOT NULL DEFAULT 0"],
+      ["active_elapsed_ms", "ALTER TABLE modular_responses ADD COLUMN active_elapsed_ms INTEGER NOT NULL DEFAULT 0"],
     ] as const;
     for (const [column, statement] of modularAdditiveMigrations) {
       if (!existingModularColumns.has(column)) {

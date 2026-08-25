@@ -13,8 +13,8 @@ const disclosureNames: Record<string, string> = {
   GI2: "时间轴与单位",
   DI1: "资产名称",
   DI2: "资产背景",
-  DI3: "高优先级事件",
-  DI4: "低优先级事件",
+  DI3: "核心事件（P1–P2）",
+  DI4: "补充事件（P3–P5）",
   FULL: "完整信息快照",
 };
 
