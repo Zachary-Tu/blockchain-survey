@@ -93,8 +93,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
 
 .lai-cover-copy h1 {
   margin: 0;
-  color: #ffe48a;
-  background: linear-gradient(180deg, #fff9d2 0%, #ffdc68 48%, #f2a13b 100%);
+  color: #ffffff;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fbff 52%, #dce8f5 100%);
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -102,7 +102,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
   font-size: clamp(44px, 12.5vw, 59px);
   line-height: 1;
   letter-spacing: -.07em;
-  filter: drop-shadow(0 4px 0 #70401f) drop-shadow(0 8px 16px #030711cc);
+  filter: drop-shadow(0 4px 0 #33506f) drop-shadow(0 8px 16px #030711cc);
 }
 
 .lai-cover-copy p {
