@@ -144,6 +144,13 @@ type ModularAnswer = {
   firstUncertaintyMs: number | null;
   adjustmentCount: number;
   uncertaintyAdjustmentCount: number;
+  clientStartedAt?: string;
+  clientSubmittedAt?: string;
+  responseViewportWidth?: number;
+  responseViewportHeight?: number;
+  responseOrientation?: string;
+  pageHiddenMs?: number;
+  activeElapsedMs?: number;
 };
 
 type LayerAssetDraft = {
