@@ -206,7 +206,7 @@ export function LiLaiAdventure() {
             </div>
             <div className="lai-cover-copy">
               <h1>李来历险记</h1>
-              <p>我会一直往前</p>
+              <p>劝君惜取金缕衣，劝君惜取少年时</p>
             </div>
             <button className="lai-primary" type="button" onClick={begin}>一路向前！</button>
           </div>
@@ -265,9 +265,9 @@ export function LiLaiAdventure() {
           <div className="lai-failure-overlay">
             <section className="lai-failure-dialog" role="dialog" aria-modal="true" aria-labelledby="lai-failure-title">
               <span>MISS · {failure.school}</span>
-              <h2 id="lai-failure-title">再接再厉！</h2>
+              <h2 id="lai-failure-title">不破不立！<br />屡败屡战！</h2>
               <p>{failure.reason}<br />回到中学校园，从第一跃重新开始。</p>
-              <button ref={failureButtonRef} className="lai-primary" type="button" onClick={restartAfterFailure}>重新开始</button>
+              <button ref={failureButtonRef} className="lai-primary" type="button" onClick={restartAfterFailure}>继续向前！</button>
             </section>
           </div>
         )}

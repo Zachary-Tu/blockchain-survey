@@ -143,7 +143,7 @@ test("server-renders Li Lai Adventure as one vertical three-campus jump stage", 
   assert.match(html, /普林斯顿/);
   assert.match(html, /MIT/);
   assert.match(html, /cover-sunset-campus\.webp/);
-  assert.match(html, /我会一直往前/);
+  assert.match(html, /劝君惜取金缕衣，劝君惜取少年时/);
   assert.match(html, /一路向前！/);
   assert.match(component, /journey-campuses\.webp/);
   assert.match(component, /tim-middle-school\.png/);
@@ -153,7 +153,9 @@ test("server-renders Li Lai Adventure as one vertical three-campus jump stage", 
   assert.match(component, /setPointerCapture/);
   assert.match(component, /advancePower/);
   assert.match(jumpEngine, /rawNext % 100/);
-  assert.match(component, /再接再厉！/);
+  assert.match(component, /不破不立！/);
+  assert.match(component, /屡败屡战！/);
+  assert.match(component, /继续向前！/);
   assert.match(component, /回到中学校园，从第一跃重新开始/);
   assert.doesNotMatch(component, /lai-level-head|lai-campus-marker|lai-spark-trail/);
   assert.match(adventureCss, /object-fit:\s*contain/);

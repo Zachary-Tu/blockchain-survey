@@ -93,18 +93,23 @@ button, a { -webkit-tap-highlight-color: transparent; }
 
 .lai-cover-copy h1 {
   margin: 0;
-  color: #fff8dc;
+  color: #ffd66f;
+  background: linear-gradient(180deg, #fff4a8 0%, #ffd05f 48%, #e58a27 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
   font-size: clamp(44px, 12.5vw, 59px);
   line-height: 1;
   letter-spacing: -.07em;
+  filter: drop-shadow(4px 5px 0 #5c2d24) drop-shadow(0 8px 18px #160c2c);
 }
 
 .lai-cover-copy p {
   margin: 12px 0 0;
-  color: #ffe18a;
-  font-size: 14px;
+  color: #fff1c7;
+  font-size: 13px;
   font-weight: 900;
-  letter-spacing: .22em;
+  letter-spacing: .08em;
 }
 
 .lai-primary {
