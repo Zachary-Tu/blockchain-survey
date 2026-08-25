@@ -161,8 +161,9 @@ test("server-renders Li Lai Adventure as one vertical three-campus jump stage", 
   assert.doesNotMatch(component, /lai-level-head|lai-campus-marker|lai-spark-trail/);
   assert.match(adventureCss, /object-fit:\s*contain/);
   assert.match(adventureCss, /grid-template-rows:\s*minmax\(0, 1fr\) auto/);
-  assert.match(adventureCss, /\.lai-cover-copy h1\s*\{[^}]*-webkit-text-stroke:\s*2px #10172e/s);
-  assert.match(adventureCss, /\.lai-cover-copy h1\s*\{[^}]*color:\s*#ffffff/s);
+  assert.match(adventureCss, /\.lai-cover-copy h1\s*\{[^}]*color:\s*#ffd66f/s);
+  assert.match(adventureCss, /\.lai-cover-copy h1\s*\{[^}]*#fff4a8 0%, #ffd05f 48%, #e58a27 100%/s);
+  assert.doesNotMatch(adventureCss.match(/\.lai-cover-copy h1\s*\{[^}]*\}/s)?.[0] ?? "", /text-stroke/);
   assert.match(adventureCss, /\.lai-cover-copy p\s*\{[^}]*background:\s*#08142dcc/s);
   assert.match(adventureCss, /\.lai-life-avatar\.lai-life-step-0\s*\{[^}]*width:\s*172px/s);
   assert.match(adventureCss, /\.lai-life-avatar\.lai-life-step-1\s*\{[^}]*width:\s*208px/s);

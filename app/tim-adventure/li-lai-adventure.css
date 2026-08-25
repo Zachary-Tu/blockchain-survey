@@ -88,21 +88,20 @@ button, a { -webkit-tap-highlight-color: transparent; }
   right: 16px;
   left: 16px;
   text-align: center;
-  text-shadow: 0 3px 0 #091225, 0 8px 22px #030711e8;
+  text-shadow: 4px 5px 0 #201536, 0 8px 22px #160c2c;
 }
 
 .lai-cover-copy h1 {
   margin: 0;
-  color: #ffffff;
-  background: linear-gradient(180deg, #ffffff 0%, #f7fbff 52%, #dce8f5 100%);
+  color: #ffd66f;
+  background: linear-gradient(180deg, #fff4a8 0%, #ffd05f 48%, #e58a27 100%);
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  -webkit-text-stroke: 2px #10172e;
   font-size: clamp(44px, 12.5vw, 59px);
   line-height: 1;
   letter-spacing: -.07em;
-  filter: drop-shadow(0 4px 0 #33506f) drop-shadow(0 8px 16px #030711cc);
+  filter: drop-shadow(4px 5px 0 #5c2d24) drop-shadow(0 8px 18px #160c2c);
 }
 
 .lai-cover-copy p {
