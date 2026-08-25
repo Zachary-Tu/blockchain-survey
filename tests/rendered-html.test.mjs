@@ -131,6 +131,10 @@ test("server-renders Li Lai Adventure as one vertical three-campus jump stage", 
     new URL("../app/tim-adventure/li-lai-adventure.css", import.meta.url),
     "utf8",
   );
+  const jumpEngine = await readFile(
+    new URL("../app/tim-adventure/jumpEngine.ts", import.meta.url),
+    "utf8",
+  );
 
   assert.match(html, /<title>李来历险记｜北大、普林斯顿与 MIT 人生三跃<\/title>/i);
   assert.match(html, /人生/);
@@ -138,16 +142,24 @@ test("server-renders Li Lai Adventure as one vertical three-campus jump stage", 
   assert.match(html, /北大/);
   assert.match(html, /普林斯顿/);
   assert.match(html, /MIT/);
-  assert.match(html, /journey-campuses\.webp/);
-  assert.match(html, /tim-pku-basketball\.png/);
+  assert.match(html, /cover-sunset-campus\.webp/);
+  assert.match(html, /我会一直往前/);
+  assert.match(html, /一路向前！/);
+  assert.match(component, /journey-campuses\.webp/);
+  assert.match(component, /tim-middle-school\.png/);
+  assert.match(component, /tim-pku-basketball\.png/);
   assert.match(component, /tim-princeton-student\.png/);
   assert.match(component, /tim-mit-scholar\.png/);
   assert.match(component, /setPointerCapture/);
-  assert.match(component, /可无限重试/);
+  assert.match(component, /advancePower/);
+  assert.match(jumpEngine, /rawNext % 100/);
+  assert.match(component, /再接再厉！/);
+  assert.match(component, /回到中学校园，从第一跃重新开始/);
+  assert.doesNotMatch(component, /lai-level-head|lai-campus-marker|lai-spark-trail/);
   assert.match(adventureCss, /object-fit:\s*contain/);
-  assert.match(adventureCss, /\.lai-marker-pku/);
-  assert.match(adventureCss, /\.lai-marker-princeton/);
-  assert.match(adventureCss, /\.lai-marker-mit/);
+  assert.match(adventureCss, /grid-template-rows:\s*minmax\(0, 1fr\) auto/);
+  assert.match(adventureCss, /\.lai-life-avatar\.lai-life-step-0\s*\{[^}]*left:\s*16%/s);
+  assert.match(adventureCss, /\.lai-failure-dialog/);
 });
 
 test("server-renders a standalone fixed M1 pilot without the researcher console", async () => {

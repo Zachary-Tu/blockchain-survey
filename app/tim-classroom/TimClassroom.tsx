@@ -332,8 +332,8 @@ export function TimClassroom() {
                 <span className="tim-course-copy">
                   <small>PIXEL CAMPUS QUEST</small>
                   <strong>李来历险记</strong>
-                  <span>北大 → 普林斯顿 → MIT</span>
-                  <em>蓄力跳跃 · 三校换装 · 无限重试</em>
+                  <span>中学 → 北大 → 普林斯顿 → MIT</span>
+                  <em>高速蓄力 · 极窄落点 · 失败重开</em>
                 </span>
                 <span className="tim-course-count">人生三跃 · 1–3 星</span>
                 <Image src="/tim-adventure/tim-pku-basketball.png" alt="" aria-hidden="true" width={512} height={768} sizes="70px" />
