@@ -223,7 +223,7 @@ export function LiLaiAdventure() {
                 alt={avatar.alt}
                 width={512}
                 height={768}
-                sizes="112px"
+                sizes="220px"
               />
             </div>
 

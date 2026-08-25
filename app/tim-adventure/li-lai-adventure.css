@@ -88,28 +88,37 @@ button, a { -webkit-tap-highlight-color: transparent; }
   right: 16px;
   left: 16px;
   text-align: center;
-  text-shadow: 4px 5px 0 #201536, 0 8px 22px #160c2c;
+  text-shadow: 0 3px 0 #091225, 0 8px 22px #030711e8;
 }
 
 .lai-cover-copy h1 {
   margin: 0;
-  color: #ffd66f;
-  background: linear-gradient(180deg, #fff4a8 0%, #ffd05f 48%, #e58a27 100%);
+  color: #ffe48a;
+  background: linear-gradient(180deg, #fff9d2 0%, #ffdc68 48%, #f2a13b 100%);
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 2px #10172e;
   font-size: clamp(44px, 12.5vw, 59px);
   line-height: 1;
   letter-spacing: -.07em;
-  filter: drop-shadow(4px 5px 0 #5c2d24) drop-shadow(0 8px 18px #160c2c);
+  filter: drop-shadow(0 4px 0 #70401f) drop-shadow(0 8px 16px #030711cc);
 }
 
 .lai-cover-copy p {
+  display: inline-block;
   margin: 12px 0 0;
-  color: #fff1c7;
+  padding: 6px 11px 7px;
+  border: 1px solid #ffe7a9c9;
+  border-radius: 999px;
+  color: #fffdf4;
+  background: #08142dcc;
+  box-shadow: 0 6px 16px #03081770;
   font-size: 13px;
   font-weight: 900;
+  line-height: 1.5;
   letter-spacing: .08em;
+  text-shadow: 0 2px 3px #02050ceb;
 }
 
 .lai-primary {
@@ -223,10 +232,10 @@ button, a { -webkit-tap-highlight-color: transparent; }
   will-change: left, bottom, transform;
 }
 
-.lai-life-avatar.lai-life-step-0 { left: 16%; bottom: 3%; width: 86px; }
-.lai-life-avatar.lai-life-step-1 { left: 53%; bottom: 19%; width: 104px; }
-.lai-life-avatar.lai-life-step-2 { left: 48%; bottom: 52%; width: 84px; }
-.lai-life-avatar.lai-life-step-3 { left: 50%; bottom: 77%; width: 78px; }
+.lai-life-avatar.lai-life-step-0 { left: clamp(88px, 22%, 106px); bottom: 3%; width: 172px; }
+.lai-life-avatar.lai-life-step-1 { left: 53%; bottom: 19%; width: 208px; }
+.lai-life-avatar.lai-life-step-2 { left: 48%; bottom: 52%; width: 168px; }
+.lai-life-avatar.lai-life-step-3 { left: 50%; bottom: 68%; width: 156px; }
 .lai-life-avatar.is-jumping { animation: lai-life-leap .56s ease-in-out both; }
 
 @keyframes lai-life-leap {
@@ -443,7 +452,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .lai-jump-console { padding-top: 6px; }
   .lai-jump-console > p { margin: 2px 0; }
   .lai-charge { min-height: 46px; }
-  .lai-life-avatar.lai-life-step-0 { width: 75px; }
+  .lai-life-avatar.lai-life-step-0 { width: 150px; }
+  .lai-life-avatar.lai-life-step-3 { bottom: 62%; }
   .lai-complete-avatar { top: 6%; width: 150px; height: 225px; }
   .lai-complete-panel { gap: 5px; padding: 12px; }
   .lai-complete-panel h2 { font-size: 23px; }
