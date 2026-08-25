@@ -160,7 +160,98 @@ type LayerAssetDraft = {
   lastInteractionAt: number | null;
   adjustmentCount: number;
   uncertaintyAdjustmentCount: number;
+  clientStartedAt?: string;
+  clientSubmittedAt?: string;
+  responseViewportWidth?: number;
+  responseViewportHeight?: number;
+  responseOrientation?: string;
+  pageHiddenMs?: number;
+  activeElapsedMs?: number;
 };
+
+type DeviceInfo = {
+  deviceType: "mobile" | "tablet" | "desktop" | "unknown";
+  userAgent: string;
+  platform: string;
+  browserLanguage: string;
+  timezone: string;
+  screenWidth: number | null;
+  screenHeight: number | null;
+  viewportWidth: number | null;
+  viewportHeight: number | null;
+  devicePixelRatio: number | null;
+  touchPoints: number;
+  pointerType: "coarse" | "fine" | "none" | "unknown";
+  orientation: string;
+};
+
+function currentOrientation() {
+  if (typeof window === "undefined") return "unknown";
+  return window.screen.orientation?.type ||
+    (window.innerWidth >= window.innerHeight ? "landscape" : "portrait");
+}
+
+function collectDeviceInfo(): DeviceInfo {
+  if (typeof window === "undefined" || typeof navigator === "undefined") {
+    return {
+      deviceType: "unknown",
+      userAgent: "",
+      platform: "",
+      browserLanguage: "",
+      timezone: "",
+      screenWidth: null,
+      screenHeight: null,
+      viewportWidth: null,
+      viewportHeight: null,
+      devicePixelRatio: null,
+      touchPoints: 0,
+      pointerType: "unknown",
+      orientation: "unknown",
+    };
+  }
+  const clientNavigator = navigator as Navigator & {
+    userAgentData?: { mobile?: boolean; platform?: string };
+  };
+  const coarse = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+  const fine = window.matchMedia?.("(pointer: fine)").matches ?? false;
+  const touchPoints = Math.max(0, navigator.maxTouchPoints || 0);
+  const minimumScreenDimension = Math.min(window.screen.width, window.screen.height);
+  const mobileSignal = clientNavigator.userAgentData?.mobile === true ||
+    /Android|iPhone|iPod|IEMobile|Mobile/i.test(navigator.userAgent);
+  const tabletSignal = /iPad|Tablet/i.test(navigator.userAgent) ||
+    (coarse && touchPoints > 0 && minimumScreenDimension >= 600 && minimumScreenDimension <= 1366);
+  const deviceType: DeviceInfo["deviceType"] = tabletSignal
+    ? "tablet"
+    : mobileSignal
+      ? "mobile"
+      : "desktop";
+  const pointerType: DeviceInfo["pointerType"] = coarse
+    ? "coarse"
+    : fine
+      ? "fine"
+      : "none";
+  let timezone = "";
+  try {
+    timezone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "";
+  } catch {
+    timezone = "";
+  }
+  return {
+    deviceType,
+    userAgent: navigator.userAgent,
+    platform: clientNavigator.userAgentData?.platform || navigator.platform || "",
+    browserLanguage: navigator.language || "",
+    timezone,
+    screenWidth: window.screen.width || null,
+    screenHeight: window.screen.height || null,
+    viewportWidth: window.innerWidth || null,
+    viewportHeight: window.innerHeight || null,
+    devicePixelRatio: Number.isFinite(window.devicePixelRatio) ? window.devicePixelRatio : null,
+    touchPoints,
+    pointerType,
+    orientation: currentOrientation(),
+  };
+}
 
 type ProtocolVariant = "v4" | "pre-v4";
 export type CueOption = { code: string; label: string; exclusive?: boolean };
@@ -459,8 +550,9 @@ export function intervalRecords(values: number[], widths: Array<number | null>, 
   return values.flatMap((centerRatio, boundaryIndex) => {
     const halfWidthRatio = widths[boundaryIndex];
     if (halfWidthRatio === null || halfWidthRatio === undefined) return [];
-    const lowerRatio = clamp(centerRatio - halfWidthRatio, 0, 1);
-    const upperRatio = clamp(centerRatio + halfWidthRatio, 0, 1);
+    if (halfWidthRatio > centerRatio || halfWidthRatio > 1 - centerRatio) return [];
+    const lowerRatio = centerRatio - halfWidthRatio;
+    const upperRatio = centerRatio + halfWidthRatio;
     const lowerIndex = clamp(Math.round(lowerRatio * (points.length - 1)), 0, points.length - 1);
     const upperIndex = clamp(Math.round(upperRatio * (points.length - 1)), 0, points.length - 1);
     return [{
@@ -1008,6 +1100,15 @@ function BoundaryEditor({
     const upper = index === boundaries.length - 1 ? 0.985 : boundaries[index + 1] - 0.02;
     const next = [...boundaries];
     next[index] = clamp(value, lower, upper);
+    const maximumSymmetricWidth = Math.max(
+      UNCERTAINTY_MIN,
+      Math.min(UNCERTAINTY_MAX, next[index], 1 - next[index]),
+    );
+    const nextWidths = [...widths];
+    if (nextWidths[index] !== null && (nextWidths[index] ?? 0) > maximumSymmetricWidth) {
+      nextWidths[index] = maximumSymmetricWidth;
+      onWidthsChange(nextWidths);
+    }
     onBoundaryInteraction();
     onBoundariesChange(next);
   };
@@ -1033,6 +1134,10 @@ function BoundaryEditor({
 
       {boundaries.map((ratio, index) => {
         const point = points[clamp(Math.round(ratio * (points.length - 1)), 0, points.length - 1)];
+        const maximumSymmetricWidth = Math.max(
+          UNCERTAINTY_MIN,
+          Math.min(UNCERTAINTY_MAX, ratio, 1 - ratio),
+        );
         return (
           <article className="mod-boundary-row" key={`editor-${index}`}>
             <div className="mod-boundary-row-head">
@@ -1067,9 +1172,9 @@ function BoundaryEditor({
                 aria-label={`调整分界点 ${index + 1} 的不确定范围`}
                 type="range"
                 min={UNCERTAINTY_MIN}
-                max={UNCERTAINTY_MAX}
+                max={maximumSymmetricWidth}
                 step={UNCERTAINTY_STEP}
-                value={widths[index] ?? UNCERTAINTY_DEFAULT}
+                value={Math.min(widths[index] ?? UNCERTAINTY_DEFAULT, maximumSymmetricWidth)}
                 onChange={(event) => {
                   const next = [...widths];
                   next[index] = Number(event.target.value);
@@ -1078,7 +1183,7 @@ function BoundaryEditor({
                 }}
               />
               <div className="mod-uncertainty-scale" aria-hidden="true">
-                <span>总宽度 1%</span><i /><span>总宽度 40%</span>
+                <span>总宽度 1%</span><i /><span>总宽度 {(maximumSymmetricWidth * 200).toFixed(1)}%</span>
               </div>
             </div>
           </article>
@@ -1143,9 +1248,26 @@ function downloadText(filename: string, value: string, type: string) {
   URL.revokeObjectURL(url);
 }
 
-function downloadSessionCsv(sessionId: string, answers: ModularAnswer[]) {
+function downloadSessionCsv(
+  sessionId: string,
+  answers: ModularAnswer[],
+  deviceInfo: DeviceInfo | null,
+) {
   const csv = buildCsv(answers, [
     { key: "session_id", value: () => sessionId },
+    { key: "device_type", value: () => deviceInfo?.deviceType ?? "unknown" },
+    { key: "screen_width", value: () => deviceInfo?.screenWidth ?? "" },
+    { key: "screen_height", value: () => deviceInfo?.screenHeight ?? "" },
+    { key: "initial_viewport_width", value: () => deviceInfo?.viewportWidth ?? "" },
+    { key: "initial_viewport_height", value: () => deviceInfo?.viewportHeight ?? "" },
+    { key: "device_pixel_ratio", value: () => deviceInfo?.devicePixelRatio ?? "" },
+    { key: "client_platform", value: () => deviceInfo?.platform ?? "" },
+    { key: "browser_language", value: () => deviceInfo?.browserLanguage ?? "" },
+    { key: "client_timezone", value: () => deviceInfo?.timezone ?? "" },
+    { key: "pointer_type", value: () => deviceInfo?.pointerType ?? "unknown" },
+    { key: "touch_points", value: () => deviceInfo?.touchPoints ?? 0 },
+    { key: "screen_orientation", value: () => deviceInfo?.orientation ?? "unknown" },
+    { key: "user_agent", value: () => deviceInfo?.userAgent ?? "" },
     { key: "trial_id", value: (row) => row.trialId },
     { key: "trial_order", value: (row) => row.trialOrder },
     { key: "disclosure_index", value: (row) => row.disclosureIndex },
@@ -1172,6 +1294,13 @@ function downloadSessionCsv(sessionId: string, answers: ModularAnswer[]) {
     { key: "first_uncertainty_ms", value: (row) => row.firstUncertaintyMs },
     { key: "adjustment_count", value: (row) => row.adjustmentCount },
     { key: "uncertainty_adjustment_count", value: (row) => row.uncertaintyAdjustmentCount },
+    { key: "client_started_at", value: (row) => row.clientStartedAt },
+    { key: "client_submitted_at", value: (row) => row.clientSubmittedAt },
+    { key: "response_viewport_width", value: (row) => row.responseViewportWidth },
+    { key: "response_viewport_height", value: (row) => row.responseViewportHeight },
+    { key: "response_orientation", value: (row) => row.responseOrientation },
+    { key: "page_hidden_ms", value: (row) => row.pageHiddenMs },
+    { key: "active_elapsed_ms", value: (row) => row.activeElapsedMs },
     { key: "disclosure_state_json", value: (row) => JSON.stringify(row.disclosureState) },
     { key: "stimulus_window_json", value: (row) => JSON.stringify(row.stimulusWindow) },
   ]);
@@ -1527,6 +1656,7 @@ export function ExperimentModular({
   const [phase, setPhase] = useState<Phase>("setup");
   const [moduleKey, setModuleKey] = useState<ModuleKey>("disclosure");
   const usesLayerMajorDisclosureFlow = isV4 && moduleKey === "disclosure";
+  const usesFixedM1SequentialPages = usesLayerMajorDisclosureFlow && isFixedM1;
   const [taskType, setTaskType] = useState<TaskType>("T2");
   const [metric, setMetric] = useState<MetricKey>("price");
   const [resolution, setResolution] = useState<Resolution>("weekly");
@@ -1567,6 +1697,10 @@ export function ExperimentModular({
   const firstMoveAt = useRef<number | null>(null);
   const firstUncertaintyAt = useRef<number | null>(null);
   const layerStartedAt = useRef(0);
+  const sessionDeviceInfo = useRef<DeviceInfo | null>(null);
+  const stepStartedWallAt = useRef("");
+  const stepHiddenStartedAt = useRef<number | null>(null);
+  const stepHiddenAccumulatedMs = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -1589,8 +1723,22 @@ export function ExperimentModular({
   useEffect(() => {
     if (phase !== "experiment") return;
     stepStartedAt.current = performance.now();
+    stepStartedWallAt.current = new Date().toISOString();
     firstMoveAt.current = null;
     firstUncertaintyAt.current = null;
+    stepHiddenAccumulatedMs.current = 0;
+    stepHiddenStartedAt.current = document.hidden ? performance.now() : null;
+    const handleVisibilityChange = () => {
+      const now = performance.now();
+      if (document.hidden) {
+        if (stepHiddenStartedAt.current === null) stepHiddenStartedAt.current = now;
+      } else if (stepHiddenStartedAt.current !== null) {
+        stepHiddenAccumulatedMs.current += now - stepHiddenStartedAt.current;
+        stepHiddenStartedAt.current = null;
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [phase, trialIndex, disclosureIndex]);
 
   const currentTrial = plan[trialIndex];
@@ -1711,6 +1859,11 @@ export function ExperimentModular({
     .sort((first, second) => second.disclosureIndex - first.disclosureIndex)[0];
 
   const enterCurrentDisclosureLayer = () => {
+    if (usesFixedM1SequentialPages) {
+      setPhase("experiment");
+      window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+      return;
+    }
     const nextDrafts = Object.fromEntries(plan.map((trial) => [
       trial.id,
       makeLayerAssetDraft(trial, priorAnswerForPosition(trial, disclosureIndex, answers)),
@@ -1736,6 +1889,8 @@ export function ExperimentModular({
 
   const createSession = async (nextPlan: TrialPlan[]) => {
     if (!bundle) throw new Error("研究刺激数据尚未载入。");
+    const deviceInfo = collectDeviceInfo();
+    sessionDeviceInfo.current = deviceInfo;
     const response = await fetch("/api/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1746,6 +1901,7 @@ export function ExperimentModular({
         experimentalArm: isM1Main ? "m1-main" : isPilot ? "pilot-m1" : moduleKey,
         protocolVersion: bundle.protocolVersion,
         modelName: actorType === "agent" ? modelName : null,
+        deviceInfo,
         studyConfig: {
           module: moduleKey,
           taskType,
@@ -1758,17 +1914,22 @@ export function ExperimentModular({
           robustnessFactor,
           windowMode: isV4 ? windowMode : "whole",
           windowProtocol: isV4 ? bundle.curatedWindow ?? null : null,
-          participantBriefingVersion: isV4 ? "participant-briefing-v1" : null,
-          cueSchemaVersion: isV4 ? CUE_SCHEMA_VERSION : "legacy-cues-v1",
-          cueTaxonomyUrl: isV4 ? "/data/cue-taxonomy-v4-v2.json" : null,
+          participantBriefingVersion: isV4 ? "participant-briefing-v2-device-telemetry" : null,
+          cueSchemaVersion: isFixedM1 ? "none" : isV4 ? CUE_SCHEMA_VERSION : "legacy-cues-v1",
+          cueTaxonomyUrl: isFixedM1 ? null : isV4 ? "/data/cue-taxonomy-v4-v2.json" : null,
           entryMode,
-          pilotProtocol: isPilot ? "m1-pilot-v3-six-assets-single-page" : null,
-          mainStudyProtocol: isM1Main ? "m1-human-main-v3-six-assets-single-page" : null,
+          pilotProtocol: isPilot ? "m1-pilot-v4-six-sequential-pages-minimal-response" : null,
+          mainStudyProtocol: isM1Main ? "m1-human-main-v4-six-sequential-pages-minimal-response" : null,
           disclosureFlowOrder: usesLayerMajorDisclosureFlow ? "disclosure-major" : "asset-major",
-          layerPresentation: usesLayerMajorDisclosureFlow
+          layerPresentation: usesFixedM1SequentialPages
+            ? "sequential-single-asset-pages-v1"
+            : usesLayerMajorDisclosureFlow
             ? nextPlan.length === 6 ? "simultaneous-six-asset-page-v1" : "simultaneous-multi-asset-page-v1"
             : "single-stimulus-page",
-          responseTimingProtocol: usesLayerMajorDisclosureFlow ? "layer-start-to-last-asset-interaction-v1" : "step-start-to-submit-v1",
+          responseTimingProtocol: usesFixedM1SequentialPages ? "step-start-to-submit-v1" : usesLayerMajorDisclosureFlow ? "layer-start-to-last-asset-interaction-v1" : "step-start-to-submit-v1",
+          deviceTelemetryProtocol: isFixedM1 ? "session-device-environment-v1" : null,
+          responseTelemetryProtocol: isFixedM1 ? "per-page-visible-time-v1" : null,
+          participantQuestionSet: isFixedM1 ? "boundaries-uncertainty-influence-v1" : "full-annotation-v2",
           uncertaintyControl: isV4 ? "continuous-range-knob-v1" : "preset-widths-v1",
           eventSelectionProtocol: isV4 ? EVENT_SELECTION_PROTOCOL : null,
           maximumNewEventsPerDisclosure: isV4 ? MAX_EVENTS_PER_DISCLOSURE : null,
@@ -1872,7 +2033,7 @@ export function ExperimentModular({
       setError("本步分界点与范围均未改变。请确认这是有意保持不变，或继续调整。");
       return;
     }
-    if (isV4 && cueTags.length === 0) {
+    if (isV4 && !isFixedM1 && cueTags.length === 0) {
       setError("请选择至少一项本步实际使用的判断线索；如果新增信息没有影响，请选择“没有改变我的判断”。");
       return;
     }
@@ -1881,6 +2042,16 @@ export function ExperimentModular({
     setError("");
     const now = submitTimestamp;
     const elapsedMs = Math.max(0, Math.round(now - stepStartedAt.current));
+    const hiddenMsAtSubmit = stepHiddenAccumulatedMs.current +
+      (stepHiddenStartedAt.current === null ? 0 : Math.max(0, now - stepHiddenStartedAt.current));
+    const pageHiddenMs = Math.min(elapsedMs, Math.max(0, Math.round(hiddenMsAtSubmit)));
+    const activeElapsedMs = Math.max(0, elapsedMs - pageHiddenMs);
+    const clientStartedAt = stepStartedWallAt.current ||
+      new Date(performance.timeOrigin + now - elapsedMs).toISOString();
+    const clientSubmittedAt = new Date(performance.timeOrigin + now).toISOString();
+    const responseViewportWidth = Math.max(1, Math.round(window.innerWidth));
+    const responseViewportHeight = Math.max(1, Math.round(window.innerHeight));
+    const responseOrientation = currentOrientation();
     const stimulusType = currentControl?.kind ?? "crypto";
     const disclosureState = {
       key: currentDisclosure,
@@ -1937,9 +2108,9 @@ export function ExperimentModular({
           disclosureIndex,
           disclosureKey: currentDisclosure,
           disclosureState,
-          responseVersion: isV4 ? "v4.1" : "pre-v4",
+          responseVersion: isFixedM1 ? "v4.3" : isV4 ? "v4.1" : "pre-v4",
           stimulusWindow,
-          cueSchemaVersion: isV4 ? CUE_SCHEMA_VERSION : "legacy-cues-v1",
+          cueSchemaVersion: isFixedM1 ? "none" : isV4 ? CUE_SCHEMA_VERSION : "legacy-cues-v1",
           boundaries: currentBoundaryRecords,
           previousBoundaries: previousAnswer?.boundaries ?? [],
           boundaryIntervals: currentIntervalRecords,
@@ -1949,14 +2120,21 @@ export function ExperimentModular({
           influenceRating: currentTrial.module === "disclosure" && disclosureIndex > 0 ? influence : null,
           influenceTouched: currentTrial.module === "disclosure" && disclosureIndex > 0 ? influenceTouched : false,
           noChangeConfirmed,
-          cueTags,
-          rationale,
+          cueTags: isFixedM1 ? [] : cueTags,
+          rationale: isFixedM1 ? "" : rationale,
           elapsedMs,
           revealReadMs,
           firstMoveMs,
           firstUncertaintyMs,
           adjustmentCount,
           uncertaintyAdjustmentCount,
+          clientStartedAt,
+          clientSubmittedAt,
+          responseViewportWidth,
+          responseViewportHeight,
+          responseOrientation,
+          pageHiddenMs,
+          activeElapsedMs,
         }),
       });
       const payload = (await response.json()) as { error?: string };
@@ -1977,8 +2155,8 @@ export function ExperimentModular({
         influenceRating: currentTrial.module === "disclosure" && disclosureIndex > 0 ? influence : null,
         influenceTouched: currentTrial.module === "disclosure" && disclosureIndex > 0 ? influenceTouched : false,
         noChangeConfirmed,
-        cueTags,
-        rationale,
+        cueTags: isFixedM1 ? [] : cueTags,
+        rationale: isFixedM1 ? "" : rationale,
         stimulusType,
         resolution: currentTrial.resolution,
         scaleMode: currentTrial.scaleMode,
@@ -1991,6 +2169,13 @@ export function ExperimentModular({
         firstUncertaintyMs,
         adjustmentCount,
         uncertaintyAdjustmentCount,
+        clientStartedAt,
+        clientSubmittedAt,
+        responseViewportWidth,
+        responseViewportHeight,
+        responseOrientation,
+        pageHiddenMs,
+        activeElapsedMs,
       };
       const nextAnswers = [...answers, answer];
       setAnswers(nextAnswers);
@@ -2242,8 +2427,8 @@ export function ExperimentModular({
             </div>
             <div className="mod-pilot-protocol" aria-label="本次实验流程摘要">
               <article><span>01</span><strong>固定三阶段</strong><p>每次用两个分界点，把曲线划分为三个阶段。</p></article>
-              <article><span>02</span><strong>六条曲线，同页完成</strong><p>每个信息层把六条曲线放在同一页面，全部判断后再进入下一层。</p></article>
-              <article><span>03</span><strong>整层统一提交</strong><p>六条回答完成后统一提交，并逐条安全写入数据库；提交后不能返回修改。</p></article>
+              <article><span>02</span><strong>六条曲线，分别作答</strong><p>每个信息层包含六个连续页面，每页只判断一种资产。</p></article>
+              <article><span>03</span><strong>逐页独立提交</strong><p>每条曲线完成后立即安全写入数据库；提交后不能返回修改。</p></article>
             </div>
             <section className="mod-pilot-participant-card">
               <div>
@@ -2258,7 +2443,7 @@ export function ExperimentModular({
               {(loadError || error) && <p className="mod-error" role="alert">{loadError || error}</p>}
               <button className="mod-start" type="button" onClick={begin} disabled={!bundle || busy || Boolean(loadError)}>{busy ? "正在生成随机实验序列…" : "进入实验说明"}<span>→</span></button>
             </section>
-            <p className="mod-pilot-privacy">不采集真实姓名 · 后续实验信息不会在作答前提前显示</p>
+            <p className="mod-pilot-privacy">不采集真实姓名或精确位置 · 会记录设备类别、显示尺寸与匿名交互时间</p>
           </section>
         </main>
       );
@@ -2489,7 +2674,7 @@ export function ExperimentModular({
                 <div><dt>数据窗口</dt><dd>{isV4 ? moduleKey === "robustness" && robustnessFactor === "window" ? "完整 vs 2020—2024" : windowMode === "truncated" ? "2020—2024（固定）" : "各序列全部可用观测" : "2018—2026"}</dd></div>
                 <div><dt>提交规则</dt><dd>每个判断单独写入数据库</dd></div>
               </dl>
-              <p>系统会把随机顺序、信息状态、实际显示窗口、分界点、不确定范围、线索编码和交互时间完整写入会话配置与响应表。</p>
+              <p>系统会把随机顺序、信息状态、实际显示窗口、分界点、不确定范围、设备环境和逐题交互时间写入会话表与响应表。</p>
             </aside>
           </div>
 
@@ -2563,15 +2748,15 @@ export function ExperimentModular({
               <span>03 · 本次流程</span>
               <h2>{plan.length} 条实验曲线</h2>
               {moduleKey === "disclosure" ? (
-                <p>实验按信息层推进：每一层会在同一页面显示 <strong>{plan.length} 条曲线</strong>，全部判断并统一提交后才进入下一层。共包含 1 层匿名基线与 {disclosureUpdates} 层信息更新。</p>
+                <p>实验按信息层推进：每一层包含 <strong>{plan.length} 个连续的单曲线页面</strong>；依次提交全部曲线后才进入下一层。共包含 1 层匿名基线与 {disclosureUpdates} 层信息更新。</p>
               ) : (
                 <p>每条曲线只使用一个固定的信息状态，不会在同一轮中逐层追加内容。</p>
               )}
             </article>
             <article className="mod-briefing-card">
               <span>04 · 如何作答</span>
-              <h2>分界点 + 连续范围 + 判断线索</h2>
-              <p>先放置分界点，再拖动范围旋钮，给出“最佳位置”可能落入的连续范围。完成图上判断后，页面会显示约 5 个与当前信息对应的线索标签。</p>
+              <h2>分界点 + 连续范围</h2>
+              <p>先放置分界点，再拖动范围旋钮，给出“最佳位置”可能落入的连续范围。除新增信息影响评分外，不再询问额外的判断理由。</p>
             </article>
             <article className="mod-briefing-card">
               <span>05 · 信息隔离</span>
@@ -2581,7 +2766,7 @@ export function ExperimentModular({
             <article className="mod-briefing-card">
               <span>06 · 记录方式</span>
               <h2>提交后锁定，不采集真实姓名</h2>
-              <p>研究会记录分界位置、不确定范围、线索选择和交互时间。每一步提交后不能返回修改；轮末反馈不是正确答案评分。</p>
+              <p>研究会记录分界位置、不确定范围、新增信息影响评分、每页作答时间，以及设备类别、屏幕/浏览器视口尺寸、平台、语言和时区等技术环境；不读取联系人、硬件序列号或精确位置。</p>
             </article>
           </div>
 
@@ -2592,7 +2777,7 @@ export function ExperimentModular({
             </div>
             <label className="mod-consent">
               <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
-              <span>{actorType === "agent" ? "执行主体已读取以上约束，并会只使用当前页面可见的信息作答。" : "我已阅读并理解以上说明，同意匿名记录本次判断结果与交互时间。"}</span>
+              <span>{actorType === "agent" ? "执行主体已读取以上约束，并会只使用当前页面可见的信息作答。" : "我已阅读并理解以上说明，同意匿名记录本次判断结果、逐页响应时间与设备技术环境。"}</span>
             </label>
             {error && <p className="mod-error" role="alert">{error}</p>}
             <button className="mod-start" type="button" onClick={startParticipantSession} disabled={!consent || busy}>
@@ -2639,10 +2824,10 @@ export function ExperimentModular({
               })}
             </div>
             <div className="mod-transition-notice">
-              <b>本层页面会同时显示 {plan.length} 条曲线</b>
-              <p>请在同一页面完成全部判断；虚线会保留各曲线上一层的位置，便于比较是否需要移动。</p>
+              <b>本层包含 {plan.length} 个连续页面</b>
+              <p>每页只显示一条曲线；虚线会保留该资产上一层的位置，便于判断是否需要移动。</p>
             </div>
-            <button className="mod-start mod-transition-start" type="button" onClick={enterCurrentDisclosureLayer}>我已了解，查看本层 {plan.length} 条曲线<span>→</span></button>
+            <button className="mod-start mod-transition-start" type="button" onClick={enterCurrentDisclosureLayer}>我已了解，进入本层第 1 条曲线<span>→</span></button>
           </div>
         </section>
       </main>
@@ -2730,11 +2915,11 @@ export function ExperimentModular({
         <section>
           <span className="mod-eyebrow">SESSION COMPLETE</span>
           <h1>{isM1Main ? "M1 主实验已完成。" : isPilot ? "M1 初批实验已完成。" : `${currentModule.number} 模块已完成。`}</h1>
-          <p>共记录 {answers.length} 次判断，覆盖 {plan.length} 条实验曲线。浏览器中的副本可以下载，服务器端记录已与会话编号关联。</p>
+          <p>共记录 {answers.length} 次判断，覆盖 {plan.length} 条实验曲线。浏览器中的副本可以下载；服务器端已保存逐题答案、设备环境与响应时间。</p>
           <div className="mod-session-code"><span>SESSION ID</span><code>{sessionId}</code></div>
           <div className="mod-complete-actions">
-            <button type="button" onClick={() => downloadSessionCsv(sessionId, answers)}>下载本次 CSV</button>
-            <button type="button" onClick={() => downloadJson(`boundary-lab-${sessionId}.json`, { protocolVersion: bundle.protocolVersion, sessionId, module: currentModule, plan, answers })}>下载本次 JSON</button>
+            <button type="button" onClick={() => downloadSessionCsv(sessionId, answers, sessionDeviceInfo.current)}>下载本次 CSV</button>
+            <button type="button" onClick={() => downloadJson(`boundary-lab-${sessionId}.json`, { protocolVersion: bundle.protocolVersion, sessionId, module: currentModule, deviceInfo: sessionDeviceInfo.current, plan, answers })}>下载本次 JSON</button>
             <button type="button" onClick={() => window.location.reload()}>{isM1Main ? "返回 M1 主实验入口" : isPilot ? "返回初批入口" : "返回模块首页"}</button>
           </div>
         </section>
@@ -2742,7 +2927,7 @@ export function ExperimentModular({
     );
   }
 
-  if (phase === "experiment" && usesLayerMajorDisclosureFlow) {
+  if (phase === "experiment" && usesLayerMajorDisclosureFlow && !usesFixedM1SequentialPages) {
     const completedDraftCount = plan.filter((trial) => {
       const previous = priorAnswerForPosition(trial, disclosureIndex, answers);
       return validateLayerAssetDraft(trial, layerDrafts[trial.id], previous, disclosureIndex) === "";
@@ -2842,6 +3027,18 @@ export function ExperimentModular({
       </header>
 
       {currentTrial.module === "disclosure" ? <DisclosureRail keys={currentTrial.disclosures} activeIndex={disclosureIndex} /> : <DisclosureSnapshot active={currentDisclosure} />}
+
+      {usesFixedM1SequentialPages && (
+        <section className="mod-layer-exposure-banner is-sequential" aria-live="polite">
+          <div className="mod-layer-exposure-index"><span>LEVEL</span><strong>{String(disclosureIndex + 1).padStart(2, "0")}</strong></div>
+          <div>
+            <span>当前信息层 · INFORMATION STATE</span>
+            <h1>{DISCLOSURE_COPY[currentDisclosure].title}</h1>
+            <p>{DISCLOSURE_COPY[currentDisclosure].description}</p>
+          </div>
+          <aside><b>本层页面 {trialIndex + 1}/{plan.length}</b><small>本页只判断一条曲线，提交后进入下一条</small></aside>
+        </section>
+      )}
 
       {usesLayerMajorDisclosureFlow && (
         <section className="mod-layer-asset-progress" aria-label="当前披露层的曲线进度">
@@ -2949,7 +3146,7 @@ export function ExperimentModular({
             </section>
           )}
 
-          {(!isV4 || responseShapeReady) ? (
+          {!isFixedM1 && ((!isV4 || responseShapeReady) ? (
             <section className="mod-question-block">
               <h3>{isV4 ? activeCueSet.question : "这次判断主要参考了什么？"}<small>可多选</small></h3>
               {isV4 ? (
@@ -2981,10 +3178,10 @@ export function ExperimentModular({
               <h3>判断依据</h3>
               <p>先确定分界点及其大致范围，随后再记录你实际使用的线索，避免选项提前影响分界。</p>
             </section>
-          )}
+          ))}
 
           {error && <p className="mod-error" role="alert">{error}</p>}
-          <button className="mod-submit" type="button" onClick={(event) => submitResponse(event.timeStamp)} disabled={busy}>{busy ? "正在安全记录…" : usesLayerMajorDisclosureFlow ? trialIndex < plan.length - 1 ? "提交本曲线，进入本层下一条" : "提交本层最后一条，查看本层反馈" : disclosureIndex < currentTrial.disclosures.length - 1 ? "提交本步，揭示下一项信息" : "提交本轮，查看反馈"}<span>→</span></button>
+          <button className="mod-submit" type="button" onClick={() => submitResponse(performance.now())} disabled={busy}>{busy ? "正在安全记录…" : usesLayerMajorDisclosureFlow ? trialIndex < plan.length - 1 ? "提交本曲线，进入本层下一条" : "提交本层最后一条，查看本层反馈" : disclosureIndex < currentTrial.disclosures.length - 1 ? "提交本步，揭示下一项信息" : "提交本轮，查看反馈"}<span>→</span></button>
           <p className="mod-lock-note">提交后不能返回修改本步答案。</p>
         </aside>
       </section>

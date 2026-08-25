@@ -9,7 +9,7 @@ const RESOLUTIONS = new Set(["daily", "weekly", "monthly", "yearly"]);
 const SCALES = new Set(["linear", "log"]);
 const WINDOWS = new Set(["whole", "truncated"]);
 const DISCLOSURES = new Set(["G0", "GI1", "GI2", "DI1", "DI2", "DI3", "DI4", "FULL"]);
-const RESPONSE_VERSIONS = new Set(["v4", "v4.1", "pre-v4", "agent-v1", "agent-v2"]);
+const RESPONSE_VERSIONS = new Set(["v4", "v4.1", "v4.2", "v4.3", "pre-v4", "agent-v1", "agent-v2"]);
 const V4_CUES_V1 = new Set([
   "curve_trend_slope",
   "curve_level_shift",
@@ -73,6 +73,16 @@ function validOptionalTime(value: unknown) {
   return value === null || value === undefined || nonNegative(value);
 }
 
+function validOptionalDimension(value: unknown) {
+  return value === null || value === undefined ||
+    (finiteNumber(value) && Number.isInteger(value) && value > 0 && value <= 20000);
+}
+
+function validOptionalIsoTimestamp(value: unknown) {
+  return value === null || value === undefined ||
+    (typeof value === "string" && value.length <= 40 && Number.isFinite(Date.parse(value)));
+}
+
 function validBoundaries(value: unknown, maximum = 5): value is Boundary[] {
   if (!Array.isArray(value) || value.length > maximum) return false;
   let previousRatio = -1;
@@ -120,6 +130,9 @@ function validIntervals(value: unknown, boundaries: Boundary[]): value is Bounda
       interval.lowerRatio <= interval.centerRatio &&
       interval.upperRatio >= interval.centerRatio &&
       interval.widthRatio > 0 &&
+      Math.abs(interval.lowerRatio - (interval.centerRatio - interval.halfWidthRatio)) <= 0.002 &&
+      Math.abs(interval.upperRatio - (interval.centerRatio + interval.halfWidthRatio)) <= 0.002 &&
+      Math.abs(interval.widthRatio - 2 * interval.halfWidthRatio) <= 0.002 &&
       Math.abs(interval.widthRatio - (interval.upperRatio - interval.lowerRatio)) <= 0.002 &&
       finiteNumber(interval.lowerIndex) &&
       finiteNumber(interval.upperIndex) &&
@@ -189,9 +202,17 @@ export async function POST(request: Request) {
       firstUncertaintyMs?: number | null;
       adjustmentCount?: number;
       uncertaintyAdjustmentCount?: number;
+      clientStartedAt?: string | null;
+      clientSubmittedAt?: string | null;
+      responseViewportWidth?: number | null;
+      responseViewportHeight?: number | null;
+      responseOrientation?: string;
+      pageHiddenMs?: number;
+      activeElapsedMs?: number;
     };
     const responseVersion = payload.responseVersion ?? "pre-v4";
-    const isStructuredResponse = ["v4", "v4.1", "agent-v1", "agent-v2"].includes(responseVersion);
+    const isStructuredResponse = ["v4", "v4.1", "v4.2", "v4.3", "agent-v1", "agent-v2"].includes(responseVersion);
+    const isTelemetryResponse = responseVersion === "v4.3";
 
     if (
       !payload.sessionId ||
@@ -229,7 +250,31 @@ export async function POST(request: Request) {
       !validOptionalTime(payload.firstMoveMs) ||
       !validOptionalTime(payload.firstUncertaintyMs) ||
       !nonNegative(payload.adjustmentCount) ||
-      !nonNegative(payload.uncertaintyAdjustmentCount)
+      !nonNegative(payload.uncertaintyAdjustmentCount) ||
+      !validOptionalIsoTimestamp(payload.clientStartedAt) ||
+      !validOptionalIsoTimestamp(payload.clientSubmittedAt) ||
+      !validOptionalDimension(payload.responseViewportWidth) ||
+      !validOptionalDimension(payload.responseViewportHeight) ||
+      (payload.responseOrientation !== undefined &&
+        (typeof payload.responseOrientation !== "string" || payload.responseOrientation.length > 40)) ||
+      (payload.pageHiddenMs !== undefined && !nonNegative(payload.pageHiddenMs)) ||
+      (payload.activeElapsedMs !== undefined && !nonNegative(payload.activeElapsedMs)) ||
+      (isTelemetryResponse &&
+        (typeof payload.clientStartedAt !== "string" ||
+          typeof payload.clientSubmittedAt !== "string" ||
+          !finiteNumber(payload.responseViewportWidth) ||
+          !Number.isInteger(payload.responseViewportWidth) ||
+          payload.responseViewportWidth <= 0 ||
+          payload.responseViewportWidth > 20000 ||
+          !finiteNumber(payload.responseViewportHeight) ||
+          !Number.isInteger(payload.responseViewportHeight) ||
+          payload.responseViewportHeight <= 0 ||
+          payload.responseViewportHeight > 20000 ||
+          typeof payload.responseOrientation !== "string" ||
+          payload.responseOrientation.length === 0 ||
+          !nonNegative(payload.pageHiddenMs) ||
+          !nonNegative(payload.activeElapsedMs) ||
+          Math.abs((payload.pageHiddenMs ?? 0) + (payload.activeElapsedMs ?? 0) - (payload.elapsedMs ?? 0)) > 1500))
     ) {
       return Response.json({ error: "Incomplete or invalid modular response" }, { status: 400 });
     }
@@ -260,9 +305,10 @@ export async function POST(request: Request) {
     const influenceRequired = payload.moduleKey === "disclosure" && payload.disclosureIndex > 0;
     const cueTags = Array.isArray(payload.cueTags) ? payload.cueTags : [];
     const cueSchema = payload.cueSchemaVersion ?? "";
+    const cueCollectionDisabled = (responseVersion === "v4.2" || responseVersion === "v4.3") && cueSchema === "none";
     const activeV2Cues = V4_CUES_V2_BY_DISCLOSURE[payload.disclosureKey];
     const hasV2NoEffect = cueTags.some((tag) => typeof tag === "string" && tag.endsWith("_no_effect"));
-    const invalidV4Cues = isStructuredResponse && (
+    const invalidV4Cues = isStructuredResponse && !cueCollectionDisabled && (
       !V4_CUE_SCHEMAS.has(cueSchema) ||
       (cueSchema === "visual-cpd-event-segmentation-v1" && cueTags.some((tag) => typeof tag !== "string" || !V4_CUES_V1.has(tag))) ||
       (cueSchema === "disclosure-specific-cues-v2" && (
@@ -340,6 +386,19 @@ export async function POST(request: Request) {
             : Math.trunc(payload.firstUncertaintyMs),
         adjustmentCount: Math.trunc(payload.adjustmentCount ?? 0),
         uncertaintyAdjustmentCount: Math.trunc(payload.uncertaintyAdjustmentCount ?? 0),
+        clientStartedAt: payload.clientStartedAt ?? null,
+        clientSubmittedAt: payload.clientSubmittedAt ?? null,
+        responseViewportWidth:
+          payload.responseViewportWidth === null || payload.responseViewportWidth === undefined
+            ? null
+            : Math.trunc(payload.responseViewportWidth),
+        responseViewportHeight:
+          payload.responseViewportHeight === null || payload.responseViewportHeight === undefined
+            ? null
+            : Math.trunc(payload.responseViewportHeight),
+        responseOrientation: (payload.responseOrientation ?? "unknown").slice(0, 40) || "unknown",
+        pageHiddenMs: Math.trunc(payload.pageHiddenMs ?? 0),
+        activeElapsedMs: Math.trunc(payload.activeElapsedMs ?? payload.elapsedMs ?? 0),
       })
       .returning({ id: modularResponses.id, createdAt: modularResponses.createdAt });
 

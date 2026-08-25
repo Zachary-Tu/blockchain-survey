@@ -298,6 +298,7 @@ export function AgentExperiment({ mode }: { mode: AgentMode }) {
       allowed_uncertainty_half_width_range: {
         minimum: UNCERTAINTY_MIN,
         maximum: UNCERTAINTY_MAX,
+        edge_constraint: "uncertainty_half_width <= min(ratio, 1-ratio), preserving a symmetric interval inside the plotting area",
         human_slider_increment: UNCERTAINTY_STEP,
       },
       response_stage: responseStage,
@@ -354,6 +355,9 @@ export function AgentExperiment({ mode }: { mode: AgentMode }) {
       pairs.push({ ratio: boundary.ratio, width: boundary.uncertainty_half_width });
     }
     pairs.sort((first, second) => first.ratio - second.ratio);
+    if (pairs.some((pair) => pair.width > pair.ratio || pair.width > 1 - pair.ratio)) {
+      throw new Error("不确定半宽不得跨出绘图区；必须满足 uncertainty_half_width ≤ min(ratio, 1-ratio)。");
+    }
     if (pairs.some((pair, index) => index > 0 && pair.ratio - pairs[index - 1].ratio < 0.02)) {
       throw new Error("相邻分界点必须至少间隔整个时间窗的 2%。");
     }

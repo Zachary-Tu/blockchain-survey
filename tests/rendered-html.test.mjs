@@ -125,7 +125,7 @@ test("server-renders a standalone fixed M1 pilot without the researcher console"
   assert.match(html, /M1 · 初批实验/);
   assert.match(html, /观察曲线/);
   assert.match(html, /六条时间序列/);
-  assert.match(html, /六条曲线，同页完成/);
+  assert.match(html, /六条曲线，分别作答/);
   assert.match(html, /匿名参与者编号/);
   assert.match(html, /进入实验说明/);
   assert.doesNotMatch(html, /RESEARCHER CONSOLE/);
@@ -145,7 +145,7 @@ test("server-renders the standalone human M1 main experiment", async () => {
   assert.match(html, /M1 MAIN STUDY · PARTICIPANT ENTRY/);
   assert.match(html, /观察曲线/);
   assert.match(html, /六条时间序列/);
-  assert.match(html, /六条曲线，同页完成/);
+  assert.match(html, /六条曲线，分别作答/);
   assert.match(html, /匿名参与者编号/);
   assert.doesNotMatch(html, /初批实验/);
   assert.doesNotMatch(html, /RESEARCHER CONSOLE/);
@@ -206,15 +206,17 @@ test("server-renders the researcher CSV export hub", async () => {
   const html = await response.text();
 
   assert.match(html, /实验结果导出/);
-  assert.match(html, /下载人类 M1 主实验 CSV/);
-  assert.match(html, /下载 Agent 全模块 CSV/);
-  assert.match(html, /下载全部 Agent CSV/);
-  assert.match(html, /下载全部实验 CSV/);
+  assert.match(html, /下载参与者\/设备表 CSV/);
+  assert.match(html, /下载人类 M1 逐题答题表 CSV/);
+  assert.match(html, /下载 Agent 全模块答题表 CSV/);
+  assert.match(html, /下载全部 Agent 答题表 CSV/);
+  assert.match(html, /下载全部逐题答题表 CSV/);
   assert.match(html, /研究者白名单|服务器端研究者白名单/);
   assert.match(html, /scope=human-m1/);
   assert.match(html, /scope=agent-console/);
   assert.match(html, /scope=agent/);
   assert.match(html, /scope=all/);
+  assert.match(html, /table=sessions/);
 });
 
 test("completes human M1 main and Agent console lifecycles with isolated CSV exports", async () => {
@@ -263,7 +265,22 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
         expertise: "none",
         experimentalArm: "m1-main",
         protocolVersion: "boundary-lab-modular-v4.1",
-        studyConfig: { entryMode: "m1", mainStudyProtocol: "m1-human-main-v3-six-assets-single-page", disclosureFlowOrder: "disclosure-major", layerPresentation: "simultaneous-six-asset-page-v1", randomizedPlan: plan },
+        deviceInfo: {
+          deviceType: "desktop",
+          userAgent: "BoundaryLabTest/1.0",
+          platform: "Windows",
+          browserLanguage: "zh-CN",
+          timezone: "Asia/Shanghai",
+          screenWidth: 1920,
+          screenHeight: 1080,
+          viewportWidth: 1440,
+          viewportHeight: 900,
+          devicePixelRatio: 1.25,
+          touchPoints: 0,
+          pointerType: "fine",
+          orientation: "landscape-primary",
+        },
+        studyConfig: { entryMode: "m1", mainStudyProtocol: "m1-human-main-v4-six-sequential-pages-minimal-response", disclosureFlowOrder: "disclosure-major", layerPresentation: "sequential-single-asset-pages-v1", participantQuestionSet: "boundaries-uncertainty-influence-v1", randomizedPlan: plan },
       }),
     });
     assert.equal(sessionResponse.status, 201);
@@ -298,7 +315,7 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
             sessionId: session.id,
             trialId: trial.id,
             trialOrder: trial.order,
-            responseVersion: "v4.1",
+            responseVersion: "v4.3",
             moduleKey: "disclosure",
             taskType: "T2",
             stimulusType: "crypto",
@@ -311,7 +328,7 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
             disclosureKey,
             disclosureState: { key: disclosureKey },
             stimulusWindow: { mode: "whole" },
-            cueSchemaVersion: "disclosure-specific-cues-v2",
+            cueSchemaVersion: "none",
             boundaries,
             previousBoundaries: disclosureIndex === 0 ? [] : boundaries,
             boundaryIntervals,
@@ -319,14 +336,21 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
             influenceRating: disclosureIndex === 0 ? null : 3,
             influenceTouched: disclosureIndex > 0,
             noChangeConfirmed: disclosureIndex > 0,
-            cueTags: [cueByDisclosure[disclosureKey]],
-            rationale: disclosureIndex === 1 ? "包含,逗号与\"引号\"" : "",
+            cueTags: [],
+            rationale: "",
             elapsedMs: 1200,
             revealReadMs: 300,
             firstMoveMs: 400,
             firstUncertaintyMs: 500,
             adjustmentCount: 2,
             uncertaintyAdjustmentCount: 2,
+            clientStartedAt: "2026-08-25T08:00:00.000Z",
+            clientSubmittedAt: "2026-08-25T08:00:01.200Z",
+            responseViewportWidth: 1440,
+            responseViewportHeight: 900,
+            responseOrientation: "landscape-primary",
+            pageHiddenMs: 100,
+            activeElapsedMs: 1100,
           }),
         });
         assert.equal(response.status, 201, await response.text());
@@ -361,10 +385,26 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
     const csv = new TextDecoder().decode(csvBytes);
     assert.match(csv, /session_id,session_status/);
     assert.match(csv, /boundary_1_date,boundary_1_ratio,boundary_2_date,boundary_2_ratio/);
-    assert.match(csv, /"包含,逗号与""引号"""/);
+    assert.match(csv, /device_type,screen_width,screen_height,initial_viewport_width/);
+    assert.match(csv, /client_started_at,client_submitted_at,response_viewport_width,response_viewport_height,response_orientation,page_hidden_ms,active_elapsed_ms/);
+    assert.doesNotMatch(csv, /包含,逗号与/);
     assert.match(csv, /m1-main/);
+    assert.match(csv, /BoundaryLabTest\/1\.0/);
+    assert.match(csv, /v4\.3/);
     assert.doesNotMatch(csv, /AGENT-E2E-001/);
     assert.equal(csv.split("\r\n").length, 43);
+
+    const sessionExportResponse = await api("/api/research-export?scope=human-m1&table=sessions", {
+      headers: { "oai-authenticated-user-email": "researcher@example.com" },
+    });
+    assert.equal(sessionExportResponse.status, 200, await sessionExportResponse.clone().text());
+    assert.match(sessionExportResponse.headers.get("content-disposition") ?? "", /boundary-lab-human-m1-sessions/);
+    const sessionCsv = await sessionExportResponse.text();
+    assert.equal(sessionCsv.split("\r\n").length, 2);
+    assert.match(sessionCsv, /session_id,session_status/);
+    assert.match(sessionCsv, /desktop/);
+    assert.match(sessionCsv, /1920,1080,1440,900/);
+    assert.match(sessionCsv, /SYSTEM-E2E/);
 
     const agentPlan = ["bitcoin", "ethereum", "solana", "bnb", "xrp", "dogecoin"].map((assetId, order) => ({
       id: `agent-console-${assetId}`,
@@ -501,16 +541,22 @@ test("implements a configuration-aware participant briefing without future discl
   assert.match(source, /本页不会说明资产名称、指标类型、真实日期、数值单位、图表尺度、时间窗口或事件/);
   assert.match(source, /我已了解，开始正式实验/);
   assert.match(source, /DISCLOSURE_PATHS\[disclosurePath\]\.length - 1/);
-  assert.match(source, /participantBriefingVersion: isV4 \? "participant-briefing-v1"/);
+  assert.match(source, /participantBriefingVersion: isV4 \? "participant-briefing-v2-device-telemetry"/);
   assert.match(source, /experimentalArm: isM1Main \? "m1-main"/);
-  assert.match(source, /mainStudyProtocol: isM1Main \? "m1-human-main-v3-six-assets-single-page"/);
+  assert.match(source, /mainStudyProtocol: isM1Main \? "m1-human-main-v4-six-sequential-pages-minimal-response"/);
   assert.match(source, /disclosureFlowOrder: usesLayerMajorDisclosureFlow \? "disclosure-major"/);
-  assert.match(source, /nextPlan\.length === 6 \? "simultaneous-six-asset-page-v1" : "simultaneous-multi-asset-page-v1"/);
-  assert.match(source, /responseTimingProtocol: usesLayerMajorDisclosureFlow \? "layer-start-to-last-asset-interaction-v1"/);
+  assert.match(source, /usesFixedM1SequentialPages[\s\S]*?"sequential-single-asset-pages-v1"/);
+  assert.match(source, /participantQuestionSet: isFixedM1 \? "boundaries-uncertainty-influence-v1"/);
   assert.match(source, /uncertaintyControl: isV4 \? "continuous-range-knob-v1"/);
   assert.match(source, /NEW INFORMATION · 新信息已解锁/);
-  assert.match(source, /mod-six-asset-grid/);
-  assert.match(source, /submitDisclosureLayer/);
+  assert.match(source, /phase === "experiment" && usesLayerMajorDisclosureFlow && !usesFixedM1SequentialPages/);
+  assert.match(source, /!isFixedM1 && \(\(!isV4 \|\| responseShapeReady\)/);
+  assert.match(source, /cueSchemaVersion: isFixedM1 \? "none"/);
+  assert.match(source, /deviceTelemetryProtocol: isFixedM1 \? "session-device-environment-v1"/);
+  assert.match(source, /responseTelemetryProtocol: isFixedM1 \? "per-page-visible-time-v1"/);
+  assert.match(source, /responseVersion: isFixedM1 \? "v4\.3"/);
+  assert.match(source, /pageHiddenMs/);
+  assert.match(source, /activeElapsedMs/);
 });
 
 test("keeps the agent boundary judgment separate from post-judgment annotations", async () => {
