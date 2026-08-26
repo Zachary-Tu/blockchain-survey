@@ -1,4 +1,4 @@
-# M1 v4.3：按披露层、六资产分页面推进的实验协议
+# M1 v4.4：恢复版、按披露层与六资产分页面推进的实验协议
 
 ## 1. 本版目的
 
@@ -48,8 +48,8 @@ G0 没有上一层答案，使用 1/3 与 2/3 的中性初始位置，但不确�
 
 事件分组规则：
 
-- DI3 核心事件：原表 `priority` 1–2；
-- DI4 补充事件：原表 `priority` 3–5；
+- DI3 事件信息（一）：内部按原表 `priority` 1–2 选取，但不向参与者展示优先级；
+- DI4 事件信息（二）：内部按原表 `priority` 3–5 选取，但不向参与者展示优先级；
 - 每一层、每一资产最多新增 10 个事件；
 - 先过滤到当前实际显示时间窗，再按日期和事件 ID 排序；候选数超过 10 时，在有序候选中等距取 10 个并保留首尾事件；
 - DI4 页面继续保留 DI3 的图上事件标记，但事件卡片只列出 DI4 新增项；因此“每层最多 10 个”指该层新增事件数；
@@ -61,14 +61,16 @@ G0 没有上一层答案，使用 1/3 与 2/3 的中性初始位置，但不确�
 
 - 刺激数据：`research-stimuli-modular-v8.json`
 - 数据协议：`boundary-lab-modular-v4.1`
-- 人类 M1：`m1-human-main-v4-six-sequential-pages-minimal-response`
+- 人类 M1：`m1-human-main-v4.4-restored-disclosure-safe`
 - Agent 接口：`agent-native-json-v2-layer-major-six-assets`
 - 事件筛选：`events-20260527-priority-bands-even-spacing-v1`
 - 人类范围控件：`continuous-range-knob-v1`
 - 人类层级呈现：`sequential-single-asset-pages-v1`
 - 人类问题集：`boundaries-uncertainty-influence-v1`
 - 单页计时：`step-start-to-submit-v1`；每条响应的 `elapsed_ms` 为进入当前资产页面到提交的时间。
-- 人类响应格式：`v4.3`；设备采集协议为 `session-device-environment-v1`，逐页可见时间协议为 `per-page-visible-time-v1`。
+- 人类响应格式：`v4.4-disclosure-safe`；设备采集协议为 `session-device-environment-v1`，逐页可见时间协议为 `per-page-visible-time-v1`。
+
+v4.4 从已发布的 v4.3 人类 M1 基线恢复，并修复六项实验效度问题：GI2 前隐藏日期、频率与观测数量；GI1 使用无单位的序列类型描述；所有披露层固定同一绘图区；事件组及事件标记采用中性呈现；层间页面只显示保存状态与总体进度，不反馈边界移动或不确定范围。
 
 XRP 与 DOGE 的价格来自 Li Blockchain 项目中的 `xrp.tsv` 与 `dogecoin.tsv`。当前六资产扩展只为这两种新增资产纳入价格数据；其 active addresses 与 Google Trends 条件在数据包中显式标记为不可用，不会被通用控制台错误抽样。
 

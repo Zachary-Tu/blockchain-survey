@@ -280,7 +280,7 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
           pointerType: "fine",
           orientation: "landscape-primary",
         },
-        studyConfig: { entryMode: "m1", mainStudyProtocol: "m1-human-main-v4-six-sequential-pages-minimal-response", disclosureFlowOrder: "disclosure-major", layerPresentation: "sequential-single-asset-pages-v1", participantQuestionSet: "boundaries-uncertainty-influence-v1", randomizedPlan: plan },
+        studyConfig: { entryMode: "m1", mainStudyProtocol: "m1-human-main-v4.4-restored-disclosure-safe", disclosureFlowOrder: "disclosure-major", layerPresentation: "sequential-single-asset-pages-v1", participantQuestionSet: "boundaries-uncertainty-influence-v1", randomizedPlan: plan },
       }),
     });
     assert.equal(sessionResponse.status, 201);
@@ -308,52 +308,70 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
     for (let disclosureIndex = 0; disclosureIndex < disclosureKeys.length; disclosureIndex += 1) {
       const disclosureKey = disclosureKeys[disclosureIndex];
       for (const trial of plan) {
+        const responsePayload = {
+          sessionId: session.id,
+          trialId: trial.id,
+          trialOrder: trial.order,
+          responseVersion: "v4.4-disclosure-safe",
+          moduleKey: "disclosure",
+          taskType: "T2",
+          stimulusType: "crypto",
+          assetId: trial.id.replace("human-m1-", ""),
+          metricType: "price",
+          resolution: "weekly",
+          scaleMode: "linear",
+          windowMode: "whole",
+          disclosureIndex,
+          disclosureKey,
+          disclosureState: { key: disclosureKey },
+          stimulusWindow: { mode: "whole" },
+          cueSchemaVersion: "none",
+          boundaries,
+          previousBoundaries: disclosureIndex === 0 ? [] : boundaries,
+          boundaryIntervals,
+          singleStageConfirmed: false,
+          influenceRating: disclosureIndex === 0 ? null : 3,
+          influenceTouched: disclosureIndex > 0,
+          noChangeConfirmed: disclosureIndex > 0,
+          cueTags: [],
+          rationale: "",
+          elapsedMs: 1200,
+          revealReadMs: 300,
+          firstMoveMs: 400,
+          firstUncertaintyMs: 500,
+          adjustmentCount: 2,
+          uncertaintyAdjustmentCount: 2,
+          clientStartedAt: "2026-08-25T08:00:00.000Z",
+          clientSubmittedAt: "2026-08-25T08:00:01.200Z",
+          responseViewportWidth: 1440,
+          responseViewportHeight: 900,
+          responseOrientation: "landscape-primary",
+          pageHiddenMs: 100,
+          activeElapsedMs: 1100,
+        };
         const response = await api("/api/modular-responses", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            sessionId: session.id,
-            trialId: trial.id,
-            trialOrder: trial.order,
-            responseVersion: "v4.3",
-            moduleKey: "disclosure",
-            taskType: "T2",
-            stimulusType: "crypto",
-            assetId: trial.id.replace("human-m1-", ""),
-            metricType: "price",
-            resolution: "weekly",
-            scaleMode: "linear",
-            windowMode: "whole",
-            disclosureIndex,
-            disclosureKey,
-            disclosureState: { key: disclosureKey },
-            stimulusWindow: { mode: "whole" },
-            cueSchemaVersion: "none",
-            boundaries,
-            previousBoundaries: disclosureIndex === 0 ? [] : boundaries,
-            boundaryIntervals,
-            singleStageConfirmed: false,
-            influenceRating: disclosureIndex === 0 ? null : 3,
-            influenceTouched: disclosureIndex > 0,
-            noChangeConfirmed: disclosureIndex > 0,
-            cueTags: [],
-            rationale: "",
-            elapsedMs: 1200,
-            revealReadMs: 300,
-            firstMoveMs: 400,
-            firstUncertaintyMs: 500,
-            adjustmentCount: 2,
-            uncertaintyAdjustmentCount: 2,
-            clientStartedAt: "2026-08-25T08:00:00.000Z",
-            clientSubmittedAt: "2026-08-25T08:00:01.200Z",
-            responseViewportWidth: 1440,
-            responseViewportHeight: 900,
-            responseOrientation: "landscape-primary",
-            pageHiddenMs: 100,
-            activeElapsedMs: 1100,
-          }),
+          body: JSON.stringify(responsePayload),
         });
         assert.equal(response.status, 201, await response.text());
+        if (disclosureIndex === 0 && trial.order === 0) {
+          const retry = await api("/api/modular-responses", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ ...responsePayload, elapsedMs: 1700, clientSubmittedAt: "2026-08-25T08:00:01.700Z", activeElapsedMs: 1600 }),
+          });
+          const retryPayload = await retry.json();
+          assert.equal(retry.status, 200, JSON.stringify(retryPayload));
+          assert.equal(retryPayload.idempotent, true);
+
+          const conflictingRetry = await api("/api/modular-responses", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ ...responsePayload, rationale: "changed after finalized" }),
+          });
+          assert.equal(conflictingRetry.status, 409, await conflictingRetry.text());
+        }
       }
     }
 
@@ -390,7 +408,7 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
     assert.doesNotMatch(csv, /包含,逗号与/);
     assert.match(csv, /m1-main/);
     assert.match(csv, /BoundaryLabTest\/1\.0/);
-    assert.match(csv, /v4\.3/);
+    assert.match(csv, /v4\.4-disclosure-safe/);
     assert.doesNotMatch(csv, /AGENT-E2E-001/);
     assert.equal(csv.split("\r\n").length, 43);
 
@@ -543,7 +561,7 @@ test("implements a configuration-aware participant briefing without future discl
   assert.match(source, /DISCLOSURE_PATHS\[disclosurePath\]\.length - 1/);
   assert.match(source, /participantBriefingVersion: isV4 \? "participant-briefing-v2-device-telemetry"/);
   assert.match(source, /experimentalArm: isM1Main \? "m1-main"/);
-  assert.match(source, /mainStudyProtocol: isM1Main \? "m1-human-main-v4-six-sequential-pages-minimal-response"/);
+  assert.match(source, /mainStudyProtocol: isM1Main \? "m1-human-main-v4\.4-restored-disclosure-safe"/);
   assert.match(source, /disclosureFlowOrder: usesLayerMajorDisclosureFlow \? "disclosure-major"/);
   assert.match(source, /usesFixedM1SequentialPages[\s\S]*?"sequential-single-asset-pages-v1"/);
   assert.match(source, /participantQuestionSet: isFixedM1 \? "boundaries-uncertainty-influence-v1"/);
@@ -554,9 +572,28 @@ test("implements a configuration-aware participant briefing without future discl
   assert.match(source, /cueSchemaVersion: isFixedM1 \? "none"/);
   assert.match(source, /deviceTelemetryProtocol: isFixedM1 \? "session-device-environment-v1"/);
   assert.match(source, /responseTelemetryProtocol: isFixedM1 \? "per-page-visible-time-v1"/);
-  assert.match(source, /responseVersion: isFixedM1 \? "v4\.3"/);
+  assert.match(source, /responseVersion: isFixedM1 \? "v4\.4-disclosure-safe"/);
+  assert.match(source, /validityRepairVersion: isFixedM1 \? "early-disclosure-and-feedback-bias-v1"/);
   assert.match(source, /pageHiddenMs/);
   assert.match(source, /activeElapsedMs/);
+});
+
+test("keeps the restored human M1 disclosure sequence free of early semantic leakage", async () => {
+  const source = await readFile(
+    new URL("../app/ExperimentModular.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(source, /margin: Object\.freeze\(\{ top: 72, right: 28, bottom: 72, left: 88 \}\)/);
+  assert.match(source, /metricDescriptionForDisclosure\(currentTrial\.metric, visibility\.axes, currentMetric\.definition\)/);
+  assert.match(source, /showDates=\{visibility\.axes\}/);
+  assert.match(source, /showDates=\{context\.visibility\.axes\}/);
+  assert.match(source, /visibility\.axes \? `\$\{points\.length\.toLocaleString\("zh-CN"\)\} 个\$\{RESOLUTION_LABEL\[resolution\]\}观测值` : "当前仅显示曲线形状"/);
+  assert.match(source, /DI3: \{ title: "事件信息（一）"/);
+  assert.match(source, /DI4: \{ title: "事件信息（二）"/);
+  assert.match(source, /RESPONSES SAVED · 中性休息页/);
+  assert.match(source, /这里不显示答案分析、边界移动或表现反馈/);
+  assert.doesNotMatch(source, /<span className=\{eventSourcePriority\(event\) <= 2 \? "is-high" : ""\}>P\{eventSourcePriority\(event\)\}<\/span>/);
 });
 
 test("keeps the agent boundary judgment separate from post-judgment annotations", async () => {

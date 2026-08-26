@@ -1,5 +1,6 @@
 import { ensureExperimentSchema, getDb } from "@/db";
 import { modularResponses } from "@/db/schema";
+import { and, eq } from "drizzle-orm";
 
 const MODULES = new Set(["disclosure", "framing", "cross-series", "robustness"]);
 const TASKS = new Set(["T1", "T2", "T3"]);
@@ -9,7 +10,7 @@ const RESOLUTIONS = new Set(["daily", "weekly", "monthly", "yearly"]);
 const SCALES = new Set(["linear", "log"]);
 const WINDOWS = new Set(["whole", "truncated"]);
 const DISCLOSURES = new Set(["G0", "GI1", "GI2", "DI1", "DI2", "DI3", "DI4", "FULL"]);
-const RESPONSE_VERSIONS = new Set(["v4", "v4.1", "v4.2", "v4.3", "pre-v4", "agent-v1", "agent-v2"]);
+const RESPONSE_VERSIONS = new Set(["v4", "v4.1", "v4.2", "v4.3", "v4.4-disclosure-safe", "pre-v4", "agent-v1", "agent-v2"]);
 const V4_CUES_V1 = new Set([
   "curve_trend_slope",
   "curve_level_shift",
@@ -211,8 +212,8 @@ export async function POST(request: Request) {
       activeElapsedMs?: number;
     };
     const responseVersion = payload.responseVersion ?? "pre-v4";
-    const isStructuredResponse = ["v4", "v4.1", "v4.2", "v4.3", "agent-v1", "agent-v2"].includes(responseVersion);
-    const isTelemetryResponse = responseVersion === "v4.3";
+    const isStructuredResponse = ["v4", "v4.1", "v4.2", "v4.3", "v4.4-disclosure-safe", "agent-v1", "agent-v2"].includes(responseVersion);
+    const isTelemetryResponse = responseVersion === "v4.3" || responseVersion === "v4.4-disclosure-safe";
 
     if (
       !payload.sessionId ||
@@ -305,7 +306,7 @@ export async function POST(request: Request) {
     const influenceRequired = payload.moduleKey === "disclosure" && payload.disclosureIndex > 0;
     const cueTags = Array.isArray(payload.cueTags) ? payload.cueTags : [];
     const cueSchema = payload.cueSchemaVersion ?? "";
-    const cueCollectionDisabled = (responseVersion === "v4.2" || responseVersion === "v4.3") && cueSchema === "none";
+    const cueCollectionDisabled = (responseVersion === "v4.2" || responseVersion === "v4.3" || responseVersion === "v4.4-disclosure-safe") && cueSchema === "none";
     const activeV2Cues = V4_CUES_V2_BY_DISCLOSURE[payload.disclosureKey];
     const hasV2NoEffect = cueTags.some((tag) => typeof tag === "string" && tag.endsWith("_no_effect"));
     const invalidV4Cues = isStructuredResponse && !cueCollectionDisabled && (
@@ -332,12 +333,64 @@ export async function POST(request: Request) {
 
     const disclosureStateJson = JSON.stringify(payload.disclosureState ?? {});
     const stimulusWindowJson = JSON.stringify(payload.stimulusWindow ?? {});
+    const boundariesJson = JSON.stringify(boundaries);
+    const previousBoundariesJson = JSON.stringify(previousBoundaries);
+    const boundaryIntervalsJson = JSON.stringify(boundaryIntervals);
+    const cueTagsJson = JSON.stringify(cueTags.map((tag) => String(tag).slice(0, 50)));
+    const cueSchemaVersion = (payload.cueSchemaVersion ?? "legacy-cues-v1").slice(0, 80);
+    const rationale = (payload.rationale ?? "").trim().slice(0, 1000);
+    const storedInfluenceRating = payload.influenceRating === null || payload.influenceRating === undefined
+      ? null
+      : Math.trunc(payload.influenceRating);
     if (disclosureStateJson.length > 5000 || stimulusWindowJson.length > 2500) {
       return Response.json({ error: "Disclosure state is too large" }, { status: 400 });
     }
 
     await ensureExperimentSchema();
-    const [response] = await getDb()
+    const db = getDb();
+    const [existing] = await db
+      .select()
+      .from(modularResponses)
+      .where(and(
+        eq(modularResponses.sessionId, payload.sessionId.slice(0, 80)),
+        eq(modularResponses.trialId, payload.trialId.slice(0, 180)),
+        eq(modularResponses.disclosureIndex, payload.disclosureIndex),
+      ))
+      .limit(1);
+
+    if (existing) {
+      const sameScientificResponse =
+        existing.trialOrder === payload.trialOrder &&
+        existing.responseVersion === responseVersion &&
+        existing.moduleKey === payload.moduleKey &&
+        existing.taskType === payload.taskType &&
+        existing.stimulusType === payload.stimulusType &&
+        existing.assetId === payload.assetId.slice(0, 60) &&
+        existing.metricType === payload.metricType &&
+        existing.resolution === payload.resolution &&
+        existing.scaleMode === payload.scaleMode &&
+        existing.windowMode === payload.windowMode &&
+        existing.disclosureKey === payload.disclosureKey &&
+        existing.disclosureStateJson === disclosureStateJson &&
+        existing.stimulusWindowJson === stimulusWindowJson &&
+        existing.cueSchemaVersion === cueSchemaVersion &&
+        existing.boundariesJson === boundariesJson &&
+        existing.previousBoundariesJson === previousBoundariesJson &&
+        existing.boundaryIntervalsJson === boundaryIntervalsJson &&
+        existing.singleStageConfirmed === (payload.singleStageConfirmed === true) &&
+        existing.influenceRating === storedInfluenceRating &&
+        existing.influenceTouched === (payload.influenceTouched === true) &&
+        existing.noChangeConfirmed === (payload.noChangeConfirmed === true) &&
+        existing.cueTags === cueTagsJson &&
+        existing.rationale === rationale;
+
+      if (!sameScientificResponse) {
+        return Response.json({ error: "This answer is already finalized with different values." }, { status: 409 });
+      }
+      return Response.json({ response: { id: existing.id, createdAt: existing.createdAt }, idempotent: true }, { status: 200 });
+    }
+
+    const [response] = await db
       .insert(modularResponses)
       .values({
         sessionId: payload.sessionId.slice(0, 80),
@@ -356,24 +409,19 @@ export async function POST(request: Request) {
         disclosureKey: payload.disclosureKey,
         disclosureStateJson,
         stimulusWindowJson,
-        cueSchemaVersion: (payload.cueSchemaVersion ?? "legacy-cues-v1").slice(0, 80),
+        cueSchemaVersion,
         boundaryCount: boundaries.length,
-        boundariesJson: JSON.stringify(boundaries),
-        previousBoundariesJson: JSON.stringify(previousBoundaries),
-        boundaryIntervalsJson: JSON.stringify(boundaryIntervals),
+        boundariesJson,
+        previousBoundariesJson,
+        boundaryIntervalsJson,
         singleStageConfirmed: payload.singleStageConfirmed === true,
         confidence: isStructuredResponse ? 0 : Math.trunc(payload.confidence ?? 0),
         confidenceTouched: isStructuredResponse ? false : payload.confidenceTouched === true,
-        influenceRating:
-          payload.influenceRating === null || payload.influenceRating === undefined
-            ? null
-            : Math.trunc(payload.influenceRating),
+        influenceRating: storedInfluenceRating,
         influenceTouched: payload.influenceTouched === true,
         noChangeConfirmed: payload.noChangeConfirmed === true,
-        cueTags: JSON.stringify(
-          cueTags.map((tag) => String(tag).slice(0, 50)),
-        ),
-        rationale: (payload.rationale ?? "").trim().slice(0, 1000),
+        cueTags: cueTagsJson,
+        rationale,
         elapsedMs: Math.trunc(payload.elapsedMs ?? 0),
         revealReadMs: Math.trunc(payload.revealReadMs ?? 0),
         firstMoveMs:

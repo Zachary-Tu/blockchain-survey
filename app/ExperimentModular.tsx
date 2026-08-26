@@ -144,6 +144,13 @@ type ModularAnswer = {
   firstUncertaintyMs: number | null;
   adjustmentCount: number;
   uncertaintyAdjustmentCount: number;
+  clientStartedAt?: string;
+  clientSubmittedAt?: string;
+  responseViewportWidth?: number;
+  responseViewportHeight?: number;
+  responseOrientation?: string;
+  pageHiddenMs?: number;
+  activeElapsedMs?: number;
 };
 
 type LayerAssetDraft = {
@@ -331,8 +338,8 @@ export const DISCLOSURE_COPY: Record<DisclosureKey, { title: string; short: stri
   GI2: { title: "时间与单位", short: "GI2", description: "在序列类型基础上披露真实时间轴与数值单位。" },
   DI1: { title: "资产名称", short: "DI1", description: "只披露该加密资产的名称。" },
   DI2: { title: "资产基础介绍", short: "DI2", description: "在资产名称基础上增加一段中性背景。" },
-  DI3: { title: "核心事件", short: "DI3", description: "增加事件表中 priority 1–2 的核心历史事件。" },
-  DI4: { title: "补充事件", short: "DI4", description: "在核心事件基础上增加 priority 3–5 的补充事件。" },
+  DI3: { title: "事件信息（一）", short: "DI3", description: "增加预先选定的第一组历史事件。" },
+  DI4: { title: "事件信息（二）", short: "DI4", description: "在第一组基础上增加预先选定的第二组历史事件。" },
   FULL: { title: "完整信息包", short: "FULL", description: "同时显示序列类型、坐标、资产背景与全部事件。" },
 };
 
@@ -354,6 +361,20 @@ export const RESOLUTION_LABEL: Record<Resolution, string> = {
   monthly: "月频",
   yearly: "年频",
 };
+const M1_CHART_FRAME = Object.freeze({
+  width: 1120,
+  height: 600,
+  margin: Object.freeze({ top: 72, right: 28, bottom: 72, left: 88 }),
+});
+const M1_DISCLOSURE_SAFE_METRIC_COPY: Record<MetricKey, string> = Object.freeze({
+  price: "该曲线表示价格数据。",
+  activeAddresses: "该曲线表示活跃地址数量数据。",
+  googleTrends: "该曲线表示 Google 搜索热度指数。",
+});
+
+function metricDescriptionForDisclosure(metric: MetricKey, axesRevealed: boolean, fullDefinition: string) {
+  return axesRevealed ? fullDefinition : M1_DISCLOSURE_SAFE_METRIC_COPY[metric];
+}
 const LEGACY_CUES = ["趋势方向", "均值变化", "波动结构", "持续时间", "序列类型", "资产知识", "历史事件", "其他"];
 export const CUE_SCHEMA_VERSION = "disclosure-specific-cues-v2";
 export const CUE_SETS: Record<DisclosureKey, CueSet> = {
@@ -830,9 +851,11 @@ export function ModularChart({
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const dragIndex = useRef<number | null>(null);
-  const width = 1120;
-  const height = 600;
-  const margin = { top: 72, right: 28, bottom: visibility.axes ? 72 : 28, left: visibility.axes ? 88 : 28 };
+  const width = M1_CHART_FRAME.width;
+  const height = M1_CHART_FRAME.height;
+  // Keep the plotting frame identical across disclosures. GI2 reveals labels,
+  // but must not geometrically rescale the curve that the participant judges.
+  const margin = M1_CHART_FRAME.margin;
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
   const rawValues = points.map((point) => point.value);
@@ -873,7 +896,7 @@ export function ModularChart({
       const svgX = ((clientX - rect.left) / rect.width) * width;
       return clamp((svgX - margin.left) / plotWidth, 0.015, 0.985);
     },
-    [margin.left, plotWidth],
+    [margin.left, plotWidth, width],
   );
 
   const updateBoundary = useCallback(
@@ -982,8 +1005,8 @@ export function ModularChart({
 
           {eventRows.map((event) => (
             <g key={`${event.date}-${event.title}`}>
-              <line x1={xAt(event.ratio)} x2={xAt(event.ratio)} y1={margin.top} y2={margin.top + plotHeight} stroke={event.priority === "high" ? "#c96d45" : "#738b86"} strokeWidth={event.priority === "high" ? 2 : 1.5} strokeDasharray={event.priority === "high" ? "5 5" : "3 7"} opacity="0.75" />
-              <circle cx={xAt(event.ratio)} cy={event.labelY} r={event.priority === "high" ? 5 : 4} fill={event.priority === "high" ? "#c96d45" : "#738b86"} />
+              <line x1={xAt(event.ratio)} x2={xAt(event.ratio)} y1={margin.top} y2={margin.top + plotHeight} stroke="#738b86" strokeWidth="1.75" strokeDasharray="4 6" opacity="0.75" />
+              <circle cx={xAt(event.ratio)} cy={event.labelY} r="4.5" fill="#738b86" />
               <text x={xAt(event.ratio) + 8} y={event.labelY + 4} className="mod-event-label">{event.title.length > 13 ? `${event.title.slice(0, 13)}…` : event.title}</text>
             </g>
           ))}
@@ -1032,7 +1055,7 @@ export function ModularChart({
       </svg>
       <div className="mod-chart-footnote">
         <span>{interactive ? "拖动分界线；点击曲线可快速移动最近的分界点" : "Agent 通过右侧 JSON 精确提交分界位置"}</span>
-        <span>{points.length.toLocaleString("zh-CN")} 个{RESOLUTION_LABEL[resolution]}观测值</span>
+        <span>{visibility.axes ? `${points.length.toLocaleString("zh-CN")} 个${RESOLUTION_LABEL[resolution]}观测值` : "当前仅显示曲线形状"}</span>
       </div>
     </div>
   );
@@ -1049,6 +1072,7 @@ function BoundaryEditor({
   onWidthsChange,
   onBoundaryInteraction,
   onUncertaintyInteraction,
+  showDates,
 }: {
   taskType: TaskType;
   boundaries: number[];
@@ -1060,6 +1084,7 @@ function BoundaryEditor({
   onWidthsChange: (values: Array<number | null>) => void;
   onBoundaryInteraction: () => void;
   onUncertaintyInteraction: () => void;
+  showDates: boolean;
 }) {
   const addBoundary = () => {
     if (boundaries.length >= 5) return;
@@ -1141,7 +1166,7 @@ function BoundaryEditor({
         return (
           <article className="mod-boundary-row" key={`editor-${index}`}>
             <div className="mod-boundary-row-head">
-              <div><strong>分界点 {index + 1}</strong><span>{point?.date ?? "—"}</span></div>
+              <div><strong>分界点 {index + 1}</strong><span>{showDates ? point?.date ?? "—" : "当前仅记录相对位置"}</span></div>
               {taskType === "T1" && <button type="button" onClick={() => removeBoundary(index)} aria-label={`删除分界点 ${index + 1}`}>删除</button>}
             </div>
             <input
@@ -1537,7 +1562,11 @@ function LayerAssetResponseCard({
         <div>
           <span className="mod-layer-card-number">CURVE {String(trial.order + 1).padStart(2, "0")}</span>
           <h2>{context.visibility.asset ? `${context.displayName}（${context.displaySymbol}）` : context.visibility.metric ? context.metricData.name : `匿名曲线 ${trial.order + 1}`}</h2>
-          <p>{context.visibility.intro ? context.displayIntro : context.visibility.metric ? context.metricData.definition : "请只根据当前可见的信息判断阶段结构。"}</p>
+          <p>{context.visibility.intro
+            ? context.displayIntro
+            : context.visibility.metric
+              ? metricDescriptionForDisclosure(trial.metric, context.visibility.axes, context.metricData.definition)
+              : "请只根据当前可见的信息判断阶段结构。"}</p>
         </div>
         <span className={`mod-layer-card-status ${complete ? "is-complete" : ""}`}>{complete ? "已完成" : "待完成"}</span>
       </header>
@@ -1572,15 +1601,15 @@ function LayerAssetResponseCard({
 
       {(disclosureKey === "DI3" || disclosureKey === "DI4") && (
         <section className="mod-event-panel mod-layer-event-panel">
-          <div className="mod-event-panel-head"><span className="mod-kicker">本层新增 · {disclosureKey === "DI3" ? "核心事件" : "补充事件"}</span><strong>{context.newlyDisclosedEvents.length} 项 · 上限 {MAX_EVENTS_PER_DISCLOSURE}</strong></div>
+          <div className="mod-event-panel-head"><span className="mod-kicker">本层新增 · {disclosureKey === "DI3" ? "事件信息（一）" : "事件信息（二）"}</span><strong>{context.newlyDisclosedEvents.length} 项 · 上限 {MAX_EVENTS_PER_DISCLOSURE}</strong></div>
           {context.retainedEventCount > 0 && <p className="mod-event-retained">上一层的 {context.retainedEventCount} 个事件继续保留；下方只列出本层新增内容。</p>}
           {context.newlyDisclosedEvents.length ? (
             <div className="mod-event-list">
               {context.newlyDisclosedEvents.map((event) => (
-                <article key={event.sourceId ?? `${event.date}-${event.title}`}><time>{event.date}</time><span className={eventSourcePriority(event) <= 2 ? "is-high" : ""}>P{eventSourcePriority(event)}</span><h3>{event.title}</h3><p>{event.description}</p></article>
+                <article key={event.sourceId ?? `${event.date}-${event.title}`}><time>{event.date}</time><h3>{event.title}</h3><p>{event.description}</p></article>
               ))}
             </div>
-          ) : <p className="mod-event-empty">当前显示时间窗内没有属于本层优先级范围的事件。</p>}
+          ) : <p className="mod-event-empty">当前显示时间窗内没有可展示的新增事件。</p>}
         </section>
       )}
 
@@ -1596,6 +1625,7 @@ function LayerAssetResponseCard({
           onWidthsChange={(values) => onChange((current) => ({ ...current, widths: values }))}
           onBoundaryInteraction={markBoundaryInteraction}
           onUncertaintyInteraction={markUncertaintyInteraction}
+          showDates={context.visibility.axes}
         />
 
         {disclosureIndex > 0 && (
@@ -1918,8 +1948,9 @@ export function ExperimentModular({
           cueSchemaVersion: isFixedM1 ? "none" : isV4 ? CUE_SCHEMA_VERSION : "legacy-cues-v1",
           cueTaxonomyUrl: isFixedM1 ? null : isV4 ? "/data/cue-taxonomy-v4-v2.json" : null,
           entryMode,
-          pilotProtocol: isPilot ? "m1-pilot-v4-six-sequential-pages-minimal-response" : null,
-          mainStudyProtocol: isM1Main ? "m1-human-main-v4-six-sequential-pages-minimal-response" : null,
+          pilotProtocol: isPilot ? "m1-pilot-v4.4-restored-disclosure-safe" : null,
+          mainStudyProtocol: isM1Main ? "m1-human-main-v4.4-restored-disclosure-safe" : null,
+          validityRepairVersion: isFixedM1 ? "early-disclosure-and-feedback-bias-v1" : null,
           disclosureFlowOrder: usesLayerMajorDisclosureFlow ? "disclosure-major" : "asset-major",
           layerPresentation: usesFixedM1SequentialPages
             ? "sequential-single-asset-pages-v1"
@@ -2108,7 +2139,7 @@ export function ExperimentModular({
           disclosureIndex,
           disclosureKey: currentDisclosure,
           disclosureState,
-          responseVersion: isFixedM1 ? "v4.3" : isV4 ? "v4.1" : "pre-v4",
+          responseVersion: isFixedM1 ? "v4.4-disclosure-safe" : isV4 ? "v4.1" : "pre-v4",
           stimulusWindow,
           cueSchemaVersion: isFixedM1 ? "none" : isV4 ? CUE_SCHEMA_VERSION : "legacy-cues-v1",
           boundaries: currentBoundaryRecords,
@@ -2840,6 +2871,29 @@ export function ExperimentModular({
     .sort((first, second) => first.trialOrder - second.trialOrder);
   const reviewAnswers = usesLayerMajorDisclosureFlow ? layerAnswers : trialAnswers;
   const currentModule = MODULES.find((item) => item.key === currentTrial.module) ?? MODULES[0];
+  if (phase === "review" && isFixedM1) {
+    const hasNextDisclosure = disclosureIndex < currentTrial.disclosures.length - 1;
+    const completedLayers = disclosureIndex + 1;
+    const overallProgress = completedLayers / currentTrial.disclosures.length * 100;
+    return (
+      <main className="mod-site mod-review-page mod-neutral-rest-page">
+        <header className="mod-topbar"><span className="mod-wordmark"><span>BOUNDARY</span> LAB <b>{editionMark}</b></span><span>进度 {completedLayers}/{currentTrial.disclosures.length}</span></header>
+        <section className="mod-review-hero">
+          <span className="mod-eyebrow">RESPONSES SAVED · 中性休息页</span>
+          <h1>本轮 {plan.length} 条回答，<br />已经安全保存。</h1>
+          <p>这里不显示答案分析、边界移动或表现反馈。你可以短暂休息，准备好后再继续。</p>
+        </section>
+        <section className="mod-neutral-rest-card" aria-label="实验总体进度">
+          <div><span>已完成判断</span><strong>{reviewAnswers.length}/{plan.length}</strong></div>
+          <div><span>总体轮次</span><strong>{completedLayers}/{currentTrial.disclosures.length}</strong></div>
+          <div className="mod-neutral-progress"><i><b style={{ width: `${overallProgress}%` }} /></i><small>{Math.round(overallProgress)}%</small></div>
+          <p>请放松视线和手部；继续后仍按当前页面可见信息独立判断。</p>
+        </section>
+        {error && <p className="mod-error mod-review-error" role="alert">{error}</p>}
+        <button className="mod-start mod-review-next" type="button" onClick={continueAfterReview} disabled={busy}>{hasNextDisclosure ? "继续下一轮判断" : "保存并完成本次实验"}<span>→</span></button>
+      </main>
+    );
+  }
   const movementAnswers = usesLayerMajorDisclosureFlow ? reviewAnswers : trialAnswers.slice(1);
   const movement = movementAnswers.length
     ? movementAnswers.reduce((sum, answer) => {
@@ -3063,7 +3117,11 @@ export function ExperimentModular({
             <div>
               <span className="mod-eyebrow">{runnerVariantLabel} · {TASKS[currentTrial.taskType].short}</span>
               <h1>{visibility.asset ? `${displayName}（${displaySymbol}）` : visibility.metric ? currentMetric.name : "一段未命名的走势"}</h1>
-              <p>{visibility.intro ? displayIntro : visibility.metric ? currentMetric.definition : "请只根据当前可见的信息判断阶段结构。"}</p>
+              <p>{visibility.intro
+                ? displayIntro
+                : visibility.metric
+                  ? metricDescriptionForDisclosure(currentTrial.metric, visibility.axes, currentMetric.definition)
+                  : "请只根据当前可见的信息判断阶段结构。"}</p>
             </div>
             <div className="mod-condition-chips">
               <span>{visibility.metric ? currentMetric.name : "指标：？"}</span>
@@ -3095,15 +3153,15 @@ export function ExperimentModular({
 
           {(currentDisclosure === "DI3" || currentDisclosure === "DI4" || newlyDisclosedEvents.length > 0) && (
             <section className="mod-event-panel">
-              <div className="mod-event-panel-head"><span className="mod-kicker">本层新增 · {currentDisclosure === "DI3" ? "核心事件" : currentDisclosure === "DI4" ? "补充事件" : "历史事件"}</span><strong>{newlyDisclosedEvents.length} 项 · 上限 {MAX_EVENTS_PER_DISCLOSURE}</strong></div>
+              <div className="mod-event-panel-head"><span className="mod-kicker">本层新增 · {currentDisclosure === "DI3" ? "事件信息（一）" : currentDisclosure === "DI4" ? "事件信息（二）" : "历史事件"}</span><strong>{newlyDisclosedEvents.length} 项 · 上限 {MAX_EVENTS_PER_DISCLOSURE}</strong></div>
               {retainedEventCount > 0 && <p className="mod-event-retained">上一层的 {retainedEventCount} 个事件标记继续保留在曲线上；下方只列出本层新增内容。</p>}
               {newlyDisclosedEvents.length ? (
                 <div className="mod-event-list">
                   {newlyDisclosedEvents.map((event) => (
-                    <article key={event.sourceId ?? `${event.date}-${event.title}`}><time>{event.date}</time><span className={eventSourcePriority(event) <= 2 ? "is-high" : ""}>P{eventSourcePriority(event)}</span><h3>{event.title}</h3><p>{event.description}</p></article>
+                    <article key={event.sourceId ?? `${event.date}-${event.title}`}><time>{event.date}</time><h3>{event.title}</h3><p>{event.description}</p></article>
                   ))}
                 </div>
-              ) : <p className="mod-event-empty">当前显示时间窗内没有属于本层优先级范围的事件。</p>}
+              ) : <p className="mod-event-empty">当前显示时间窗内没有可展示的新增事件。</p>}
             </section>
           )}
         </div>
@@ -3126,6 +3184,7 @@ export function ExperimentModular({
             onWidthsChange={setWidths}
             onBoundaryInteraction={markBoundaryInteraction}
             onUncertaintyInteraction={markUncertaintyInteraction}
+            showDates={visibility.axes}
           />
 
           {!isV4 && (
