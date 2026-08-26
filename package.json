@@ -10,11 +10,13 @@
     "build": "vinext build",
     "start": "vinext start",
     "test": "npm run build && node --test tests/rendered-html.test.mjs && npm run test:go",
-    "test:go": "tsx --test tests/go-ai-assets.test.ts tests/go-engine.test.ts tests/go-question-bank.test.ts tests/xiangqi-engine.test.ts",
+    "test:go": "tsx --test tests/m1-protocol.test.ts tests/m1-ui-invariants.test.ts tests/m1-execution-limits.test.ts tests/m1-stage-a-audit.test.ts tests/m1-stage-a-evidence.test.ts tests/m1-source-manifest.test.ts tests/go-ai-assets.test.ts tests/go-engine.test.ts tests/go-question-bank.test.ts tests/xiangqi-engine.test.ts",
     "go:model:convert": "tsx scripts/convert-katago-text-model.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "audit:m1-stage-a": "tsx scripts/audit-m1-stage-a.ts",
+    "manifest:m1": "tsx scripts/generate-m1-source-manifest.ts"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

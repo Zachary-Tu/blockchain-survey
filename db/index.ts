@@ -53,7 +53,9 @@ export async function ensureExperimentSchema() {
           screen_orientation TEXT NOT NULL DEFAULT 'unknown',
           status TEXT NOT NULL DEFAULT 'active',
           started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          completed_at TEXT
+          practice_completed_at TEXT,
+          completed_at TEXT,
+          termination_code TEXT NOT NULL DEFAULT ''
         )`),
       d1
         .prepare(`CREATE TABLE IF NOT EXISTS research_responses (
@@ -164,6 +166,121 @@ export async function ensureExperimentSchema() {
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (session_id) REFERENCES experiment_sessions(id) ON DELETE CASCADE
         )`),
+      d1
+        .prepare(`CREATE TABLE IF NOT EXISTS experiment_expected_steps (
+          id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+          session_id TEXT NOT NULL,
+          step_order INTEGER NOT NULL,
+          trial_id TEXT NOT NULL,
+          trial_order INTEGER NOT NULL,
+          module_key TEXT NOT NULL,
+          task_type TEXT NOT NULL,
+          stimulus_type TEXT NOT NULL DEFAULT 'crypto',
+          asset_id TEXT NOT NULL,
+          metric_type TEXT NOT NULL,
+          resolution TEXT NOT NULL,
+          scale_mode TEXT NOT NULL,
+          window_mode TEXT NOT NULL,
+          disclosure_index INTEGER NOT NULL,
+          disclosure_key TEXT NOT NULL,
+          FOREIGN KEY (session_id) REFERENCES experiment_sessions(id) ON DELETE CASCADE
+        )`),
+      d1
+        .prepare(`CREATE TABLE IF NOT EXISTS experiment_step_exposures (
+          id TEXT PRIMARY KEY NOT NULL,
+          session_id TEXT NOT NULL,
+          step_order INTEGER NOT NULL,
+          started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (session_id) REFERENCES experiment_sessions(id) ON DELETE CASCADE
+        )`),
+      d1
+        .prepare(`CREATE TABLE IF NOT EXISTS agent_run_attempts (
+          id TEXT PRIMARY KEY NOT NULL,
+          session_id TEXT NOT NULL,
+          step_order INTEGER NOT NULL,
+          attempt_number INTEGER NOT NULL,
+          model_api_attempt_number INTEGER NOT NULL DEFAULT 0,
+          mechanical_action_id TEXT NOT NULL DEFAULT '',
+          mechanical_retry_number INTEGER NOT NULL DEFAULT 0,
+          controller_version TEXT NOT NULL DEFAULT '',
+          model_request_id TEXT NOT NULL DEFAULT '',
+          source_model_request_id TEXT NOT NULL DEFAULT '',
+          prompt_sha256 TEXT NOT NULL DEFAULT '',
+          runtime_request_sha256 TEXT NOT NULL DEFAULT '',
+          screenshot_sha256 TEXT NOT NULL DEFAULT '',
+          output_sha256 TEXT NOT NULL DEFAULT '',
+          action_trace_sha256 TEXT NOT NULL DEFAULT '',
+          context_policy TEXT NOT NULL DEFAULT 'persistent',
+          input_modality TEXT NOT NULL DEFAULT 'screenshot',
+          image_detail TEXT NOT NULL DEFAULT 'auto',
+          temperature REAL,
+          top_p REAL,
+          seed INTEGER,
+          reasoning_effort TEXT NOT NULL DEFAULT '',
+          input_tokens INTEGER,
+          output_tokens INTEGER,
+          tool_calls INTEGER NOT NULL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'submitted',
+          error_code TEXT NOT NULL DEFAULT '',
+          started_at TEXT,
+          completed_at TEXT,
+          response_id INTEGER,
+          response_sha256 TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (session_id) REFERENCES experiment_sessions(id) ON DELETE CASCADE,
+          FOREIGN KEY (response_id) REFERENCES modular_responses(id) ON DELETE RESTRICT
+        )`),
+      d1
+        .prepare(`CREATE TABLE IF NOT EXISTS m1_pair_assignments (
+          pair_id TEXT PRIMARY KEY NOT NULL,
+          protocol_architecture TEXT NOT NULL,
+          schedule_id INTEGER NOT NULL,
+          information_condition TEXT NOT NULL,
+          stimulus_sha256 TEXT NOT NULL,
+          event_source_sha256 TEXT NOT NULL,
+          assignment_version TEXT NOT NULL,
+          cohort_id TEXT NOT NULL DEFAULT 'legacy-unclassified',
+          study_phase TEXT NOT NULL DEFAULT 'legacy-unclassified',
+          preregistration_version TEXT NOT NULL DEFAULT '',
+          analysis_set_version TEXT NOT NULL DEFAULT '',
+          implementation_build_id TEXT NOT NULL DEFAULT '',
+          deployment_id TEXT NOT NULL DEFAULT '',
+          deployment_fingerprint_sha256 TEXT NOT NULL DEFAULT '',
+          allocation_mode TEXT NOT NULL DEFAULT 'legacy-unclassified',
+          agent_profile_sha256 TEXT NOT NULL DEFAULT '',
+          primary_browser_major INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )`),
+      d1
+        .prepare(`CREATE TABLE IF NOT EXISTS m1_pair_slots (
+          id TEXT PRIMARY KEY NOT NULL,
+          pair_id TEXT NOT NULL,
+          actor_type TEXT NOT NULL,
+          replicate_id TEXT NOT NULL,
+          launch_token_hash TEXT NOT NULL,
+          session_id TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (pair_id) REFERENCES m1_pair_assignments(pair_id) ON DELETE CASCADE,
+          FOREIGN KEY (launch_token_hash) REFERENCES m1_launch_tokens(token_hash) ON DELETE RESTRICT,
+          FOREIGN KEY (session_id) REFERENCES experiment_sessions(id) ON DELETE CASCADE
+        )`),
+      d1
+        .prepare(`CREATE TABLE IF NOT EXISTS m1_launch_tokens (
+          token_hash TEXT PRIMARY KEY NOT NULL,
+          pair_id TEXT NOT NULL,
+          actor_type TEXT NOT NULL,
+          participant_code TEXT NOT NULL,
+          replicate_id TEXT NOT NULL,
+          schedule_id INTEGER NOT NULL,
+          information_condition TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          revoked_at TEXT,
+          terminal_disposition TEXT,
+          terminal_at TEXT,
+          claimed_session_id TEXT,
+          claimed_at TEXT,
+          FOREIGN KEY (pair_id) REFERENCES m1_pair_assignments(pair_id) ON DELETE CASCADE
+        )`),
       d1.prepare(
         "CREATE INDEX IF NOT EXISTS idx_sessions_status ON experiment_sessions(status)",
       ),
@@ -191,6 +308,36 @@ export async function ensureExperimentSchema() {
       d1.prepare(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_modular_response_session_trial_disclosure ON modular_responses(session_id, trial_id, disclosure_index)",
       ),
+      d1.prepare(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_expected_steps_session_step ON experiment_expected_steps(session_id, step_order)",
+      ),
+      d1.prepare(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_expected_steps_session_trial_disclosure ON experiment_expected_steps(session_id, trial_id, disclosure_index)",
+      ),
+      d1.prepare(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_step_exposures_session_step ON experiment_step_exposures(session_id, step_order)",
+      ),
+      d1.prepare(
+        "CREATE INDEX IF NOT EXISTS idx_agent_attempts_session_step ON agent_run_attempts(session_id, step_order)",
+      ),
+      d1.prepare(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_attempts_session_step_attempt ON agent_run_attempts(session_id, step_order, attempt_number)",
+      ),
+      d1.prepare(
+        "CREATE INDEX IF NOT EXISTS idx_m1_pair_assignment_condition_schedule ON m1_pair_assignments(information_condition, schedule_id)",
+      ),
+      d1.prepare(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_m1_pair_slot_actor_replicate ON m1_pair_slots(pair_id, actor_type, replicate_id)",
+      ),
+      d1.prepare(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_m1_pair_slot_session ON m1_pair_slots(session_id)",
+      ),
+      d1.prepare(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_m1_pair_slot_launch_token ON m1_pair_slots(launch_token_hash)",
+      ),
+      d1.prepare(
+        "CREATE INDEX IF NOT EXISTS idx_m1_launch_token_pair_actor ON m1_launch_tokens(pair_id, actor_type)",
+      ),
     ]);
     const sessionColumnInfo = await d1
       .prepare("PRAGMA table_info(experiment_sessions)")
@@ -213,6 +360,8 @@ export async function ensureExperimentSchema() {
       ["touch_points", "ALTER TABLE experiment_sessions ADD COLUMN touch_points INTEGER NOT NULL DEFAULT 0"],
       ["pointer_type", "ALTER TABLE experiment_sessions ADD COLUMN pointer_type TEXT NOT NULL DEFAULT 'unknown'"],
       ["screen_orientation", "ALTER TABLE experiment_sessions ADD COLUMN screen_orientation TEXT NOT NULL DEFAULT 'unknown'"],
+      ["practice_completed_at", "ALTER TABLE experiment_sessions ADD COLUMN practice_completed_at TEXT"],
+      ["termination_code", "ALTER TABLE experiment_sessions ADD COLUMN termination_code TEXT NOT NULL DEFAULT ''"],
     ] as const;
     for (const [column, statement] of sessionAdditiveMigrations) {
       if (!existingSessionColumns.has(column)) {
@@ -278,6 +427,85 @@ export async function ensureExperimentSchema() {
         await d1.prepare(statement).run();
       }
     }
+    const pairAssignmentColumnInfo = await d1
+      .prepare("PRAGMA table_info(m1_pair_assignments)")
+      .all<{ name: string }>();
+    const existingPairAssignmentColumns = new Set(
+      pairAssignmentColumnInfo.results.map((column) => column.name),
+    );
+    if (!existingPairAssignmentColumns.has("agent_profile_sha256")) {
+      await d1.prepare("ALTER TABLE m1_pair_assignments ADD COLUMN agent_profile_sha256 TEXT NOT NULL DEFAULT ''").run();
+    }
+    if (!existingPairAssignmentColumns.has("primary_browser_major")) {
+      await d1.prepare("ALTER TABLE m1_pair_assignments ADD COLUMN primary_browser_major INTEGER NOT NULL DEFAULT 0").run();
+    }
+    const attemptColumnInfo = await d1
+      .prepare("PRAGMA table_info(agent_run_attempts)")
+      .all<{ name: string }>();
+    const existingAttemptColumns = new Set(
+      attemptColumnInfo.results.map((column) => column.name),
+    );
+    const attemptAdditiveMigrations = [
+      ["response_id", "ALTER TABLE agent_run_attempts ADD COLUMN response_id INTEGER"],
+      ["response_sha256", "ALTER TABLE agent_run_attempts ADD COLUMN response_sha256 TEXT NOT NULL DEFAULT ''"],
+      ["action_trace_sha256", "ALTER TABLE agent_run_attempts ADD COLUMN action_trace_sha256 TEXT NOT NULL DEFAULT ''"],
+      ["model_api_attempt_number", "ALTER TABLE agent_run_attempts ADD COLUMN model_api_attempt_number INTEGER NOT NULL DEFAULT 0"],
+      ["mechanical_action_id", "ALTER TABLE agent_run_attempts ADD COLUMN mechanical_action_id TEXT NOT NULL DEFAULT ''"],
+      ["mechanical_retry_number", "ALTER TABLE agent_run_attempts ADD COLUMN mechanical_retry_number INTEGER NOT NULL DEFAULT 0"],
+      ["source_model_request_id", "ALTER TABLE agent_run_attempts ADD COLUMN source_model_request_id TEXT NOT NULL DEFAULT ''"],
+      ["runtime_request_sha256", "ALTER TABLE agent_run_attempts ADD COLUMN runtime_request_sha256 TEXT NOT NULL DEFAULT ''"],
+    ] as const;
+    for (const [column, statement] of attemptAdditiveMigrations) {
+      if (!existingAttemptColumns.has(column)) {
+        await d1.prepare(statement).run();
+      }
+    }
+    const assignmentColumnInfo = await d1
+      .prepare("PRAGMA table_info(m1_pair_assignments)")
+      .all<{ name: string }>();
+    const existingAssignmentColumns = new Set(
+      assignmentColumnInfo.results.map((column) => column.name),
+    );
+    const assignmentAdditiveMigrations = [
+      ["cohort_id", "ALTER TABLE m1_pair_assignments ADD COLUMN cohort_id TEXT NOT NULL DEFAULT 'legacy-unclassified'"],
+      ["study_phase", "ALTER TABLE m1_pair_assignments ADD COLUMN study_phase TEXT NOT NULL DEFAULT 'legacy-unclassified'"],
+      ["preregistration_version", "ALTER TABLE m1_pair_assignments ADD COLUMN preregistration_version TEXT NOT NULL DEFAULT ''"],
+      ["analysis_set_version", "ALTER TABLE m1_pair_assignments ADD COLUMN analysis_set_version TEXT NOT NULL DEFAULT ''"],
+      ["implementation_build_id", "ALTER TABLE m1_pair_assignments ADD COLUMN implementation_build_id TEXT NOT NULL DEFAULT ''"],
+      ["deployment_id", "ALTER TABLE m1_pair_assignments ADD COLUMN deployment_id TEXT NOT NULL DEFAULT ''"],
+      ["deployment_fingerprint_sha256", "ALTER TABLE m1_pair_assignments ADD COLUMN deployment_fingerprint_sha256 TEXT NOT NULL DEFAULT ''"],
+      ["allocation_mode", "ALTER TABLE m1_pair_assignments ADD COLUMN allocation_mode TEXT NOT NULL DEFAULT 'legacy-unclassified'"],
+    ] as const;
+    for (const [column, statement] of assignmentAdditiveMigrations) {
+      if (!existingAssignmentColumns.has(column)) {
+        await d1.prepare(statement).run();
+      }
+    }
+    const launchTokenColumnInfo = await d1
+      .prepare("PRAGMA table_info(m1_launch_tokens)")
+      .all<{ name: string }>();
+    const existingLaunchTokenColumns = new Set(
+      launchTokenColumnInfo.results.map((column) => column.name),
+    );
+    const launchTokenAdditiveMigrations = [
+      ["terminal_disposition", "ALTER TABLE m1_launch_tokens ADD COLUMN terminal_disposition TEXT"],
+      ["terminal_at", "ALTER TABLE m1_launch_tokens ADD COLUMN terminal_at TEXT"],
+    ] as const;
+    for (const [column, statement] of launchTokenAdditiveMigrations) {
+      if (!existingLaunchTokenColumns.has(column)) {
+        await d1.prepare(statement).run();
+      }
+    }
+    await d1.batch([
+      d1.prepare("DROP INDEX IF EXISTS idx_m1_pair_assignment_condition_schedule"),
+      d1.prepare("CREATE INDEX idx_m1_pair_assignment_condition_schedule ON m1_pair_assignments(cohort_id, allocation_mode, information_condition, schedule_id)"),
+    ]);
+    await d1.batch([
+      d1.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_one_submitted_per_step ON agent_run_attempts(session_id, step_order) WHERE status = 'submitted'"),
+      d1.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_attempt_response ON agent_run_attempts(response_id) WHERE response_id IS NOT NULL"),
+      d1.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_model_request ON agent_run_attempts(session_id, model_request_id) WHERE model_request_id <> ''"),
+      d1.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_mechanical_retry ON agent_run_attempts(session_id, step_order, mechanical_action_id, mechanical_retry_number) WHERE mechanical_action_id <> '' AND mechanical_retry_number > 0"),
+    ]);
     await d1.prepare("PRAGMA optimize").run();
   })();
   return schemaReady;

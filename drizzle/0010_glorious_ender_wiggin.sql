@@ -1,0 +1,4 @@
+-- These additive columns and the replacement allocation index are applied
+-- idempotently by ensureExperimentSchema. Keeping this journal step as a
+-- no-op avoids duplicate-column failures when a Sites/D1 runtime bootstrap
+-- reaches the production database before the migration journal does.

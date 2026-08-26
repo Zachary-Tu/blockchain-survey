@@ -2,19 +2,19 @@ import type { Metadata } from "next";
 import { ExperimentModular } from "../ExperimentModular";
 
 export const metadata: Metadata = {
-  title: "Boundary Lab｜人类 M1 主实验",
-  description: "面向人类被测试者的固定 M1 信息披露主实验。",
+  title: "Boundary Lab｜M1 阶段判断实验",
+  description: "固定三阶段、六曲线、七轮判断的 M1 实验。",
   openGraph: {
-    title: "Boundary Lab｜人类 M1 主实验",
-    description: "固定三阶段任务；每个信息层依次完成六个单曲线页面，再进入下一层。",
+    title: "Boundary Lab｜M1 阶段判断实验",
+    description: "固定三阶段、六曲线、七轮判断的 M1 实验。",
     type: "website",
     locale: "zh_CN",
     images: [],
   },
   twitter: {
     card: "summary",
-    title: "Boundary Lab｜人类 M1 主实验",
-    description: "面向人类被测试者的固定 M1 信息披露主实验。",
+    title: "Boundary Lab｜M1 阶段判断实验",
+    description: "固定三阶段、六曲线、七轮判断的 M1 实验。",
     images: [],
   },
 };

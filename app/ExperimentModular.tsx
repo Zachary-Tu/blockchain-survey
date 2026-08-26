@@ -3,6 +3,16 @@
 import Link from "next/link";
 import { buildCsv } from "@/lib/csv";
 import {
+  buildM1ProtocolPlan,
+  M1_AGENT_PROMPT_SHA256,
+  M1_PROTOCOL_VERSION,
+  normalizeM1Condition,
+  normalizeM1ScheduleId,
+  scheduleIdFromText,
+  type M1Condition,
+} from "@/lib/m1-protocol";
+import { M1_CHART_FRAME, m1DisclosureVisibility, m1MetricDescription, m1RailStepState } from "@/lib/m1-ui-invariants";
+import {
   PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
@@ -19,8 +29,8 @@ export type WindowMode = "whole" | "truncated";
 export type DisclosurePath = "general" | "domain" | "combined";
 export type DisclosureKey = "G0" | "GI1" | "GI2" | "DI1" | "DI2" | "DI3" | "DI4" | "FULL";
 export type RobustnessFactor = "resolution" | "scale" | "window" | "controls";
-type Phase = "setup" | "briefing" | "transition" | "experiment" | "review" | "complete";
-type EntryMode = "console" | "pilot" | "m1";
+type Phase = "setup" | "briefing" | "practice" | "transition" | "experiment" | "review" | "complete" | "terminated";
+type EntryMode = "console" | "pilot" | "m1" | "agent-m1";
 
 export type Point = { date: string; value: number };
 export type ResolutionData = {
@@ -144,6 +154,13 @@ type ModularAnswer = {
   firstUncertaintyMs: number | null;
   adjustmentCount: number;
   uncertaintyAdjustmentCount: number;
+  clientStartedAt?: string;
+  clientSubmittedAt?: string;
+  responseViewportWidth?: number;
+  responseViewportHeight?: number;
+  responseOrientation?: string;
+  pageHiddenMs?: number;
+  activeElapsedMs?: number;
 };
 
 type LayerAssetDraft = {
@@ -331,8 +348,8 @@ export const DISCLOSURE_COPY: Record<DisclosureKey, { title: string; short: stri
   GI2: { title: "时间与单位", short: "GI2", description: "在序列类型基础上披露真实时间轴与数值单位。" },
   DI1: { title: "资产名称", short: "DI1", description: "只披露该加密资产的名称。" },
   DI2: { title: "资产基础介绍", short: "DI2", description: "在资产名称基础上增加一段中性背景。" },
-  DI3: { title: "核心事件", short: "DI3", description: "增加事件表中 priority 1–2 的核心历史事件。" },
-  DI4: { title: "补充事件", short: "DI4", description: "在核心事件基础上增加 priority 3–5 的补充事件。" },
+  DI3: { title: "事件信息（一）", short: "DI3", description: "增加预先选定的第一组历史事件。" },
+  DI4: { title: "事件信息（二）", short: "DI4", description: "在第一组基础上增加预先选定的第二组历史事件。" },
   FULL: { title: "完整信息包", short: "FULL", description: "同时显示序列类型、坐标、资产背景与全部事件。" },
 };
 
@@ -571,16 +588,7 @@ export function intervalRecords(values: number[], widths: Array<number | null>, 
 }
 
 export function disclosureVisibility(key: DisclosureKey, path: DisclosurePath) {
-  const domainLevel = key.startsWith("DI") ? Number(key.slice(2)) : 0;
-  const combinedDomain = path === "combined" && domainLevel > 0;
-  return {
-    metric: key === "GI1" || key === "GI2" || key === "FULL" || combinedDomain,
-    axes: key === "GI2" || key === "FULL" || combinedDomain,
-    asset: domainLevel >= 1 || key === "FULL",
-    intro: domainLevel >= 2 || key === "FULL",
-    highEvents: domainLevel >= 3 || key === "FULL",
-    lowEvents: domainLevel >= 4 || key === "FULL",
-  };
+  return m1DisclosureVisibility(key, path);
 }
 
 function Rating({ value, onChange, left, right, label }: { value: number | null; onChange: (value: number) => void; left: string; right: string; label: string }) {
@@ -754,7 +762,7 @@ export function makeTrialPlan(
   }));
 }
 
-function DisclosureRail({
+export function DisclosureRail({
   keys,
   activeIndex,
 }: {
@@ -762,10 +770,11 @@ function DisclosureRail({
   activeIndex: number;
 }) {
   return (
-    <section className="mod-disclosure-rail" aria-label="信息披露进度">
+    <section className="mod-disclosure-rail" aria-label="判断轮次进度">
       {keys.map((key, index) => {
-        const revealed = index <= activeIndex;
-        const active = index === activeIndex;
+        const state = m1RailStepState(keys, activeIndex, index);
+        const revealed = state.revealed;
+        const active = state.active;
         return (
           <div
             className={`mod-disclosure-step ${active ? "is-active" : ""} ${revealed ? "is-revealed" : "is-locked"}`}
@@ -773,8 +782,8 @@ function DisclosureRail({
           >
             <span className="mod-disclosure-number">{String(index + 1).padStart(2, "0")}</span>
             <div>
-              <strong>{revealed ? DISCLOSURE_COPY[key].title : "？"}</strong>
-              <small>{revealed ? DISCLOSURE_COPY[key].description : "完成当前判断后揭示"}</small>
+              <strong>{revealed ? state.titleMode === "neutral-round" ? `判断轮次 ${index + 1}` : DISCLOSURE_COPY[key].title : "？"}</strong>
+              <small>{revealed ? state.titleMode === "neutral-round" ? "按当前页面判断阶段边界" : DISCLOSURE_COPY[key].description : "完成当前判断后进入下一轮"}</small>
             </div>
           </div>
         );
@@ -830,9 +839,11 @@ export function ModularChart({
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const dragIndex = useRef<number | null>(null);
-  const width = 1120;
-  const height = 600;
-  const margin = { top: 72, right: 28, bottom: visibility.axes ? 72 : 28, left: visibility.axes ? 88 : 28 };
+  const width = M1_CHART_FRAME.width;
+  const height = M1_CHART_FRAME.height;
+  // Keep plot geometry identical across disclosures. Axes are revealed by
+  // toggling labels only; the curve itself must not be rescaled at GI2.
+  const margin = M1_CHART_FRAME.margin;
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
   const rawValues = points.map((point) => point.value);
@@ -873,7 +884,7 @@ export function ModularChart({
       const svgX = ((clientX - rect.left) / rect.width) * width;
       return clamp((svgX - margin.left) / plotWidth, 0.015, 0.985);
     },
-    [margin.left, plotWidth],
+    [margin.left, plotWidth, width],
   );
 
   const updateBoundary = useCallback(
@@ -982,8 +993,8 @@ export function ModularChart({
 
           {eventRows.map((event) => (
             <g key={`${event.date}-${event.title}`}>
-              <line x1={xAt(event.ratio)} x2={xAt(event.ratio)} y1={margin.top} y2={margin.top + plotHeight} stroke={event.priority === "high" ? "#c96d45" : "#738b86"} strokeWidth={event.priority === "high" ? 2 : 1.5} strokeDasharray={event.priority === "high" ? "5 5" : "3 7"} opacity="0.75" />
-              <circle cx={xAt(event.ratio)} cy={event.labelY} r={event.priority === "high" ? 5 : 4} fill={event.priority === "high" ? "#c96d45" : "#738b86"} />
+              <line x1={xAt(event.ratio)} x2={xAt(event.ratio)} y1={margin.top} y2={margin.top + plotHeight} stroke="#738b86" strokeWidth="1.75" strokeDasharray="4 6" opacity="0.75" />
+              <circle cx={xAt(event.ratio)} cy={event.labelY} r="4.5" fill="#738b86" />
               <text x={xAt(event.ratio) + 8} y={event.labelY + 4} className="mod-event-label">{event.title.length > 13 ? `${event.title.slice(0, 13)}…` : event.title}</text>
             </g>
           ))}
@@ -1031,8 +1042,8 @@ export function ModularChart({
         )}
       </svg>
       <div className="mod-chart-footnote">
-        <span>{interactive ? "拖动分界线；点击曲线可快速移动最近的分界点" : "Agent 通过右侧 JSON 精确提交分界位置"}</span>
-        <span>{points.length.toLocaleString("zh-CN")} 个{RESOLUTION_LABEL[resolution]}观测值</span>
+        <span>{interactive ? "拖动分界线；点击曲线可快速移动最近的分界点" : "使用右侧结构化控件提交分界位置"}</span>
+        <span>{visibility.axes ? `${points.length.toLocaleString("zh-CN")} 个${RESOLUTION_LABEL[resolution]}观测值` : "当前仅显示曲线形状"}</span>
       </div>
     </div>
   );
@@ -1049,6 +1060,7 @@ function BoundaryEditor({
   onWidthsChange,
   onBoundaryInteraction,
   onUncertaintyInteraction,
+  showDates,
 }: {
   taskType: TaskType;
   boundaries: number[];
@@ -1060,6 +1072,7 @@ function BoundaryEditor({
   onWidthsChange: (values: Array<number | null>) => void;
   onBoundaryInteraction: () => void;
   onUncertaintyInteraction: () => void;
+  showDates: boolean;
 }) {
   const addBoundary = () => {
     if (boundaries.length >= 5) return;
@@ -1118,7 +1131,7 @@ function BoundaryEditor({
       <div className="mod-editor-heading">
         <div>
           <span className="mod-kicker">阶段结构</span>
-          <h3>{taskType === "T1" ? `当前划分：${boundaries.length + 1} 个阶段` : "请设置两个分界点"}</h3>
+          <h3>{taskType === "T1" ? `当前划分：${boundaries.length + 1} 个阶段` : "请检查并按需要调整两个分界点"}</h3>
         </div>
         {taskType === "T1" && (
           <button type="button" className="mod-small-action" onClick={addBoundary} disabled={boundaries.length >= 5}>＋ 增加分界点</button>
@@ -1141,7 +1154,7 @@ function BoundaryEditor({
         return (
           <article className="mod-boundary-row" key={`editor-${index}`}>
             <div className="mod-boundary-row-head">
-              <div><strong>分界点 {index + 1}</strong><span>{point?.date ?? "—"}</span></div>
+              <div><strong>分界点 {index + 1}</strong><span>{showDates ? point?.date ?? "—" : "当前仅记录相对位置"}</span></div>
               {taskType === "T1" && <button type="button" onClick={() => removeBoundary(index)} aria-label={`删除分界点 ${index + 1}`}>删除</button>}
             </div>
             <input
@@ -1252,6 +1265,7 @@ function downloadSessionCsv(
   sessionId: string,
   answers: ModularAnswer[],
   deviceInfo: DeviceInfo | null,
+  omitRawUserAgent = false,
 ) {
   const csv = buildCsv(answers, [
     { key: "session_id", value: () => sessionId },
@@ -1267,7 +1281,7 @@ function downloadSessionCsv(
     { key: "pointer_type", value: () => deviceInfo?.pointerType ?? "unknown" },
     { key: "touch_points", value: () => deviceInfo?.touchPoints ?? 0 },
     { key: "screen_orientation", value: () => deviceInfo?.orientation ?? "unknown" },
-    { key: "user_agent", value: () => deviceInfo?.userAgent ?? "" },
+    { key: "user_agent", value: () => omitRawUserAgent ? "" : deviceInfo?.userAgent ?? "" },
     { key: "trial_id", value: (row) => row.trialId },
     { key: "trial_order", value: (row) => row.trialOrder },
     { key: "disclosure_index", value: (row) => row.disclosureIndex },
@@ -1537,16 +1551,22 @@ function LayerAssetResponseCard({
         <div>
           <span className="mod-layer-card-number">CURVE {String(trial.order + 1).padStart(2, "0")}</span>
           <h2>{context.visibility.asset ? `${context.displayName}（${context.displaySymbol}）` : context.visibility.metric ? context.metricData.name : `匿名曲线 ${trial.order + 1}`}</h2>
-          <p>{context.visibility.intro ? context.displayIntro : context.visibility.metric ? context.metricData.definition : "请只根据当前可见的信息判断阶段结构。"}</p>
+          <p>{context.visibility.intro
+            ? context.displayIntro
+            : context.visibility.metric
+              ? m1MetricDescription(trial.metric, context.visibility.axes, context.metricData.definition)
+              : "请只根据当前可见的信息判断阶段结构。"}</p>
         </div>
         <span className={`mod-layer-card-status ${complete ? "is-complete" : ""}`}>{complete ? "已完成" : "待完成"}</span>
       </header>
 
-      <div className="mod-condition-chips mod-layer-card-chips">
-        <span>{context.visibility.metric ? context.metricData.name : "指标：？"}</span>
-        <span>{context.visibility.axes ? `${RESOLUTION_LABEL[trial.resolution]} · ${trial.scaleMode === "log" ? "对数" : "线性"}` : "坐标：？"}</span>
-        <span>{context.visibility.asset ? context.displaySymbol : "资产：？"}</span>
-      </div>
+      {(context.visibility.metric || context.visibility.axes || context.visibility.asset) && (
+        <div className="mod-condition-chips mod-layer-card-chips">
+          {context.visibility.metric && <span>{context.metricData.name}</span>}
+          {context.visibility.axes && <span>{RESOLUTION_LABEL[trial.resolution]} · {trial.scaleMode === "log" ? "对数" : "线性"}</span>}
+          {context.visibility.asset && <span>{context.displaySymbol}</span>}
+        </div>
+      )}
 
       {trial.taskType === "T3" && <div className="mod-definition"><span>统一阶段定义</span><p>{STAGE_DEFINITION}</p></div>}
 
@@ -1572,15 +1592,15 @@ function LayerAssetResponseCard({
 
       {(disclosureKey === "DI3" || disclosureKey === "DI4") && (
         <section className="mod-event-panel mod-layer-event-panel">
-          <div className="mod-event-panel-head"><span className="mod-kicker">本层新增 · {disclosureKey === "DI3" ? "核心事件" : "补充事件"}</span><strong>{context.newlyDisclosedEvents.length} 项 · 上限 {MAX_EVENTS_PER_DISCLOSURE}</strong></div>
+          <div className="mod-event-panel-head"><span className="mod-kicker">本层新增 · {disclosureKey === "DI3" ? "事件信息（一）" : "事件信息（二）"}</span><strong>{context.newlyDisclosedEvents.length} 项 · 上限 {MAX_EVENTS_PER_DISCLOSURE}</strong></div>
           {context.retainedEventCount > 0 && <p className="mod-event-retained">上一层的 {context.retainedEventCount} 个事件继续保留；下方只列出本层新增内容。</p>}
           {context.newlyDisclosedEvents.length ? (
             <div className="mod-event-list">
               {context.newlyDisclosedEvents.map((event) => (
-                <article key={event.sourceId ?? `${event.date}-${event.title}`}><time>{event.date}</time><span className={eventSourcePriority(event) <= 2 ? "is-high" : ""}>P{eventSourcePriority(event)}</span><h3>{event.title}</h3><p>{event.description}</p></article>
+                <article key={event.sourceId ?? `${event.date}-${event.title}`}><time>{event.date}</time><h3>{event.title}</h3><p>{event.description}</p></article>
               ))}
             </div>
-          ) : <p className="mod-event-empty">当前显示时间窗内没有属于本层优先级范围的事件。</p>}
+          ) : <p className="mod-event-empty">当前显示时间窗内没有可展示的新增事件。</p>}
         </section>
       )}
 
@@ -1596,12 +1616,13 @@ function LayerAssetResponseCard({
           onWidthsChange={(values) => onChange((current) => ({ ...current, widths: values }))}
           onBoundaryInteraction={markBoundaryInteraction}
           onUncertaintyInteraction={markUncertaintyInteraction}
+          showDates={context.visibility.axes}
         />
 
         {disclosureIndex > 0 && (
           <section className="mod-question-block is-new">
             <span className="mod-new-flag">NEW · 本层新增信息</span>
-            <h3>这一层新增的信息，对你的判断影响有多大？</h3>
+            <h3>当前这一步的信息状态，对你的判断影响有多大？</h3>
             <Rating value={draft.influence} onChange={(value) => onChange((current) => ({ ...current, influence: value, influenceTouched: true, lastInteractionAt: performance.now() }))} left="几乎没有" right="影响很大" label={`曲线 ${trial.order + 1} 新增信息影响`} />
             {sameAsPrevious && (
               <div className="mod-confirm-row compact"><input id={noChangeId} type="checkbox" checked={draft.noChangeConfirmed} onChange={(event) => onChange((current) => ({ ...current, noChangeConfirmed: event.target.checked, lastInteractionAt: performance.now() }))} /><label htmlFor={noChangeId}><strong>我确认有意保持不变</strong><small>分界点和范围与上一层一致。</small></label></div>
@@ -1648,8 +1669,11 @@ export function ExperimentModular({
 }) {
   const isV4 = protocolVariant === "v4";
   const isPilot = entryMode === "pilot";
-  const isM1Main = entryMode === "m1";
-  const isFixedM1 = isPilot || isM1Main;
+  const isHumanM1Main = entryMode === "m1";
+  const isAgentM1 = entryMode === "agent-m1";
+  const isMatchedM1 = isHumanM1Main || isAgentM1;
+  const isM1Main = isMatchedM1;
+  const isFixedM1 = isPilot || isMatchedM1;
   const editionMark = isV4 ? "04" : "06";
   const [bundle, setBundle] = useState<Bundle | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -1666,13 +1690,35 @@ export function ExperimentModular({
   const [snapshot, setSnapshot] = useState<DisclosureKey>("GI2");
   const [assetId, setAssetId] = useState("bitcoin");
   const [robustnessFactor, setRobustnessFactor] = useState<RobustnessFactor>("resolution");
-  const [actorType, setActorType] = useState<"human" | "agent">("human");
+  const [actorType, setActorType] = useState<"human" | "agent">(isAgentM1 ? "agent" : "human");
+  const sessionActorType: "human" | "agent" = isAgentM1 ? "agent" : actorType;
   const [participantCode, setParticipantCode] = useState("");
   const [expertise, setExpertise] = useState("none");
   const [modelName, setModelName] = useState("");
+  const [launchToken, setLaunchToken] = useState("");
+  const [pairId, setPairId] = useState("");
+  const [scheduleId, setScheduleId] = useState(0);
+  const [informationCondition, setInformationCondition] = useState<M1Condition>("staged");
+  const [agentProvider, setAgentProvider] = useState("OpenAI");
+  const [agentModelSnapshot, setAgentModelSnapshot] = useState("");
+  const [agentApiVersion, setAgentApiVersion] = useState("");
+  const [agentControllerVersion, setAgentControllerVersion] = useState("boundary-lab-browser-controller-v1");
+  const [agentControllerArtifactSha256, setAgentControllerArtifactSha256] = useState("");
+  const [agentRuntimePromptPackageSha256, setAgentRuntimePromptPackageSha256] = useState("");
+  const [agentBrowserMajor, setAgentBrowserMajor] = useState("");
+  const [agentPromptSha256] = useState(M1_AGENT_PROMPT_SHA256);
+  const agentContextPolicy = "persistent" as const;
+  const [agentTemperature, setAgentTemperature] = useState("0");
+  const [agentTopP, setAgentTopP] = useState("1");
+  const [agentSeed, setAgentSeed] = useState("");
+  const [agentReasoningEffort, setAgentReasoningEffort] = useState("");
+  const [agentImageDetail, setAgentImageDetail] = useState("high");
+  const [humanConsentAt, setHumanConsentAt] = useState("");
+  const [humanEnglishScreenedAt, setHumanEnglishScreenedAt] = useState("");
   const [consent, setConsent] = useState(false);
   const [plan, setPlan] = useState<TrialPlan[]>([]);
   const [sessionId, setSessionId] = useState("");
+  const [resumeSessionId, setResumeSessionId] = useState("");
   const [trialIndex, setTrialIndex] = useState(0);
   const [disclosureIndex, setDisclosureIndex] = useState(0);
   const [boundaries, setBoundaries] = useState<number[]>(initialBoundaries("T2"));
@@ -1691,6 +1737,12 @@ export function ExperimentModular({
   const [batchProgress, setBatchProgress] = useState({ completed: 0, total: 0 });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [pageExposureStepOrder, setPageExposureStepOrder] = useState<number | null>(null);
+  const [pageExposureError, setPageExposureError] = useState<{ stepOrder: number; message: string } | null>(null);
+  const [pageExposureRetry, setPageExposureRetry] = useState(0);
+  const [pageRemainingMs, setPageRemainingMs] = useState(180_000);
+  const [pageExpiredStepOrder, setPageExpiredStepOrder] = useState<number | null>(null);
+  const [terminationCode, setTerminationCode] = useState("");
   const [adjustmentCount, setAdjustmentCount] = useState(0);
   const [uncertaintyAdjustmentCount, setUncertaintyAdjustmentCount] = useState(0);
   const stepStartedAt = useRef(0);
@@ -1701,6 +1753,7 @@ export function ExperimentModular({
   const stepStartedWallAt = useRef("");
   const stepHiddenStartedAt = useRef<number | null>(null);
   const stepHiddenAccumulatedMs = useRef(0);
+  const pageDeadlineAt = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -1721,7 +1774,32 @@ export function ExperimentModular({
   }, [isV4]);
 
   useEffect(() => {
+    if (!isFixedM1 || typeof window === "undefined") return;
+    const parameters = new URLSearchParams(window.location.search);
+    const queryLaunchToken = parameters.get("launch")?.trim().slice(0, 64) ?? "";
+    const timer = window.setTimeout(() => {
+      setLaunchToken(queryLaunchToken);
+      try {
+        setResumeSessionId(window.localStorage.getItem(`boundary-lab-active-${entryMode}`) ?? "");
+      } catch {
+        setResumeSessionId("");
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [entryMode, isFixedM1]);
+
+  const currentTrial = plan[trialIndex];
+  const currentDisclosure = currentTrial?.disclosures[disclosureIndex];
+  const currentStepOrder = disclosureIndex * plan.length + trialIndex;
+  const currentPageExposureReady = !isFixedM1 || pageExposureStepOrder === currentStepOrder;
+  const currentPageExposureError = pageExposureError?.stepOrder === currentStepOrder
+    ? pageExposureError.message
+    : "";
+  const currentPageExpired = isFixedM1 && pageExpiredStepOrder === currentStepOrder;
+
+  useEffect(() => {
     if (phase !== "experiment") return;
+    if (isFixedM1 && !currentPageExposureReady) return;
     stepStartedAt.current = performance.now();
     stepStartedWallAt.current = new Date().toISOString();
     firstMoveAt.current = null;
@@ -1739,10 +1817,7 @@ export function ExperimentModular({
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [phase, trialIndex, disclosureIndex]);
-
-  const currentTrial = plan[trialIndex];
-  const currentDisclosure = currentTrial?.disclosures[disclosureIndex];
+  }, [phase, trialIndex, disclosureIndex, isFixedM1, currentPageExposureReady]);
   const activeCueSet = currentDisclosure ? CUE_SETS[currentDisclosure] : CUE_SETS.G0;
   const currentAsset = bundle?.assets.find((asset) => asset.id === currentTrial?.assetId);
   const currentControl = bundle?.controls.find((control) => control.id === currentTrial?.controlId);
@@ -1801,6 +1876,59 @@ export function ExperimentModular({
   const displayName = currentControl?.nameZh ?? currentAsset?.nameZh ?? "匿名序列";
   const displaySymbol = currentControl?.symbol ?? currentAsset?.symbol ?? "";
   const displayIntro = currentControl?.intro ?? currentAsset?.intro ?? "";
+
+  useEffect(() => {
+    if (!isFixedM1 || phase !== "experiment" || !sessionId || !currentTrial) return;
+    let cancelled = false;
+    fetch("/api/m1-step-exposures", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, stepOrder: currentStepOrder }),
+    })
+      .then(async (response) => {
+        const payload = await response.json() as { remainingMs?: number; error?: string };
+        if (!response.ok) throw new Error(payload.error || "本页服务器计时启动失败");
+        return payload;
+      })
+      .then((payload) => {
+        if (cancelled) return;
+        const remainingMs = Math.max(0, Math.min(180_000, Number(payload.remainingMs ?? 0)));
+        pageDeadlineAt.current = performance.now() + remainingMs;
+        setPageRemainingMs(remainingMs);
+        setPageExposureError(null);
+        setPageExposureStepOrder(currentStepOrder);
+      })
+      .catch((reason: unknown) => {
+        if (!cancelled) setPageExposureError({
+          stepOrder: currentStepOrder,
+          message: reason instanceof Error ? reason.message : "本页服务器计时启动失败",
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentStepOrder, currentTrial, isFixedM1, pageExposureRetry, phase, sessionId]);
+
+  useEffect(() => {
+    if (!isFixedM1 || phase !== "experiment" || !currentPageExposureReady || currentPageExpired) return;
+    const tick = () => {
+      const remaining = Math.max(0, pageDeadlineAt.current - performance.now());
+      setPageRemainingMs(remaining);
+      if (remaining <= 0) {
+        setPageExpiredStepOrder(currentStepOrder);
+        window.setTimeout(() => {
+          void fetch("/api/m1-step-exposures", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionId, stepOrder: currentStepOrder }),
+          });
+        }, 750);
+      }
+    };
+    tick();
+    const timer = window.setInterval(tick, 250);
+    return () => window.clearInterval(timer);
+  }, [currentPageExposureReady, currentPageExpired, currentStepOrder, isFixedM1, phase, sessionId]);
 
   const markBoundaryInteraction = () => {
     const now = performance.now();
@@ -1876,6 +2004,38 @@ export function ExperimentModular({
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
   };
 
+  const stopSession = async () => {
+    if (!sessionId || busy) return;
+    const confirmed = window.confirm("确定停止本次作答吗？已提交的页面会按知情同意说明保留；停止作答不等于撤回既有研究数据。");
+    if (!confirmed) return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/sessions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          action: "abort",
+          reason: isAgentM1 ? "operator-abort" : "participant-exit",
+        }),
+      });
+      const payload = await response.json() as { terminationCode?: string; error?: string };
+      if (!response.ok) throw new Error(payload.error || "停止会话失败");
+      setTerminationCode(payload.terminationCode ?? (isAgentM1 ? "OPERATOR_ABORT" : "PARTICIPANT_EXIT"));
+      try {
+        window.localStorage.removeItem(`boundary-lab-active-${entryMode}`);
+      } catch {
+        // Storage can be disabled without changing the server-side termination.
+      }
+      setPhase("terminated");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "停止会话失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const toggleCue = (cue: CueOption) => {
     const exclusiveCodes = new Set(activeCueSet.options.filter((option) => option.exclusive).map((option) => option.code));
     setCueTags((value) => {
@@ -1895,12 +2055,13 @@ export function ExperimentModular({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        actorType,
+        actorType: sessionActorType,
         participantCode,
+        launchToken: isMatchedM1 ? launchToken : null,
         expertise,
-        experimentalArm: isM1Main ? "m1-main" : isPilot ? "pilot-m1" : moduleKey,
+        experimentalArm: isAgentM1 ? "agent-m1-main" : isHumanM1Main ? "m1-main" : isPilot ? "pilot-m1" : moduleKey,
         protocolVersion: bundle.protocolVersion,
-        modelName: actorType === "agent" ? modelName : null,
+        modelName: sessionActorType === "agent" ? modelName : null,
         deviceInfo,
         studyConfig: {
           module: moduleKey,
@@ -1915,11 +2076,40 @@ export function ExperimentModular({
           windowMode: isV4 ? windowMode : "whole",
           windowProtocol: isV4 ? bundle.curatedWindow ?? null : null,
           participantBriefingVersion: isV4 ? "participant-briefing-v2-device-telemetry" : null,
+          humanConsentVersion: isHumanM1Main ? "m1-human-consent-v1" : null,
+          humanConsentedAt: isHumanM1Main ? humanConsentAt : null,
+          humanLanguageScreeningVersion: isHumanM1Main ? "m1-en-financial-reading-v1" : null,
+          humanLanguageScreenedAt: isHumanM1Main ? humanEnglishScreenedAt : null,
           cueSchemaVersion: isFixedM1 ? "none" : isV4 ? CUE_SCHEMA_VERSION : "legacy-cues-v1",
           cueTaxonomyUrl: isFixedM1 ? null : isV4 ? "/data/cue-taxonomy-v4-v2.json" : null,
           entryMode,
+          pairId: isFixedM1 ? pairId || participantCode : null,
+          scheduleId: isFixedM1 ? scheduleId : null,
+          informationCondition: isFixedM1 ? informationCondition : null,
+          protocolArchitecture: isFixedM1 ? M1_PROTOCOL_VERSION : null,
           pilotProtocol: isPilot ? "m1-pilot-v4-six-sequential-pages-minimal-response" : null,
-          mainStudyProtocol: isM1Main ? "m1-human-main-v4-six-sequential-pages-minimal-response" : null,
+          mainStudyProtocol: isMatchedM1 ? M1_PROTOCOL_VERSION : null,
+          agentMetadata: isAgentM1 ? {
+            provider: agentProvider.trim(),
+            modelSnapshot: agentModelSnapshot.trim(),
+            apiVersion: agentApiVersion.trim() || null,
+            controllerVersion: agentControllerVersion.trim(),
+            controllerArtifactSha256: agentControllerArtifactSha256.trim().toLowerCase(),
+            runtimePromptPackageSha256: agentRuntimePromptPackageSha256.trim().toLowerCase(),
+            promptSha256: agentPromptSha256.trim().toLowerCase() || null,
+            contextPolicy: agentContextPolicy,
+            inputModality: "screenshot-only-browser-control",
+            imageDetail: agentImageDetail,
+            temperature: agentTemperature.trim() === "" ? null : Number(agentTemperature),
+            topP: agentTopP.trim() === "" ? null : Number(agentTopP),
+            seed: agentSeed.trim() === "" ? null : Number(agentSeed),
+            reasoningEffort: agentReasoningEffort.trim() || null,
+            browserEngine: "Chrome",
+            browserMajor: Number(agentBrowserMajor),
+            replicateId: null,
+            allowedTools: ["screenshot", "coordinate-click", "coordinate-drag", "scroll"],
+            forbiddenChannels: ["dom", "accessibility-tree", "network", "source", "stimulus-json", "external-search"],
+          } : null,
           disclosureFlowOrder: usesLayerMajorDisclosureFlow ? "disclosure-major" : "asset-major",
           layerPresentation: usesFixedM1SequentialPages
             ? "sequential-single-asset-pages-v1"
@@ -1930,6 +2120,8 @@ export function ExperimentModular({
           deviceTelemetryProtocol: isFixedM1 ? "session-device-environment-v1" : null,
           responseTelemetryProtocol: isFixedM1 ? "per-page-visible-time-v1" : null,
           participantQuestionSet: isFixedM1 ? "boundaries-uncertainty-influence-v1" : "full-annotation-v2",
+          initialBoundaryPolicy: isFixedM1 ? "common-tertile-anchors-adjustment-v1" : null,
+          initialBoundaryRatios: isFixedM1 ? [1 / 3, 2 / 3] : null,
           uncertaintyControl: isV4 ? "continuous-range-knob-v1" : "preset-widths-v1",
           eventSelectionProtocol: isV4 ? EVENT_SELECTION_PROTOCOL : null,
           maximumNewEventsPerDisclosure: isV4 ? MAX_EVENTS_PER_DISCLOSURE : null,
@@ -1939,9 +2131,26 @@ export function ExperimentModular({
         },
       }),
     });
-    const payload = (await response.json()) as { session?: { id: string }; error?: string };
+    const payload = (await response.json()) as {
+      session?: { id: string };
+      plan?: TrialPlan[];
+      assignment?: { scheduleId?: number; informationCondition?: M1Condition } | null;
+      expectedResponseCount?: number;
+      error?: string;
+    };
     if (!response.ok || !payload.session?.id) throw new Error(payload.error ?? "实验会话创建失败");
-    return payload.session.id;
+    if (isFixedM1 && payload.expectedResponseCount !== 42) throw new Error("服务器未返回完整的 42 步实验计划。");
+    try {
+      window.localStorage.setItem(`boundary-lab-active-${entryMode}`, payload.session.id);
+    } catch {
+      // The durable source of truth is D1; the browser stores only a resume pointer.
+    }
+    return {
+      sessionId: payload.session.id,
+      assignedPlan: Array.isArray(payload.plan) ? payload.plan : nextPlan,
+      assignedScheduleId: payload.assignment?.scheduleId,
+      assignedInformationCondition: payload.assignment?.informationCondition,
+    };
   };
 
   const begin = async () => {
@@ -1949,21 +2158,46 @@ export function ExperimentModular({
     setBusy(true);
     setError("");
     try {
-      if (isFixedM1 && !participantCode.trim()) {
-        throw new Error("请输入研究者提供的匿名参与者编号。");
+      if (isMatchedM1 && !/^[a-f0-9]{64}$/i.test(launchToken)) {
+        throw new Error("此入口缺少有效的研究启动令牌，请使用研究者生成的完整链接。");
       }
-      const nextPlan = makeTrialPlan(bundle, {
-        module: moduleKey,
-        taskType,
-        metric,
-        resolution,
-        scaleMode,
-        disclosurePath,
-        snapshot,
-        assetId,
-        robustnessFactor,
-        windowMode: isV4 ? windowMode : "whole",
-      });
+      if (isHumanM1Main && !humanConsentAt) {
+        throw new Error("请先确认你已完成研究团队在本网站之外提供的机构批准知情同意流程。");
+      }
+      if (isHumanM1Main && !humanEnglishScreenedAt) {
+        throw new Error("请先确认你已通过研究团队事先完成的英文金融新闻阅读筛选。");
+      }
+      if (isFixedM1 && !isMatchedM1 && !participantCode.trim()) {
+        throw new Error(isAgentM1 ? "请输入本次 Agent run 的匿名编号。" : "请输入研究者提供的匿名参与者编号。");
+      }
+      if (isAgentM1 && (
+        !modelName.trim() || !agentProvider.trim() || !agentModelSnapshot.trim() ||
+        !agentApiVersion.trim() || !agentControllerVersion.trim() ||
+        !/^[a-f0-9]{64}$/i.test(agentControllerArtifactSha256.trim()) ||
+        !/^[a-f0-9]{64}$/i.test(agentRuntimePromptPackageSha256.trim()) ||
+        !/^[a-f0-9]{64}$/i.test(agentPromptSha256.trim()) ||
+        !Number.isInteger(Number(agentBrowserMajor)) || Number(agentBrowserMajor) < 100
+      )) {
+        throw new Error("请完整填写冻结模型、控制器工件、完整运行时提示包、Chrome 主版本及其 SHA-256 信息。");
+      }
+      const fixedSchedule = normalizeM1ScheduleId(
+        scheduleId || scheduleIdFromText(pairId || participantCode.trim()),
+      );
+      if (isFixedM1) setScheduleId(fixedSchedule);
+      const nextPlan = isFixedM1
+        ? buildM1ProtocolPlan(fixedSchedule, informationCondition) as TrialPlan[]
+        : makeTrialPlan(bundle, {
+            module: moduleKey,
+            taskType,
+            metric,
+            resolution,
+            scaleMode,
+            disclosurePath,
+            snapshot,
+            assetId,
+            robustnessFactor,
+            windowMode: isV4 ? windowMode : "whole",
+          });
       if (!nextPlan.length) throw new Error("当前条件没有可用曲线，请调整研究配置。");
       setPlan(nextPlan);
       setTrialIndex(0);
@@ -1977,11 +2211,116 @@ export function ExperimentModular({
         setConsent(false);
         setPhase("briefing");
       } else {
-        setSessionId(await createSession(nextPlan));
+        const created = await createSession(nextPlan);
+        setSessionId(created.sessionId);
+        setPlan(created.assignedPlan);
         setPhase("experiment");
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "实验启动失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resumeSession = async () => {
+    if (!resumeSessionId || !bundle) return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/sessions?sessionId=${encodeURIComponent(resumeSessionId)}`, { cache: "no-store" });
+      const payload = (await response.json()) as {
+        error?: string;
+        session?: {
+          id: string;
+          actorType: string;
+          participantCode: string;
+          experimentalArm: string;
+          status: string;
+          practiceCompletedAt: string | null;
+          studyConfig: Record<string, unknown>;
+        };
+        responses?: Array<Record<string, unknown>>;
+      };
+      if (!response.ok || !payload.session) throw new Error(payload.error ?? "未完成会话无法恢复");
+      const expectedArm = isAgentM1 ? "agent-m1-main" : isHumanM1Main ? "m1-main" : "pilot-m1";
+      if (payload.session.experimentalArm !== expectedArm) throw new Error("这个未完成会话不属于当前实验入口。");
+      const storedPlan = payload.session.studyConfig.randomizedPlan;
+      if (!Array.isArray(storedPlan) || storedPlan.length !== 6) throw new Error("服务器中的实验计划不完整。");
+      const restoredPlan = storedPlan as TrialPlan[];
+      const restoredAnswers = (payload.responses ?? []).map((row): ModularAnswer => ({
+        trialId: String(row.trialId ?? ""),
+        trialOrder: Number(row.trialOrder ?? 0),
+        disclosureIndex: Number(row.disclosureIndex ?? 0),
+        disclosureKey: String(row.disclosureKey ?? "G0") as DisclosureKey,
+        taskType: String(row.taskType ?? "T2") as TaskType,
+        assetId: String(row.assetId ?? ""),
+        metric: String(row.metricType ?? "price") as MetricKey,
+        boundaries: JSON.parse(String(row.boundariesJson ?? "[]")) as BoundaryRecord[],
+        previousBoundaries: JSON.parse(String(row.previousBoundariesJson ?? "[]")) as BoundaryRecord[],
+        boundaryIntervals: JSON.parse(String(row.boundaryIntervalsJson ?? "[]")) as IntervalRecord[],
+        singleStageConfirmed: Boolean(row.singleStageConfirmed),
+        influenceRating: row.influenceRating === null || row.influenceRating === undefined ? null : Number(row.influenceRating),
+        influenceTouched: Boolean(row.influenceTouched),
+        noChangeConfirmed: Boolean(row.noChangeConfirmed),
+        cueTags: JSON.parse(String(row.cueTags ?? "[]")) as string[],
+        rationale: String(row.rationale ?? ""),
+        stimulusType: String(row.stimulusType ?? "crypto"),
+        resolution: String(row.resolution ?? "weekly") as Resolution,
+        scaleMode: String(row.scaleMode ?? "linear") as ScaleMode,
+        windowMode: String(row.windowMode ?? "whole") as WindowMode,
+        disclosureState: JSON.parse(String(row.disclosureStateJson ?? "{}")) as Record<string, unknown>,
+        stimulusWindow: JSON.parse(String(row.stimulusWindowJson ?? "{}")) as Record<string, unknown>,
+        elapsedMs: Number(row.elapsedMs ?? 0),
+        revealReadMs: Number(row.revealReadMs ?? 0),
+        firstMoveMs: row.firstMoveMs === null || row.firstMoveMs === undefined ? null : Number(row.firstMoveMs),
+        firstUncertaintyMs: row.firstUncertaintyMs === null || row.firstUncertaintyMs === undefined ? null : Number(row.firstUncertaintyMs),
+        adjustmentCount: Number(row.adjustmentCount ?? 0),
+        uncertaintyAdjustmentCount: Number(row.uncertaintyAdjustmentCount ?? 0),
+        clientStartedAt: row.clientStartedAt ? String(row.clientStartedAt) : undefined,
+        clientSubmittedAt: row.clientSubmittedAt ? String(row.clientSubmittedAt) : undefined,
+        responseViewportWidth: row.responseViewportWidth === null || row.responseViewportWidth === undefined ? undefined : Number(row.responseViewportWidth),
+        responseViewportHeight: row.responseViewportHeight === null || row.responseViewportHeight === undefined ? undefined : Number(row.responseViewportHeight),
+        responseOrientation: row.responseOrientation ? String(row.responseOrientation) : undefined,
+        pageHiddenMs: Number(row.pageHiddenMs ?? 0),
+        activeElapsedMs: Number(row.activeElapsedMs ?? 0),
+      }));
+      setPlan(restoredPlan);
+      setSessionId(payload.session.id);
+      setParticipantCode(payload.session.participantCode);
+      setAnswers(restoredAnswers);
+      setInformationCondition(normalizeM1Condition(payload.session.studyConfig.informationCondition));
+      setScheduleId(normalizeM1ScheduleId(payload.session.studyConfig.scheduleId));
+      setPairId(String(payload.session.studyConfig.pairId ?? ""));
+      sessionDeviceInfo.current = collectDeviceInfo();
+      if (payload.session.status === "complete") {
+        setPhase("complete");
+        return;
+      }
+      if (isFixedM1 && !payload.session.practiceCompletedAt) {
+        resetResponseState("T2", false);
+        setTrialIndex(0);
+        setDisclosureIndex(0);
+        setPhase("practice");
+        return;
+      }
+      if (restoredAnswers.length >= 42) {
+        setTrialIndex(restoredPlan.length - 1);
+        setDisclosureIndex(restoredPlan[0].disclosures.length - 1);
+        setPhase("review");
+        return;
+      }
+      const nextDisclosureIndex = Math.floor(restoredAnswers.length / restoredPlan.length);
+      const nextTrialIndex = restoredAnswers.length % restoredPlan.length;
+      const nextTrial = restoredPlan[nextTrialIndex];
+      const prior = priorAnswerForPosition(nextTrial, nextDisclosureIndex, restoredAnswers);
+      setDisclosureIndex(nextDisclosureIndex);
+      setTrialIndex(nextTrialIndex);
+      resetResponseState(nextTrial.taskType, false, prior);
+      setPhase(nextTrialIndex === 0 ? "transition" : "experiment");
+      window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "未完成会话无法恢复");
     } finally {
       setBusy(false);
     }
@@ -1992,10 +2331,50 @@ export function ExperimentModular({
     setBusy(true);
     setError("");
     try {
-      setSessionId(await createSession(plan));
-      setPhase(usesLayerMajorDisclosureFlow ? "transition" : "experiment");
+      const created = await createSession(plan);
+      setSessionId(created.sessionId);
+      setPlan(created.assignedPlan);
+      if (created.assignedScheduleId) setScheduleId(normalizeM1ScheduleId(created.assignedScheduleId));
+      if (created.assignedInformationCondition) setInformationCondition(normalizeM1Condition(created.assignedInformationCondition));
+      if (isFixedM1) {
+        resetResponseState("T2", false);
+        setPhase("practice");
+      } else {
+        setPhase(usesLayerMajorDisclosureFlow ? "transition" : "experiment");
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "实验启动失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const completePractice = async () => {
+    const practicePoints = bundle?.controls.find((control) => control.kind === "ground-truth")
+      ?.metric.resolutions.weekly.points ?? [];
+    const orderedBoundaries = [...boundaries].sort((first, second) => first - second);
+    const orderedWidths = orderedBoundaries.map((boundary) => widths[boundaries.indexOf(boundary)] ?? null);
+    if (orderedBoundaries.length !== 2 || intervalRecords(orderedBoundaries, orderedWidths, practicePoints).length !== 2) {
+      setError("练习中请检查两个分界点，并为两个分界点都拖动范围旋钮。");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/sessions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, action: "practice-complete" }),
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "练习完成状态保存失败");
+      resetResponseState("T2", false);
+      setTrialIndex(0);
+      setDisclosureIndex(0);
+      setPhase("transition");
+      window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "练习完成状态保存失败");
     } finally {
       setBusy(false);
     }
@@ -2108,7 +2487,7 @@ export function ExperimentModular({
           disclosureIndex,
           disclosureKey: currentDisclosure,
           disclosureState,
-          responseVersion: isFixedM1 ? "v4.3" : isV4 ? "v4.1" : "pre-v4",
+          responseVersion: isFixedM1 ? "m1-isomorphic-v1" : isV4 ? "v4.1" : "pre-v4",
           stimulusWindow,
           cueSchemaVersion: isFixedM1 ? "none" : isV4 ? CUE_SCHEMA_VERSION : "legacy-cues-v1",
           boundaries: currentBoundaryRecords,
@@ -2398,6 +2777,7 @@ export function ExperimentModular({
       });
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(payload.error ?? "会话完成状态写入失败");
+      try { window.localStorage.removeItem(`boundary-lab-active-${entryMode}`); } catch { /* D1 remains authoritative. */ }
       setPhase("complete");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "会话完成状态写入失败");
@@ -2411,8 +2791,8 @@ export function ExperimentModular({
   if (phase === "setup") {
     const snapshotOptions = moduleKey === "robustness" ? SNAPSHOT_OPTIONS.slice(0, 3) : SNAPSHOT_OPTIONS;
     if (isFixedM1) {
-      const studyLabel = isM1Main ? "M1 · 主实验" : "M1 · 初批实验";
-      const studyEyebrow = isM1Main ? "M1 MAIN STUDY · PARTICIPANT ENTRY" : "M1 PILOT · PARTICIPANT ENTRY";
+      const studyLabel = isAgentM1 ? "M1 · Agent 同构实验" : isM1Main ? "M1 · 主实验" : "M1 · 初批实验";
+      const studyEyebrow = isAgentM1 ? "M1 MATCHED STUDY · AGENT RUN ENTRY" : isM1Main ? "M1 MAIN STUDY · PARTICIPANT ENTRY" : "M1 PILOT · PARTICIPANT ENTRY";
       return (
         <main className="mod-site mod-pilot-entry">
           <header className="mod-topbar">
@@ -2423,27 +2803,66 @@ export function ExperimentModular({
             <div className="mod-pilot-hero">
               <span className="mod-eyebrow">{studyEyebrow}</span>
               <h1>观察曲线，<br />标出你眼中的阶段。</h1>
-              <p>你将对六条时间序列进行判断。系统会先显示匿名曲线，再逐步加入信息；每一步都请根据当前画面重新确认两个分界点。</p>
+              <p>你将对六条时间序列进行判断。系统会按预定轮次呈现当前可用的页面；每一步都请只根据当时画面重新确认两个分界点。</p>
             </div>
             <div className="mod-pilot-protocol" aria-label="本次实验流程摘要">
               <article><span>01</span><strong>固定三阶段</strong><p>每次用两个分界点，把曲线划分为三个阶段。</p></article>
-              <article><span>02</span><strong>六条曲线，分别作答</strong><p>每个信息层包含六个连续页面，每页只判断一种资产。</p></article>
+              <article><span>02</span><strong>六条曲线，分别作答</strong><p>每个判断轮次包含六个连续页面，每页只判断一条曲线。</p></article>
               <article><span>03</span><strong>逐页独立提交</strong><p>每条曲线完成后立即安全写入数据库；提交后不能返回修改。</p></article>
             </div>
             <section className="mod-pilot-participant-card">
               <div>
                 <span className="mod-eyebrow">BEFORE YOU BEGIN</span>
-                <h2>输入匿名编号</h2>
-                <p>请使用研究者提供的编号，不要填写真实姓名。下一页会说明完整操作方式并征求匿名记录同意。</p>
+                <h2>{isAgentM1 ? "登记可复现运行信息" : "输入研究编码"}</h2>
+                <p>{isAgentM1 ? "本页由研究者或控制器操作员在模型会话开始前填写。模型的 persistent context 从下一页共同说明开始；本页不计入实验流程。" : "请使用研究者提供的编号，不要填写真实姓名。本页只记录你已完成研究机构批准的知情同意流程后的操作确认；如果尚未收到完整研究说明，请不要开始。"}</p>
               </div>
-              <div className="mod-pilot-fields">
-                <label><span>匿名参与者编号</span><input value={participantCode} maxLength={64} onChange={(event) => setParticipantCode(event.target.value)} placeholder="例如 P-001" autoComplete="off" /></label>
-                <label><span>相关经验</span><select value={expertise} onChange={(event) => setExpertise(event.target.value)}><option value="none">无相关经验</option><option value="casual">偶尔关注</option><option value="active">持续参与</option><option value="professional">专业研究/从业</option></select></label>
-              </div>
+              {isAgentM1 ? (
+                <div className="mod-pilot-fields mod-agent-run-fields">
+                  <label><span>Agent run 编号</span><input value="由不透明启动令牌分配" readOnly /></label>
+                  <label><span>模型显示名称</span><input value={modelName} maxLength={120} onChange={(event) => setModelName(event.target.value)} placeholder="例如 GPT-5.6" /></label>
+                  <label><span>Provider</span><input value={agentProvider} maxLength={80} onChange={(event) => setAgentProvider(event.target.value)} placeholder="例如 OpenAI" /></label>
+                  <label><span>完整模型快照 / ID</span><input value={agentModelSnapshot} maxLength={160} onChange={(event) => setAgentModelSnapshot(event.target.value)} placeholder="不可只写模型家族" /></label>
+                  <label><span>API 版本</span><input value={agentApiVersion} maxLength={80} onChange={(event) => setAgentApiVersion(event.target.value)} placeholder="例如 2026-08-01" /></label>
+                  <label><span>控制器版本</span><input value={agentControllerVersion} maxLength={120} onChange={(event) => setAgentControllerVersion(event.target.value)} /></label>
+                  <label><span>控制器工件 SHA-256</span><input value={agentControllerArtifactSha256} maxLength={64} onChange={(event) => setAgentControllerArtifactSha256(event.target.value)} placeholder="64 位十六进制" /></label>
+                  <label><span>完整运行时 Prompt package SHA-256</span><input value={agentRuntimePromptPackageSha256} maxLength={64} onChange={(event) => setAgentRuntimePromptPackageSha256(event.target.value)} placeholder="不是单独 system prompt hash" /></label>
+                  <label><span>Chrome 主版本</span><input value={agentBrowserMajor} onChange={(event) => setAgentBrowserMajor(event.target.value)} inputMode="numeric" placeholder="例如 140" /></label>
+                  <label><span>上下文策略</span><input value="Persistent（M1 主实验固定）" readOnly /></label>
+                  <label><span>图像 detail</span><select value={agentImageDetail} onChange={(event) => setAgentImageDetail(event.target.value)}><option value="high">High</option><option value="auto">Auto</option><option value="original">Original</option></select></label>
+                  <label><span>Temperature</span><input value={agentTemperature} onChange={(event) => setAgentTemperature(event.target.value)} inputMode="decimal" /></label>
+                  <label><span>Top P</span><input value={agentTopP} onChange={(event) => setAgentTopP(event.target.value)} inputMode="decimal" /></label>
+                  <label><span>Seed（可空）</span><input value={agentSeed} onChange={(event) => setAgentSeed(event.target.value)} inputMode="numeric" /></label>
+                  <label><span>Reasoning effort（可空）</span><input value={agentReasoningEffort} maxLength={40} onChange={(event) => setAgentReasoningEffort(event.target.value)} /></label>
+                  <label><span>Prompt SHA-256（冻结）</span><input value={agentPromptSha256} maxLength={64} readOnly /></label>
+                  <label><span>Replicate ID</span><input value="由不透明启动令牌固定" readOnly /></label>
+                </div>
+              ) : (
+                <div className="mod-pilot-fields">
+                  <label><span>研究编码</span><input value={isMatchedM1 ? "由不透明启动令牌分配" : participantCode} readOnly={isMatchedM1} maxLength={64} onChange={(event) => setParticipantCode(event.target.value)} placeholder="例如 P-001" autoComplete="off" /></label>
+                  <label><span>相关经验</span><select value={expertise} onChange={(event) => setExpertise(event.target.value)}><option value="none">无相关经验</option><option value="casual">偶尔关注</option><option value="active">持续参与</option><option value="professional">专业研究/从业</option></select></label>
+                </div>
+              )}
+              {isHumanM1Main && (
+                <>
+                  <label className="mod-consent">
+                    <input type="checkbox" checked={Boolean(humanConsentAt)} onChange={(event) => setHumanConsentAt(event.target.checked ? new Date().toISOString() : "")} />
+                    <span>我确认已阅读并同意研究者提供的完整知情同意说明，愿意保存本次编码化判断、逐页响应时间与设备技术环境；我知道可以随时停止，已提交数据的保留或撤回应按该说明执行。</span>
+                  </label>
+                  <label className="mod-consent">
+                    <input type="checkbox" checked={Boolean(humanEnglishScreenedAt)} onChange={(event) => setHumanEnglishScreenedAt(event.target.checked ? new Date().toISOString() : "")} />
+                    <span>我确认已通过研究团队事先提供的英文金融新闻阅读筛选，能够独立理解实验后段出现的英文事件标题与简短说明。</span>
+                  </label>
+                </>
+              )}
               {(loadError || error) && <p className="mod-error" role="alert">{loadError || error}</p>}
-              <button className="mod-start" type="button" onClick={begin} disabled={!bundle || busy || Boolean(loadError)}>{busy ? "正在生成随机实验序列…" : "进入实验说明"}<span>→</span></button>
+              <button className="mod-start" type="button" onClick={begin} disabled={!bundle || busy || Boolean(loadError) || (isHumanM1Main && (!humanConsentAt || !humanEnglishScreenedAt))}>{busy ? "正在生成随机实验序列…" : "进入实验说明"}<span>→</span></button>
+              {resumeSessionId && (
+                <button className="mod-resume-session" type="button" onClick={resumeSession} disabled={!bundle || busy}>
+                  继续这台设备上未完成的会话 <span>{resumeSessionId.slice(0, 8)}</span>
+                </button>
+              )}
             </section>
-            <p className="mod-pilot-privacy">不采集真实姓名或精确位置 · 会记录设备类别、显示尺寸与匿名交互时间</p>
+            <p className="mod-pilot-privacy">{isAgentM1 ? "主协议：只读当前截图并使用坐标点击、拖动和滚动；禁止 DOM、网络、源码、刺激 JSON 与外部检索" : "不采集真实姓名或精确位置 · 原始 User-Agent 不写入 M1 研究表，仅保留浏览器/系统大类、显示尺寸与匿名交互时间"}</p>
           </section>
         </main>
       );
@@ -2467,8 +2886,11 @@ export function ExperimentModular({
             <p>在这里锁定实验条件；点击生成说明页后，再将设备交给参与者。</p>
             <div className="mod-operator-actions">
               <Link href="/m1">人类 M1 主实验 ↗</Link>
-              <Link href="/agent">Agent 全模块实验 ↗</Link>
+              <Link href="/agent">Agent M1 同构实验 ↗</Link>
+              <Link href="/agent/console">Agent 扩展控制台 ↗</Link>
+              <Link href="/research/m1-launch">M1 配对启动器 ↗</Link>
               <Link href="/research/results">结果导出 ↗</Link>
+              <Link href="/methodology/m1">M1 冻结方法 ↗</Link>
               <Link href="/methodology/cues">标签与文献依据 ↗</Link>
             </div>
           </div>
@@ -2705,7 +3127,7 @@ export function ExperimentModular({
   }
 
   if (phase === "briefing" && isV4 && plan.length) {
-    const disclosureUpdates = moduleKey === "disclosure" ? Math.max(0, DISCLOSURE_PATHS[disclosurePath].length - 1) : 0;
+    const disclosureUpdates = moduleKey === "disclosure" ? Math.max(0, plan[0]?.disclosures.length - 1) : 0;
     const briefingTask = moduleKey === "framing"
       ? {
           title: "本次会依次出现三种阶段判断任务",
@@ -2713,7 +3135,9 @@ export function ExperimentModular({
         }
       : TASKS[taskType];
     const moduleBriefing: Record<ModuleKey, string> = {
-      disclosure: "本次研究关注：同一条曲线在获得新信息后，你是否会修正原来的阶段边界。",
+      disclosure: isFixedM1
+        ? "你将对同一组曲线进行若干轮判断。后续轮次的页面信息状态可能变化，也可能保持不变；每次只按当时可见内容作答。"
+        : "本次研究关注：不同页面信息状态是否会改变阶段判断。",
       framing: "本次研究关注：不同任务表述是否会改变你对阶段结构的判断。",
       "cross-series": "本次研究关注：同一研究对象的不同时间序列是否呈现相似的阶段结构。",
       robustness: "本次研究关注：图表呈现方式或对照序列是否会改变阶段判断。",
@@ -2748,7 +3172,7 @@ export function ExperimentModular({
               <span>03 · 本次流程</span>
               <h2>{plan.length} 条实验曲线</h2>
               {moduleKey === "disclosure" ? (
-                <p>实验按信息层推进：每一层包含 <strong>{plan.length} 个连续的单曲线页面</strong>；依次提交全部曲线后才进入下一层。共包含 1 层匿名基线与 {disclosureUpdates} 层信息更新。</p>
+                <p>先完成 1 条不计入分析的合成练习；正式实验按判断轮次推进，每轮包含 <strong>{plan.length} 个连续的单曲线页面</strong>。共包含 1 轮匿名基线与 {disclosureUpdates} 轮后续判断。</p>
               ) : (
                 <p>每条曲线只使用一个固定的信息状态，不会在同一轮中逐层追加内容。</p>
               )}
@@ -2756,28 +3180,30 @@ export function ExperimentModular({
             <article className="mod-briefing-card">
               <span>04 · 如何作答</span>
               <h2>分界点 + 连续范围</h2>
-              <p>先放置分界点，再拖动范围旋钮，给出“最佳位置”可能落入的连续范围。除新增信息影响评分外，不再询问额外的判断理由。</p>
+              <p>{isFixedM1
+                ? "每条曲线从两个共同的标准化起点开始；它们不是推荐答案。请先审视曲线，再主动移动或保留分界点，并拖动范围旋钮给出“最佳位置”可能落入的连续范围。"
+                : "先放置分界点，再拖动范围旋钮，给出“最佳位置”可能落入的连续范围。除当前信息状态影响评分外，不再询问额外的判断理由。"}</p>
             </article>
             <article className="mod-briefing-card">
               <span>05 · 信息隔离</span>
-              <h2>后续信息不会提前出现</h2>
-              <p>本页不会说明资产名称、指标类型、真实日期、数值单位、图表尺度、时间窗口或事件；若它们属于本次实验条件，只会在预定步骤显示。</p>
+              <h2>只按当前页面作答</h2>
+              <p>每一轮只呈现当时可用的页面状态。请不要推测后续页面，也不要把页面外的信息带入当前判断。</p>
             </article>
             <article className="mod-briefing-card">
               <span>06 · 记录方式</span>
               <h2>提交后锁定，不采集真实姓名</h2>
-              <p>研究会记录分界位置、不确定范围、新增信息影响评分、每页作答时间，以及设备类别、屏幕/浏览器视口尺寸、平台、语言和时区等技术环境；不读取联系人、硬件序列号或精确位置。</p>
+              <p>研究会记录分界位置、不确定范围、当前信息状态影响评分、每页作答时间，以及设备类别、屏幕/浏览器视口尺寸、平台、语言和时区等技术环境；不读取联系人、硬件序列号或精确位置。</p>
             </article>
           </div>
 
           <section className="mod-briefing-consent">
             <div>
               <span className="mod-eyebrow">READY CHECK</span>
-              <h2>{actorType === "agent" ? "请确认执行主体已读取实验说明" : "如果说明已经清楚，就可以开始"}</h2>
+              <h2>如果说明已经清楚，就可以开始</h2>
             </div>
             <label className="mod-consent">
               <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
-              <span>{actorType === "agent" ? "执行主体已读取以上约束，并会只使用当前页面可见的信息作答。" : "我已阅读并理解以上说明，同意匿名记录本次判断结果、逐页响应时间与设备技术环境。"}</span>
+              <span>执行主体已阅读并理解以上操作说明，将只依据当前页面可见内容，通过页面控件作答。</span>
             </label>
             {error && <p className="mod-error" role="alert">{error}</p>}
             <button className="mod-start" type="button" onClick={startParticipantSession} disabled={!consent || busy}>
@@ -2789,45 +3215,106 @@ export function ExperimentModular({
     );
   }
 
+  if (phase === "practice" && bundle) {
+    const practiceSeries = bundle.controls.find((control) => control.kind === "ground-truth")
+      ?.metric.resolutions.weekly;
+    const practicePoints = practiceSeries?.points ?? [];
+    if (!practicePoints.length) {
+      return <main className="mod-site mod-centered"><p>练习曲线无法载入，请联系研究者。</p></main>;
+    }
+    const practiceVisibility = disclosureVisibility("G0", "combined");
+    return (
+      <main className="mod-site mod-runner mod-practice-page">
+        <header className="mod-topbar"><span className="mod-wordmark"><span>BOUNDARY</span> LAB <b>{editionMark}</b></span><span>不计入分析 · 练习</span></header>
+        <section className="mod-layer-exposure-banner is-sequential">
+          <div className="mod-layer-exposure-index"><span>TRY</span><strong>00</strong></div>
+          <div><span>COMMON PRACTICE · 共同练习</span><h1>先熟悉分界点与范围旋钮</h1><p>这是一条合成曲线，不属于六条正式刺激，也不会保存为研究答案。</p></div>
+          <aside><b>完成 1 次练习</b><small>练习答案不计入正式分析</small></aside>
+        </section>
+        <section className="mod-run-layout">
+          <div className="mod-run-main">
+            <div className="mod-stimulus-heading"><div><span className="mod-eyebrow">PRACTICE CURVE · T2</span><h1>一段未命名的合成走势</h1><p>拖动两个分界点，把曲线划分为三个阶段。</p></div></div>
+            <ModularChart
+              points={practicePoints}
+              metric="price"
+              unit=""
+              resolution="weekly"
+              scaleMode="linear"
+              visibility={practiceVisibility}
+              boundaries={boundaries}
+              widths={widths}
+              previousBoundaries={[]}
+              events={[]}
+              taskType="T2"
+              onBoundariesChange={setBoundaries}
+              onBoundaryInteraction={markBoundaryInteraction}
+            />
+          </div>
+          <aside className="mod-response-panel">
+            <section className="mod-task-brief"><span className="mod-kicker">练习任务 · T2</span><h2>固定划分为三个阶段</h2><p>先调整两个分界点，再用连续范围旋钮表达位置不确定性。</p></section>
+            <BoundaryEditor
+              taskType="T2"
+              boundaries={boundaries}
+              widths={widths}
+              points={practicePoints}
+              singleStageConfirmed={false}
+              onSingleStageConfirmed={() => undefined}
+              onBoundariesChange={setBoundaries}
+              onWidthsChange={setWidths}
+              onBoundaryInteraction={markBoundaryInteraction}
+              onUncertaintyInteraction={markUncertaintyInteraction}
+              showDates={false}
+            />
+            {error && <p className="mod-error" role="alert">{error}</p>}
+            <button className="mod-submit" type="button" onClick={completePractice} disabled={busy}>{busy ? "正在保存练习状态…" : "完成练习，进入正式实验"}<span>→</span></button>
+            <p className="mod-lock-note">练习答案不会写入正式响应表。</p>
+          </aside>
+        </section>
+      </main>
+    );
+  }
+
   if (!bundle || !currentTrial || !currentDisclosure || !currentMetric || !points.length) {
     return <main className="mod-site mod-centered"><p>实验条件无法载入。请刷新页面后重试。</p></main>;
   }
 
   if (phase === "transition" && usesLayerMajorDisclosureFlow) {
     const previousDisclosure = disclosureIndex > 0 ? currentTrial.disclosures[disclosureIndex - 1] : null;
+    const isRepeatRound = informationCondition === "repeat-control";
+    const isCommonBaseline = disclosureIndex === 0;
     return (
       <main className="mod-site mod-layer-transition-page">
         <header className="mod-topbar">
           <span className="mod-wordmark"><span>BOUNDARY</span> LAB <b>{editionMark}</b></span>
-          <span className="mod-transition-header-label">信息层切换 · {disclosureIndex + 1}/{currentTrial.disclosures.length}</span>
+          <span className="mod-transition-header-label">判断轮次切换 · {disclosureIndex + 1}/{currentTrial.disclosures.length}</span>
         </header>
         <DisclosureRail keys={currentTrial.disclosures} activeIndex={disclosureIndex} />
         <section className="mod-transition-shell">
           <div className="mod-transition-level">
-            <span>DISCLOSURE LEVEL</span>
+            <span>JUDGMENT ROUND</span>
             <strong>{String(disclosureIndex + 1).padStart(2, "0")}</strong>
             <small>/ {String(currentTrial.disclosures.length).padStart(2, "0")}</small>
           </div>
           <div className="mod-transition-copy">
-            <span className="mod-transition-new-label">NEW INFORMATION · 新信息已解锁</span>
-            <h1>{DISCLOSURE_COPY[currentDisclosure].title}</h1>
-            <p>{DISCLOSURE_COPY[currentDisclosure].description}</p>
-            <div className="mod-transition-shift" aria-label="信息状态变化">
-              <span>{previousDisclosure ? DISCLOSURE_COPY[previousDisclosure].title : "实验说明"}</span>
+            <span className="mod-transition-new-label">{isCommonBaseline ? "FIRST JUDGMENT · 进入第一轮" : isRepeatRound ? "NEXT JUDGMENT · 进入下一轮" : "NEW INFORMATION · 新信息已出现"}</span>
+            <h1>{isCommonBaseline || isRepeatRound ? `判断轮次 ${disclosureIndex + 1}` : DISCLOSURE_COPY[currentDisclosure].title}</h1>
+            <p>{isCommonBaseline ? "请依照当前页面，分别判断六条曲线最合理的两个分界点。" : isRepeatRound ? "页面保持当前状态。请重新检查六条曲线，并独立确认此刻最合理的两个分界点。" : DISCLOSURE_COPY[currentDisclosure].description}</p>
+            <div className="mod-transition-shift" aria-label="判断轮次变化">
+              <span>{isRepeatRound && previousDisclosure ? `判断轮次 ${disclosureIndex}` : previousDisclosure ? DISCLOSURE_COPY[previousDisclosure].title : "实验说明"}</span>
               <i>→</i>
-              <strong>{DISCLOSURE_COPY[currentDisclosure].title}</strong>
+              <strong>{isCommonBaseline || isRepeatRound ? `判断轮次 ${disclosureIndex + 1}` : DISCLOSURE_COPY[currentDisclosure].title}</strong>
             </div>
-            <div className="mod-transition-assets" aria-label={`本层包含的 ${plan.length} 条曲线`}>
+            <div className="mod-transition-assets" aria-label={`本轮包含的 ${plan.length} 条曲线`}>
               {plan.map((trial) => {
                 const asset = bundle.assets.find((candidate) => candidate.id === trial.assetId);
                 return <span key={trial.id}>{visibility.asset ? asset?.symbol ?? `曲线 ${trial.order + 1}` : `匿名曲线 ${trial.order + 1}`}</span>;
               })}
             </div>
             <div className="mod-transition-notice">
-              <b>本层包含 {plan.length} 个连续页面</b>
-              <p>每页只显示一条曲线；虚线会保留该资产上一层的位置，便于判断是否需要移动。</p>
+              <b>本轮包含 {plan.length} 个连续页面</b>
+              <p>每页只显示一条曲线；虚线会保留该曲线上一轮的位置，便于重新确认。</p>
             </div>
-            <button className="mod-start mod-transition-start" type="button" onClick={enterCurrentDisclosureLayer}>我已了解，进入本层第 1 条曲线<span>→</span></button>
+            <button className="mod-start mod-transition-start" type="button" onClick={enterCurrentDisclosureLayer}>我已了解，进入本轮第 1 条曲线<span>→</span></button>
           </div>
         </section>
       </main>
@@ -2840,6 +3327,29 @@ export function ExperimentModular({
     .sort((first, second) => first.trialOrder - second.trialOrder);
   const reviewAnswers = usesLayerMajorDisclosureFlow ? layerAnswers : trialAnswers;
   const currentModule = MODULES.find((item) => item.key === currentTrial.module) ?? MODULES[0];
+  if (phase === "review" && isFixedM1) {
+    const hasNextDisclosure = disclosureIndex < currentTrial.disclosures.length - 1;
+    const completedLayers = disclosureIndex + 1;
+    const overallProgress = completedLayers / currentTrial.disclosures.length * 100;
+    return (
+      <main className="mod-site mod-review-page mod-neutral-rest-page">
+        <header className="mod-topbar"><span className="mod-wordmark"><span>BOUNDARY</span> LAB <b>{editionMark}</b></span><span>进度 {completedLayers}/{currentTrial.disclosures.length}</span></header>
+        <section className="mod-review-hero">
+          <span className="mod-eyebrow">RESPONSES SAVED · 中性休息页</span>
+          <h1>本轮 {plan.length} 条回答，<br />已经安全保存。</h1>
+          <p>这里不显示答案分析、边界移动或表现反馈。你可以短暂休息，准备好后再继续。</p>
+        </section>
+        <section className="mod-neutral-rest-card" aria-label="实验总体进度">
+          <div><span>已完成判断</span><strong>{reviewAnswers.length}/{plan.length}</strong></div>
+          <div><span>总体轮次</span><strong>{completedLayers}/{currentTrial.disclosures.length}</strong></div>
+          <div className="mod-neutral-progress"><i><b style={{ width: `${overallProgress}%` }} /></i><small>{Math.round(overallProgress)}%</small></div>
+          <p>请放松视线和手部；继续后仍按当前页面可见信息独立判断。</p>
+        </section>
+        {error && <p className="mod-error mod-review-error" role="alert">{error}</p>}
+        <button className="mod-start mod-review-next" type="button" onClick={continueAfterReview} disabled={busy}>{hasNextDisclosure ? "继续下一轮判断" : "保存并完成本次实验"}<span>→</span></button>
+      </main>
+    );
+  }
   const movementAnswers = usesLayerMajorDisclosureFlow ? reviewAnswers : trialAnswers.slice(1);
   const movement = movementAnswers.length
     ? movementAnswers.reduce((sum, answer) => {
@@ -2888,7 +3398,7 @@ export function ExperimentModular({
                   : DISCLOSURE_COPY[answer.disclosureKey].short;
                 return (
                 <div className="mod-track-row" key={`${answer.trialId}-${answer.disclosureIndex}`}>
-                  <span title={answerTrial?.variantLabel}>{rowLabel}</span>
+                  <span title={visibility.asset ? answerTrial?.variantLabel : undefined}>{rowLabel}</span>
                   <div>{answer.boundaries.map((boundary, boundaryIndex) => <i key={boundaryIndex} style={{ left: `${boundary.ratio * 100}%` }}><b>{boundaryIndex + 1}</b></i>)}</div>
                 </div>
                 );
@@ -2918,10 +3428,53 @@ export function ExperimentModular({
           <p>共记录 {answers.length} 次判断，覆盖 {plan.length} 条实验曲线。浏览器中的副本可以下载；服务器端已保存逐题答案、设备环境与响应时间。</p>
           <div className="mod-session-code"><span>SESSION ID</span><code>{sessionId}</code></div>
           <div className="mod-complete-actions">
-            <button type="button" onClick={() => downloadSessionCsv(sessionId, answers, sessionDeviceInfo.current)}>下载本次 CSV</button>
-            <button type="button" onClick={() => downloadJson(`boundary-lab-${sessionId}.json`, { protocolVersion: bundle.protocolVersion, sessionId, module: currentModule, deviceInfo: sessionDeviceInfo.current, plan, answers })}>下载本次 JSON</button>
+            <button type="button" onClick={() => downloadSessionCsv(sessionId, answers, sessionDeviceInfo.current, isFixedM1)}>下载本次 CSV</button>
+            <button type="button" onClick={() => downloadJson(`boundary-lab-${sessionId}.json`, {
+              protocolVersion: bundle.protocolVersion,
+              sessionId,
+              module: currentModule,
+              deviceInfo: isFixedM1 && sessionDeviceInfo.current
+                ? { ...sessionDeviceInfo.current, userAgent: "" }
+                : sessionDeviceInfo.current,
+              plan,
+              answers,
+            })}>下载本次 JSON</button>
             <button type="button" onClick={() => window.location.reload()}>{isM1Main ? "返回 M1 主实验入口" : isPilot ? "返回初批入口" : "返回模块首页"}</button>
           </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (phase === "terminated") {
+    return (
+      <main className="mod-site mod-complete-page">
+        <section>
+          <span className="mod-eyebrow">SESSION STOPPED</span>
+          <h1>本次作答已停止。</h1>
+          <p>系统不会再接受本会话的新答案。已提交页面的处理与后续撤回方式以研究者提供的完整知情同意说明为准；仅关闭页面或停止作答不自动等于撤回数据。</p>
+          <div className="mod-session-code"><span>TERMINATION</span><code>{terminationCode || "PARTICIPANT_EXIT"}</code></div>
+        </section>
+      </main>
+    );
+  }
+
+  if (phase === "experiment" && isFixedM1 && (!currentPageExposureReady || currentPageExpired)) {
+    return (
+      <main className="mod-site mod-complete-page mod-page-clock-gate">
+        <section>
+          <span className="mod-eyebrow">SERVER-TIMED FORMAL PAGE</span>
+          <h1>{currentPageExpired ? "本页作答时间已结束。" : currentPageExposureError ? "本页暂时无法开始。" : "正在启动本页服务器计时…"}</h1>
+          <p>{currentPageExpired
+            ? "正式页面的 180 秒上限已经到达，本次 run 已停止；本页答案不会写入正式数据。"
+            : currentPageExposureError || "计时确认完成后才会显示曲线，Human 与 Agent 使用同一规则。"}</p>
+          <div className="mod-session-code"><span>SESSION ID</span><code>{sessionId}</code></div>
+          {!currentPageExpired && currentPageExposureError && (
+            <button className="mod-start" type="button" onClick={() => setPageExposureRetry((value) => value + 1)}>
+              重试启动本页 <span>→</span>
+            </button>
+          )}
+          <button className="mod-resume-session" type="button" onClick={stopSession} disabled={busy}>停止本次作答</button>
         </section>
       </main>
     );
@@ -3022,8 +3575,9 @@ export function ExperimentModular({
     <main className="mod-site mod-runner">
       <header className="mod-topbar">
         <span className="mod-wordmark"><span>BOUNDARY</span> LAB <b>{editionMark}</b></span>
-        <div className="mod-run-progress"><span>{currentModule.number} · {currentModule.title}</span><strong>{usesLayerMajorDisclosureFlow ? `披露层 ${disclosureIndex + 1}/${currentTrial.disclosures.length} · 本层曲线 ${trialIndex + 1}/${plan.length}` : `曲线 ${trialIndex + 1}/${plan.length}`}</strong><i><b style={{ width: `${runProgress}%` }} /></i></div>
-        <span className="mod-session-mini">ID {sessionId.slice(0, 8)}</span>
+        <div className="mod-run-progress"><span>{currentModule.number} · {isFixedM1 ? "阶段判断实验" : currentModule.title}</span><strong>{usesLayerMajorDisclosureFlow ? `判断轮次 ${disclosureIndex + 1}/${currentTrial.disclosures.length} · 本轮曲线 ${trialIndex + 1}/${plan.length}` : `曲线 ${trialIndex + 1}/${plan.length}`}</strong><i><b style={{ width: `${runProgress}%` }} /></i></div>
+        <span className="mod-session-mini">ID {sessionId.slice(0, 8)} · {Math.ceil(pageRemainingMs / 1000)}s</span>
+        {isFixedM1 && <button className="mod-stop-session" type="button" onClick={stopSession} disabled={busy}>停止作答</button>}
       </header>
 
       {currentTrial.module === "disclosure" ? <DisclosureRail keys={currentTrial.disclosures} activeIndex={disclosureIndex} /> : <DisclosureSnapshot active={currentDisclosure} />}
@@ -3032,17 +3586,17 @@ export function ExperimentModular({
         <section className="mod-layer-exposure-banner is-sequential" aria-live="polite">
           <div className="mod-layer-exposure-index"><span>LEVEL</span><strong>{String(disclosureIndex + 1).padStart(2, "0")}</strong></div>
           <div>
-            <span>当前信息层 · INFORMATION STATE</span>
-            <h1>{DISCLOSURE_COPY[currentDisclosure].title}</h1>
-            <p>{DISCLOSURE_COPY[currentDisclosure].description}</p>
+            <span>{informationCondition === "repeat-control" || disclosureIndex === 0 ? "当前判断轮次 · JUDGMENT ROUND" : "当前页面状态 · INFORMATION STATE"}</span>
+            <h1>{informationCondition === "repeat-control" || disclosureIndex === 0 ? `判断轮次 ${disclosureIndex + 1}` : DISCLOSURE_COPY[currentDisclosure].title}</h1>
+            <p>{informationCondition === "repeat-control" ? "页面保持当前状态，请重新检查并确认阶段边界。" : disclosureIndex === 0 ? "请只依据当前页面判断阶段边界。" : DISCLOSURE_COPY[currentDisclosure].description}</p>
           </div>
-          <aside><b>本层页面 {trialIndex + 1}/{plan.length}</b><small>本页只判断一条曲线，提交后进入下一条</small></aside>
+          <aside><b>本轮页面 {trialIndex + 1}/{plan.length}</b><small>本页只判断一条曲线，提交后进入下一条</small></aside>
         </section>
       )}
 
       {usesLayerMajorDisclosureFlow && (
-        <section className="mod-layer-asset-progress" aria-label="当前披露层的曲线进度">
-          <div><span>本信息层</span><strong>{DISCLOSURE_COPY[currentDisclosure].title}</strong><small>{plan.length} 条曲线使用完全相同的信息状态</small></div>
+        <section className="mod-layer-asset-progress" aria-label="当前判断轮次的曲线进度">
+          <div><span>本轮</span><strong>{informationCondition === "repeat-control" || disclosureIndex === 0 ? `判断轮次 ${disclosureIndex + 1}` : DISCLOSURE_COPY[currentDisclosure].title}</strong><small>{plan.length} 条曲线使用完全相同的页面状态</small></div>
           <ol>
             {plan.map((trial, index) => {
               const asset = bundle.assets.find((candidate) => candidate.id === trial.assetId);
@@ -3063,13 +3617,19 @@ export function ExperimentModular({
             <div>
               <span className="mod-eyebrow">{runnerVariantLabel} · {TASKS[currentTrial.taskType].short}</span>
               <h1>{visibility.asset ? `${displayName}（${displaySymbol}）` : visibility.metric ? currentMetric.name : "一段未命名的走势"}</h1>
-              <p>{visibility.intro ? displayIntro : visibility.metric ? currentMetric.definition : "请只根据当前可见的信息判断阶段结构。"}</p>
+              <p>{visibility.intro
+                ? displayIntro
+                : visibility.metric
+                  ? m1MetricDescription(currentTrial.metric, visibility.axes, currentMetric.definition)
+                  : "请只根据当前可见的信息判断阶段结构。"}</p>
             </div>
-            <div className="mod-condition-chips">
-              <span>{visibility.metric ? currentMetric.name : "指标：？"}</span>
-              <span>{visibility.axes ? `${RESOLUTION_LABEL[currentTrial.resolution]} · ${currentTrial.scaleMode === "log" ? "对数" : "线性"}` : "坐标：？"}</span>
-              <span>{visibility.asset ? displaySymbol : "资产：？"}</span>
-            </div>
+            {(visibility.metric || visibility.axes || visibility.asset) && (
+              <div className="mod-condition-chips">
+                {visibility.metric && <span>{currentMetric.name}</span>}
+                {visibility.axes && <span>{RESOLUTION_LABEL[currentTrial.resolution]} · {currentTrial.scaleMode === "log" ? "对数" : "线性"}</span>}
+                {visibility.asset && <span>{displaySymbol}</span>}
+              </div>
+            )}
           </div>
 
           {currentTrial.taskType === "T3" && <div className="mod-definition"><span>统一阶段定义</span><p>{STAGE_DEFINITION}</p></div>}
@@ -3095,15 +3655,15 @@ export function ExperimentModular({
 
           {(currentDisclosure === "DI3" || currentDisclosure === "DI4" || newlyDisclosedEvents.length > 0) && (
             <section className="mod-event-panel">
-              <div className="mod-event-panel-head"><span className="mod-kicker">本层新增 · {currentDisclosure === "DI3" ? "核心事件" : currentDisclosure === "DI4" ? "补充事件" : "历史事件"}</span><strong>{newlyDisclosedEvents.length} 项 · 上限 {MAX_EVENTS_PER_DISCLOSURE}</strong></div>
+              <div className="mod-event-panel-head"><span className="mod-kicker">本层新增 · {currentDisclosure === "DI3" ? "事件信息（一）" : currentDisclosure === "DI4" ? "事件信息（二）" : "历史事件"}</span><strong>{newlyDisclosedEvents.length} 项 · 上限 {MAX_EVENTS_PER_DISCLOSURE}</strong></div>
               {retainedEventCount > 0 && <p className="mod-event-retained">上一层的 {retainedEventCount} 个事件标记继续保留在曲线上；下方只列出本层新增内容。</p>}
               {newlyDisclosedEvents.length ? (
                 <div className="mod-event-list">
                   {newlyDisclosedEvents.map((event) => (
-                    <article key={event.sourceId ?? `${event.date}-${event.title}`}><time>{event.date}</time><span className={eventSourcePriority(event) <= 2 ? "is-high" : ""}>P{eventSourcePriority(event)}</span><h3>{event.title}</h3><p>{event.description}</p></article>
+                    <article key={event.sourceId ?? `${event.date}-${event.title}`}><time>{event.date}</time><h3>{event.title}</h3><p>{event.description}</p></article>
                   ))}
                 </div>
-              ) : <p className="mod-event-empty">当前显示时间窗内没有属于本层优先级范围的事件。</p>}
+              ) : <p className="mod-event-empty">当前显示时间窗内没有可展示的新增事件。</p>}
             </section>
           )}
         </div>
@@ -3126,6 +3686,7 @@ export function ExperimentModular({
             onWidthsChange={setWidths}
             onBoundaryInteraction={markBoundaryInteraction}
             onUncertaintyInteraction={markUncertaintyInteraction}
+            showDates={visibility.axes}
           />
 
           {!isV4 && (
@@ -3137,9 +3698,9 @@ export function ExperimentModular({
 
           {currentTrial.module === "disclosure" && disclosureIndex > 0 && (
             <section className="mod-question-block is-new">
-              <span className="mod-new-flag">NEW · 本步新增</span>
-              <h3>这一步新增的信息，对你的判断影响有多大？</h3>
-              <Rating value={influence} onChange={(value) => { setInfluence(value); setInfluenceTouched(true); }} left="几乎没有" right="影响很大" label="新增信息影响" />
+              <span className="mod-new-flag">{informationCondition === "repeat-control" ? "RECHECK · 本轮复核" : "NEW · 本步新增"}</span>
+              <h3>当前这一步的信息状态，对你的判断影响有多大？</h3>
+              <Rating value={influence} onChange={(value) => { setInfluence(value); setInfluenceTouched(true); }} left="几乎没有" right="影响很大" label={informationCondition === "repeat-control" ? "本轮重复呈现影响" : "当前信息状态影响"} />
               {sameAsPrevious && (
                 <div className="mod-confirm-row compact"><input id="mod-no-change" type="checkbox" checked={noChangeConfirmed} onChange={(event) => setNoChangeConfirmed(event.target.checked)} /><label htmlFor="mod-no-change"><strong>我确认有意保持不变</strong><small>分界点和范围与上一步一致。</small></label></div>
               )}
@@ -3181,7 +3742,7 @@ export function ExperimentModular({
           ))}
 
           {error && <p className="mod-error" role="alert">{error}</p>}
-          <button className="mod-submit" type="button" onClick={() => submitResponse(performance.now())} disabled={busy}>{busy ? "正在安全记录…" : usesLayerMajorDisclosureFlow ? trialIndex < plan.length - 1 ? "提交本曲线，进入本层下一条" : "提交本层最后一条，查看本层反馈" : disclosureIndex < currentTrial.disclosures.length - 1 ? "提交本步，揭示下一项信息" : "提交本轮，查看反馈"}<span>→</span></button>
+          <button className="mod-submit" type="button" onClick={() => submitResponse(performance.now())} disabled={busy}>{busy ? "正在安全记录…" : usesLayerMajorDisclosureFlow ? trialIndex < plan.length - 1 ? "提交本曲线，进入本轮下一条" : "提交本轮最后一条，进入休息页" : disclosureIndex < currentTrial.disclosures.length - 1 ? "提交本步，进入下一轮" : "提交本轮，进入休息页"}<span>→</span></button>
           <p className="mod-lock-note">提交后不能返回修改本步答案。</p>
         </aside>
       </section>

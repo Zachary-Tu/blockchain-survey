@@ -34,9 +34,95 @@ export const experimentSessions = sqliteTable(
     screenOrientation: text("screen_orientation").notNull().default("unknown"),
     status: text("status").notNull().default("active"),
     startedAt: text("started_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    practiceCompletedAt: text("practice_completed_at"),
     completedAt: text("completed_at"),
+    terminationCode: text("termination_code").notNull().default(""),
   },
   (table) => [index("idx_sessions_status").on(table.status)],
+);
+
+export const m1PairAssignments = sqliteTable(
+  "m1_pair_assignments",
+  {
+    pairId: text("pair_id").primaryKey(),
+    protocolArchitecture: text("protocol_architecture").notNull(),
+    scheduleId: integer("schedule_id").notNull(),
+    informationCondition: text("information_condition").notNull(),
+    stimulusSha256: text("stimulus_sha256").notNull(),
+    eventSourceSha256: text("event_source_sha256").notNull(),
+    assignmentVersion: text("assignment_version").notNull(),
+    cohortId: text("cohort_id").notNull().default("legacy-unclassified"),
+    studyPhase: text("study_phase").notNull().default("legacy-unclassified"),
+    preregistrationVersion: text("preregistration_version").notNull().default(""),
+    analysisSetVersion: text("analysis_set_version").notNull().default(""),
+    implementationBuildId: text("implementation_build_id").notNull().default(""),
+    deploymentId: text("deployment_id").notNull().default(""),
+    deploymentFingerprintSha256: text("deployment_fingerprint_sha256").notNull().default(""),
+    allocationMode: text("allocation_mode").notNull().default("legacy-unclassified"),
+    agentProfileSha256: text("agent_profile_sha256").notNull().default(""),
+    primaryBrowserMajor: integer("primary_browser_major").notNull().default(0),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    index("idx_m1_pair_assignment_condition_schedule").on(
+      table.cohortId,
+      table.allocationMode,
+      table.informationCondition,
+      table.scheduleId,
+    ),
+  ],
+);
+
+export const m1LaunchTokens = sqliteTable(
+  "m1_launch_tokens",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    pairId: text("pair_id")
+      .notNull()
+      .references(() => m1PairAssignments.pairId, { onDelete: "cascade" }),
+    actorType: text("actor_type").notNull(),
+    participantCode: text("participant_code").notNull(),
+    replicateId: text("replicate_id").notNull(),
+    scheduleId: integer("schedule_id").notNull(),
+    informationCondition: text("information_condition").notNull(),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    revokedAt: text("revoked_at"),
+    terminalDisposition: text("terminal_disposition"),
+    terminalAt: text("terminal_at"),
+    claimedSessionId: text("claimed_session_id"),
+    claimedAt: text("claimed_at"),
+  },
+  (table) => [
+    index("idx_m1_launch_token_pair_actor").on(table.pairId, table.actorType),
+  ],
+);
+
+export const m1PairSlots = sqliteTable(
+  "m1_pair_slots",
+  {
+    id: text("id").primaryKey(),
+    pairId: text("pair_id")
+      .notNull()
+      .references(() => m1PairAssignments.pairId, { onDelete: "cascade" }),
+    actorType: text("actor_type").notNull(),
+    replicateId: text("replicate_id").notNull(),
+    launchTokenHash: text("launch_token_hash")
+      .notNull()
+      .references(() => m1LaunchTokens.tokenHash, { onDelete: "restrict" }),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => experimentSessions.id, { onDelete: "cascade" }),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    uniqueIndex("idx_m1_pair_slot_actor_replicate").on(
+      table.pairId,
+      table.actorType,
+      table.replicateId,
+    ),
+    uniqueIndex("idx_m1_pair_slot_session").on(table.sessionId),
+    uniqueIndex("idx_m1_pair_slot_launch_token").on(table.launchTokenHash),
+  ],
 );
 
 export const researchResponses = sqliteTable(
@@ -173,6 +259,112 @@ export const modularResponses = sqliteTable(
       table.trialId,
       table.disclosureIndex,
     ),
+  ],
+);
+
+export const experimentExpectedSteps = sqliteTable(
+  "experiment_expected_steps",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => experimentSessions.id, { onDelete: "cascade" }),
+    stepOrder: integer("step_order").notNull(),
+    trialId: text("trial_id").notNull(),
+    trialOrder: integer("trial_order").notNull(),
+    moduleKey: text("module_key").notNull(),
+    taskType: text("task_type").notNull(),
+    stimulusType: text("stimulus_type").notNull().default("crypto"),
+    assetId: text("asset_id").notNull(),
+    metricType: text("metric_type").notNull(),
+    resolution: text("resolution").notNull(),
+    scaleMode: text("scale_mode").notNull(),
+    windowMode: text("window_mode").notNull(),
+    disclosureIndex: integer("disclosure_index").notNull(),
+    disclosureKey: text("disclosure_key").notNull(),
+  },
+  (table) => [
+    uniqueIndex("idx_expected_steps_session_step").on(table.sessionId, table.stepOrder),
+    uniqueIndex("idx_expected_steps_session_trial_disclosure").on(
+      table.sessionId,
+      table.trialId,
+      table.disclosureIndex,
+    ),
+  ],
+);
+
+export const experimentStepExposures = sqliteTable(
+  "experiment_step_exposures",
+  {
+    id: text("id").primaryKey(),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => experimentSessions.id, { onDelete: "cascade" }),
+    stepOrder: integer("step_order").notNull(),
+    startedAt: text("started_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    uniqueIndex("idx_step_exposures_session_step").on(table.sessionId, table.stepOrder),
+  ],
+);
+
+export const agentRunAttempts = sqliteTable(
+  "agent_run_attempts",
+  {
+    id: text("id").primaryKey(),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => experimentSessions.id, { onDelete: "cascade" }),
+    stepOrder: integer("step_order").notNull(),
+    attemptNumber: integer("attempt_number").notNull(),
+    modelApiAttemptNumber: integer("model_api_attempt_number").notNull().default(0),
+    mechanicalActionId: text("mechanical_action_id").notNull().default(""),
+    mechanicalRetryNumber: integer("mechanical_retry_number").notNull().default(0),
+    controllerVersion: text("controller_version").notNull().default(""),
+    modelRequestId: text("model_request_id").notNull().default(""),
+    sourceModelRequestId: text("source_model_request_id").notNull().default(""),
+    promptSha256: text("prompt_sha256").notNull().default(""),
+    runtimeRequestSha256: text("runtime_request_sha256").notNull().default(""),
+    screenshotSha256: text("screenshot_sha256").notNull().default(""),
+    outputSha256: text("output_sha256").notNull().default(""),
+    actionTraceSha256: text("action_trace_sha256").notNull().default(""),
+    contextPolicy: text("context_policy").notNull().default("persistent"),
+    inputModality: text("input_modality").notNull().default("screenshot"),
+    imageDetail: text("image_detail").notNull().default("auto"),
+    temperature: real("temperature"),
+    topP: real("top_p"),
+    seed: integer("seed"),
+    reasoningEffort: text("reasoning_effort").notNull().default(""),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    toolCalls: integer("tool_calls").notNull().default(0),
+    status: text("status").notNull().default("submitted"),
+    errorCode: text("error_code").notNull().default(""),
+    startedAt: text("started_at"),
+    completedAt: text("completed_at"),
+    responseId: integer("response_id").references(() => modularResponses.id, { onDelete: "restrict" }),
+    responseSha256: text("response_sha256").notNull().default(""),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    index("idx_agent_attempts_session_step").on(table.sessionId, table.stepOrder),
+    uniqueIndex("idx_agent_attempts_session_step_attempt").on(
+      table.sessionId,
+      table.stepOrder,
+      table.attemptNumber,
+    ),
+    uniqueIndex("idx_agent_one_submitted_per_step")
+      .on(table.sessionId, table.stepOrder)
+      .where(sql`${table.status} = 'submitted'`),
+    uniqueIndex("idx_agent_attempt_response")
+      .on(table.responseId)
+      .where(sql`${table.responseId} IS NOT NULL`),
+    uniqueIndex("idx_agent_model_request")
+      .on(table.sessionId, table.modelRequestId)
+      .where(sql`${table.modelRequestId} <> ''`),
+    uniqueIndex("idx_agent_mechanical_retry")
+      .on(table.sessionId, table.stepOrder, table.mechanicalActionId, table.mechanicalRetryNumber)
+      .where(sql`${table.mechanicalActionId} <> '' AND ${table.mechanicalRetryNumber} > 0`),
   ],
 );
 

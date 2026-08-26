@@ -1,75 +1,108 @@
-# Boundary Lab：阶段判断的上下文弹性研究
+# Boundary Lab — Human–Agent Context Elasticity Experiment
 
-Boundary Lab 是一个可运行的研究采集平台，用于比较人类与多模态 LLM / Agent 面对同一条时间序列时，阶段判断如何随着语义信息逐层增加而改变。
+Boundary Lab is a research platform for measuring how stage boundaries move when the same judge receives progressively richer semantic context about a time series, and for comparing that context elasticity between Human participants and a frozen multimodal Agent system.
 
-## 当前版本（研究平台第三版）
+## Current primary experiment: M1
 
-研究者在测试开始前锁定三个条件：
+M1 is a fixed, isomorphic Human–Agent protocol rather than the configurable module console:
 
-1. 曲线指标：价格、活跃地址或 Google 搜索热度；
-2. 判断任务：A 类自主选择 1、2 或 3 个分界点；B 类评价对应的 1、2 或 3 个预设分界点，共六个配对条件；
-3. 时间分辨率：日、周、月或年。不可用的“指标 × 分辨率”组合会直接禁用，不插值伪造观测。
+- Actor: one Human and one `R-PRIMARY` Agent run per pair;
+- Information condition: staged disclosure or seven-round no-new-information repeat control, randomized between pairs;
+- Task: two boundaries defining three stages;
+- Stimulus: weekly, linear-scale price curves using all available observations;
+- Assets: BTC, ETH, SOL, BNB, XRP, and DOGE;
+- Flow: 7 rounds × 6 single-asset pages = 42 formal judgments per session;
+- Ordering: six Williams-balanced asset schedules;
+- Response: two boundary centers, two continuous uncertainty ranges, disclosure-impact rating, and explicit no-change confirmation when needed.
 
-每条曲线经历四级固定披露：
+Staged disclosure uses G0, GI1, GI2, DI1, DI2, DI3, and DI4. Future topics remain “?” until disclosed. From the second judgment onward, the previous boundary is shown as a dashed reference. DI3 and DI4 use two preselected event sets with identical participant-facing visual treatment; source priority is retained only in research metadata. Frozen event text is English, so Human eligibility includes a prior out-of-band English financial-news reading screen.
 
-1. 只显示曲线形状；
-2. 显示曲线名称、资产身份与中性背景；
-3. 显示真实时间轴和数值单位，价格条件同时解锁线性 / 对数刻度；
-4. 在轴上显示重点事件、日期与中性说明。
+The repeat-control arm keeps G0 visible for all seven rounds while preserving the same page count, response controls, prior-boundary reference, breaks, and canonical state machine. It estimates retest, time, fatigue, practice, and anchoring drift; it is not a reading-load-matched placebo.
 
-测试过程中，尚未到达的披露主题统一显示“？”，避免参与者预判后续信息。从第二层起，橙色虚线保留上一层已经提交的分界位置，深绿色实线表示本层当前判断。
+## Entry points
 
-A 类任务还要求参与者为每个分界点选择一个对称可能范围。第一次没有默认范围，之后可随新增信息收窄、放宽或保持。系统同时记录中心点、区间宽度与起止位置、上一层参照、合理性评分、信心、主观影响、判断依据、理由、阅读时间、首次移动时间、首次范围选择时间、调整次数与刻度切换次数。每条曲线结束后展示个人回答轨迹作为非评价性反馈。
+- `/m1` — Human M1 task;
+- `/agent` — isomorphic screenshot-and-coordinate Agent task;
+- `/research/m1-launch` — researcher-only paired launcher;
+- `/research/results` — allowlisted research exports;
+- `/methodology/m1` — rendered method architecture;
+- `/` and `/agent/console` — configurable development/diagnostic modules, excluded from the primary M1 comparison.
 
-当前研究版位于 `/`；第二版保留在 `/v2`；最早的单曲线原型保留在 `/legacy`。
+## Stage plan and readiness
 
-## 数据口径与覆盖
+The current executable build enables only **Stage A**, capped at 12 balanced primary pairs: one pair in each information-condition × Williams-schedule cell. Stage B is a disabled specification for a later 36-pair variance pilot. It requires a new cohort/build/configuration after Stage A achieves a full release decision; it does not start automatically.
 
-- 价格：Li Blockchain 项目内 CMC 原始日频 `Open*`，覆盖 BTC、ETH、SOL、BNB；周/月/年均按自然日历区间取日 Open 算术均值。
-- 活跃地址：Coin Metrics Community API `AdrActCnt`。当前同口径公开数据覆盖 BTC 与 ETH；SOL 与 BNB Smart Chain 不用旧 BNB Beacon Chain、其他供应商口径或合成数据补齐。
-- Google Trends：Worldwide、Web Search 的 Bitcoin / Ethereum / Solana / BNB 主题。2018–2026 长窗口以两段重叠的原生周频序列为基础，分别锚定到全窗口月频序列，再对共享周取均值并统一归一化；日频明确禁用。
-- 事件：使用可追溯链接的预测试标注。确认性研究前仍需独立筛选、冻结与预注册。
+Stage A uses a frozen audit state machine:
 
-最长请求窗口为 2018-01-01 至 2026-04-11。Solana 价格从其真实上线后数据起点开始，BNB Google Trends 主题也只保留来源实际返回的可用期；不向前填充。
+1. `NOT_EVALUABLE` until all 12 cells exist, all 24 primary allocation slots are terminal through either a real complete/aborted session or a valid pre-start disposition, Stage-A collection is formally closed by a trusted signed receipt, and the five-table input bundle is verified;
+2. `STOP` for any complete-session integrity failure, confirmed answer loss, or future-information leakage;
+3. `REVISE` below 10 complete matched pairs, below 5 within either information condition, or beyond the frozen completion, abort, duration, device-deviation, or G0-anchor thresholds;
+4. `GO_PENDING_EXTERNAL_GATES` when quantitative checks pass but required ethics, consent/data-management, English-screening, withdrawal, raw-UA, deployment, controller, runtime-prompt, model/browser, or run-artifact evidence is missing;
+5. `GO` only when both the quantitative audit and all external release gates pass.
 
-基础数据与实验设计见 [`docs/RESEARCH_PROTOCOL_V4_ZH.md`](docs/RESEARCH_PROTOCOL_V4_ZH.md)；六条件、未来主题盲化和边界不确定区间的修订见 [`docs/RESEARCH_PROTOCOL_V5_ZH.md`](docs/RESEARCH_PROTOCOL_V5_ZH.md)。
+The deterministic core is in `lib/m1-stage-a-audit.ts`; it does not inspect Human–Agent boundary effects. The v3 audit CLI reconstructs scientific integrity from the five raw exports, verifies every referenced external and raw Agent artifact, and requires independently controlled HMAC signatures for both the collection receipt and the institutional evidence root.
 
-## 本地运行
+This repository is **not yet ready for real-Human recruitment or paired Agent Stage A**. Real-Human work requires the applicable institutional ethics approval or written exemption, institution-approved full consent materials, a frozen English-screening instrument and threshold, and an approved data-management/withdrawal process. Paired Agent Stage A additionally requires the external executable screenshot-to-model-to-coordinate controller, the complete runtime prompt package, frozen browser/model artifacts, restricted raw run artifacts, a real deployment manifest, and a collection service that closes one database snapshot and produces the signed export receipt. The repository validates those artifacts when supplied but does not contain the controller, production receipt signer, institutional evidence keys, or real run artifacts.
 
-需要 Node.js `>=22.13.0`。
+## Integrity and data model
+
+Strict M1 uses one-time 256-bit opaque launch tokens. The server atomically freezes pair, actor, condition, schedule, stimulus/event hashes, cohort Agent-profile hash, and primary Chrome major. Session creation materializes 42 canonical expected steps. Before a token is claimed, an allowlisted researcher may record one of four frozen pre-start terminal dispositions; the server verifies the formal collection gate, current build, and allocation deployment identity, revokes the token, and creates no session. Consequently, `started` counts only real canonical sessions.
+
+Every formal page obtains one immutable server exposure clock before the stimulus is shown. Server receive time enforces the 180-second page limit; the full run has a 120-minute server limit. Browser timers remain behavioral telemetry, not the authoritative timeout clock.
+
+For Agent runs, every page must have a validated attempt ledger. Retry inputs are bound by prompt, complete runtime-request, screenshot, output, action-trace, and request-link hashes. A complete Agent session requires 42 canonical responses, 42 server exposures, 42 final submitted attempts, 42 one-to-one response links, and 42 independently verified scientific-answer hashes. Stage-A release auditing also reads each non-empty raw request/screenshot/output/trace file, verifies its hash, checks request-profile binding, fully validates the frozen non-interlaced 1440×900 PNG evidence, and enforces closed coordinate-only action schemas. A screenshot or model-output hash may not be reused across different ledger pages in one run. Each closed `m1-agent-model-output-v1` record is bound to one session, step, and model request; its recomputed scientific-response hash must match both the submitted attempt and the exported response.
+
+Cloudflare D1 is the system of record. Research exports provide five linked tables:
+
+1. allocations, token hashes, claim/session links, and pre-start terminal disposition/timestamps;
+2. sessions, device environment, profile/screening metadata, status, and termination code;
+3. 42-step responses and interaction telemetry;
+4. server step exposures;
+5. Agent attempt ledgers.
+
+Strict M1 does not persist raw User-Agent strings; it stores only a coarse browser-major/OS summary. Identity, recruitment, consent, compensation, screen-out, and withdrawal records belong in a separate restricted ledger connected only through approved opaque identifiers. Website records are coded/pseudonymized, not fully anonymous.
+
+## Local development
+
+Requires Node.js `>=22.13.0`.
 
 ```bash
 npm ci
 npm run dev
 ```
 
-常用验证：
+Validation:
 
 ```bash
-npx tsc --noEmit
+npm run typecheck
 npm run lint
 npm test
+npm run db:generate
 ```
 
-重新生成基础刺激（需要项目本地 Li Blockchain 路径、Python `requests`，并会访问 Coin Metrics / Google Trends），再生成 v5 的 1/2/3 分界参考方案：
+All collection routes fail closed. A real Stage-A deployment must explicitly set `M1_STAGE_A_PRIMARY_COLLECTION_ENABLED=true` and `M1_HUMAN_COLLECTION_ENABLED=true`, while keeping `M1_DEVELOPMENT_PILOT_ENABLED=false`; a diagnostic `quota-manual` launch is permitted only when the development-pilot flag is explicitly true and is never part of the primary sample. The deployment must also define `M1_AGENT_PROFILE_SHA256`, `M1_PRIMARY_CHROME_MAJOR`, a stable `M1_DEPLOYMENT_ID`, and the 64-hex `M1_DEPLOYMENT_FINGERPRINT_SHA256` derived from the archived production bundle. Launch assignments and all linked exports carry that deployment identity. At collection stop, disabling the primary/Human gates blocks new launches and further strict-session mutations (explicit abort remains available), but the repository still requires an external controlled service to atomically close the database snapshot and sign the final export receipt. Receipt chronology uses server/database write times: allocation claims/terminal dispositions and attempt `created_at` must precede collection close; controller `completed_at` is checked for chronology but cannot prove the write occurred before close. Research CSV access additionally requires a server-side `RESEARCHER_EMAILS` allowlist.
 
-```bash
-python scripts/export_research_stimuli_v4.py
-python scripts/export_research_stimuli_v5.py
-```
+## Key files
 
-## 关键文件
+- `app/ExperimentModular.tsx` — shared Human/Agent M1 UI and state machine;
+- `lib/m1-protocol.ts` — frozen 42-step topology, schedules, hashes, and cohort identifiers;
+- `lib/m1-agent-profile.ts` — canonical cohort Agent-profile hashing;
+- `lib/m1-execution-limits.ts` — Agent retry/action/page-limit state machine;
+- `lib/m1-stage-a-audit.ts` — deterministic Stage-A decision core;
+- `lib/m1-stage-a-normalize.ts` — five-table scientific-integrity reconstruction;
+- `lib/m1-stage-a-evidence.ts` — signed receipt/evidence, deployment, profile, run, and raw-artifact verification;
+- `scripts/audit-m1-stage-a.ts` — v3 evidence-driven audit CLI;
+- `app/api/m1-launches/route.ts` — atomic balanced assignment and opaque launch tokens;
+- `app/api/m1-step-exposures/route.ts` — authoritative page clocks;
+- `app/api/agent-attempts/route.ts` — Agent ledger validation and audit links;
+- `app/api/modular-responses/route.ts` and `app/api/sessions/route.ts` — canonical response and completion enforcement;
+- `app/api/research-export/route.ts` — allowlisted linked-table exports;
+- `public/data/m1-agent-runner-protocol.json` — machine-readable runner contract;
+- `public/data/m1-source-manifest.json` — deterministic source manifest bound to the Stage-A build ID;
+- `docs/M1_ISOMORPHIC_HUMAN_AGENT_METHOD_ZH.md` — normative Chinese method specification;
+- `docs/EXPERIMENT_BRIEF_REPORT_EN.md` — concise English architecture report;
+- `docs/M1_DATA_STORAGE_AND_TELEMETRY_ZH.md` — storage, timing, privacy, and export dictionary;
+- `docs/M1_STAGE_A_AUDIT_RUNBOOK_ZH.md` — operational v3 GO/REVISE/STOP audit runbook;
+- `drizzle/` — versioned D1 migrations.
 
-- `app/ExperimentV3.tsx`：研究配置、六个配对任务条件、四级披露、边界范围、奖励页与会话导出；
-- `app/api/research-responses/route.ts`：新版逐层响应校验与写入；
-- `db/schema.ts`：D1 会话、旧版决策与新版研究响应结构；
-- `public/data/research-stimuli-v5.json`：冻结的多指标、多分辨率刺激与 1/2/3 分界参考方案；
-- `scripts/export_research_stimuli_v4.py`：来源获取、聚合与数据审计；
-- `scripts/export_research_stimuli_v5.py`：从冻结观测生成六条件共用的参考分界；
-- `docs/RESEARCH_PROTOCOL_V4_ZH.md`：研究设计与正式实验前检查清单；
-- `docs/RESEARCH_PROTOCOL_V5_ZH.md`：任务配对、信息盲化与边界区间修订；
-- `drizzle/`：数据库迁移。
-
-## 研究状态
-
-这是方法与界面预测试平台，不是已经完成伦理审批或预注册的确认性实验。正式招募前仍需完成伦理审查、样本量 / 功效分析、事件集独立预注册、反事实或伪事件对照、参与者退出与数据删除流程、Google Trends 重复抽样敏感性分析，以及锁定模型版本、提示词、采样参数和视觉输入尺寸的 Agent 运行协议。
+Earlier configurable interfaces and protocol files remain in the repository for rollback and separate exploratory work, but their data must not be pooled with the primary M1 cohort.

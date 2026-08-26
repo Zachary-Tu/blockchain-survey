@@ -1,0 +1,3 @@
+-- Schema additions generated in this snapshot are materialized idempotently by
+-- 0007/0008 and ensureExperimentSchema. Keeping this journal entry as a no-op
+-- prevents duplicate ALTER TABLE failures on Sites/D1 databases bootstrapped at runtime.

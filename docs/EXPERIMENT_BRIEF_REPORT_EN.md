@@ -1,138 +1,123 @@
-# Boundary Lab M1 — Brief Experimental Report
+# Boundary Lab M1 — Experimental Architecture Brief
 
-**Report date:** 25 August 2026  
-**Published site version:** 23  
-**Production URL:** <https://boundary-lab-context-elasticity.zactt.chatgpt.site/m1>  
-**Production source commit:** `56af018a10af49a60f1b3edbf0a069734bd70c83`
+**Frozen implementation date:** 26 August 2026
 
-## 1. Experimental purpose
+**Protocol:** `m1-isomorphic-v1`
 
-Boundary Lab M1 measures how human and multimodal LLM/Agent judgments of time-series stages change as semantic and contextual information is progressively disclosed.
+**Cohort:** `m1-technical-pilot-a2-2026`
 
-Each tester divides six cryptocurrency price series into three stages by placing two change-point centers and assigning a continuous uncertainty interval to each change point. The assets are BTC, ETH, SOL, BNB, XRP, and DOGE.
+**Build:** `m1-stage-a2-742fc2b137cc2510` (source-manifest-bound)
+**Status:** Stage-A implementation frozen; Stage-B specification disabled in this build; not ready for Human recruitment or paired Agent Stage A. Every real-Human activity first requires applicable institutional ethics approval or written exemption, institution-approved full informed-consent materials, a frozen out-of-band English financial-news reading screen, and verified data-minimization/withdrawal controls. Paired Agent Stage A also remains blocked by the external executable controller, complete runtime prompt package, restricted run artifacts, a production collection-close/export receipt signer, independently controlled audit-evidence signing, and deployment evidence described below.
 
-The seven disclosure levels are:
+## 1. Research objective
 
-1. **G0 — Unlabelled curve**
-2. **GI1 — Series type**
-3. **GI2 — Time axis and measurement unit**
-4. **DI1 — Cryptocurrency identity**
-5. **DI2 — Cryptocurrency description and background**
-6. **DI3 — High-priority historical events**
-7. **DI4 — Lower-priority supplementary events**
+M1 estimates how stage boundaries change when the same judge receives progressively richer semantic context about a time series, and whether this context elasticity differs between a Human participant and a multimodal Agent system.
 
-Within each disclosure level, the six assets are presented on six consecutive single-asset pages. A complete M1 session therefore produces:
+The Agent is not treated as a structured-data algorithm. The comparison target is a Human participant versus a frozen **model + screenshot input + coordinate controller** system operating the same browser pages.
 
-```text
-6 assets × 7 disclosure levels = 42 responses
-```
+## 2. Identifiable design
 
-## 2. What the experiment can measure
+The core design is a 2 × 2 experiment:
 
-The experiment supports measurement of:
+- **Actor:** Human / Agent, paired within a common assignment.
+- **Information condition:** staged disclosure / no-new-information repeat control, randomized between pairs.
 
-- **Context elasticity:** how far judgments move when new information is disclosed.
-- **Revision direction:** whether a change point moves earlier or later on the normalized timeline.
-- **Incremental revision:** change relative to the immediately preceding disclosure level.
-- **Cumulative revision:** change relative to the unlabelled baseline.
-- **Event sensitivity:** separate effects of high-priority and supplementary historical events.
-- **Human–Agent differences:** differences in boundary location, movement, uncertainty, and disclosure sensitivity.
-- **Within-group consistency:** agreement among human testers and among independent Agent runs.
-- **Uncertainty behavior:** agreement about how precisely a stage boundary can be located.
-- **Uncertainty calibration:** whether wider intervals predict greater distance from group consensus.
-- **Response dynamics:** reading time, first-action latency, adjustment frequency, visible answering time, and time spent away from the page.
-- **Device effects:** possible differences across mobile, tablet, and desktop environments or viewport sizes.
-
-The modular research console additionally supports T1/T2/T3 task framing, price/active-address/Google Trends series, daily/weekly/monthly/yearly resolution, linear/logarithmic scales, whole/truncated windows, and stock/white-noise/synthetic controls.
-
-## 3. Data collected
-
-### 3.1 Session-level data
-
-One row per tester session is stored in `experiment_sessions`, including:
-
-- anonymous participant code and expertise category;
-- human or Agent actor type;
-- Agent model and independent run ID where applicable;
-- experimental arm, protocol version, randomized asset order, and study configuration;
-- start time, completion time, and active/complete status;
-- inferred device type, screen dimensions, initial viewport dimensions, and device pixel ratio;
-- platform, browser language, time zone, pointer type, touch-point count, orientation, and User Agent.
-
-The experiment does not intentionally collect real names, contacts, hardware serial numbers, camera or microphone data, or precise geographical location.
-
-### 3.2 Response-level data
-
-One row per asset and disclosure level is stored in `modular_responses`, including:
-
-- asset, metric, resolution, scale, data window, and disclosure state;
-- current and previous change-point centers;
-- boundary ratios, observation indices, and dates;
-- symmetric uncertainty half-widths, full widths, and lower/upper bounds;
-- new-information influence rating and explicit unchanged-answer confirmation;
-- displayed event IDs and priority information;
-- boundary and uncertainty adjustment counts;
-- client and server submission timestamps;
-- viewport size and orientation at submission.
-
-### 3.3 Response-time data
-
-Each response separately records:
-
-- `elapsed_ms`: total time from page entry to submission;
-- `page_hidden_ms`: time spent with the page hidden or in the background;
-- `active_elapsed_ms`: visible answering time;
-- `reveal_read_ms`: time before the first boundary or uncertainty interaction;
-- `first_move_ms`: latency to the first boundary movement;
-- `first_uncertainty_ms`: latency to the first uncertainty adjustment;
-- `adjustment_count` and `uncertainty_adjustment_count`.
-
-For response-quality analysis, `active_elapsed_ms` should normally be preferred over total elapsed time.
-
-## 4. Data integrity and export
-
-Every answer is written to the Cloudflare D1 database immediately after submission. Submitted answers therefore remain available if a participant later exits the study.
-
-The database enforces the unique key:
+Each session contains six cryptocurrency price series, seven judgment rounds, and two stage boundaries. Assets use one of six Williams-balanced orders. A complete session therefore contains:
 
 ```text
-session_id + trial_id + disclosure_index
+7 rounds × 6 assets = 42 formal judgments
 ```
 
-This prevents duplicate records caused by refreshes or network retries. A session can only be marked complete after all 42 expected M1 responses have been stored.
+The staged condition progresses through G0, GI1, GI2, DI1, DI2, DI3, and DI4. The repeat-control condition presents seven otherwise equivalent rounds while retaining the G0 information state. It estimates practice, fatigue, elapsed-time, anchoring, and mechanical retest drift; it is not claimed to be a reading-load-matched placebo.
 
-The researcher page at <https://boundary-lab-context-elasticity.zactt.chatgpt.site/research/results> provides two Excel-compatible CSV exports:
+Human and Agent members of a pair receive the same condition, schedule, stimulus hash, event-source hash, cohort Agent-profile hash, primary Chrome major, and 42-step canonical plan. URLs contain only a one-time 256-bit opaque launch token.
 
-1. **Participant/device table:** one row per session, including incomplete sessions.
-2. **Trial-response table:** one row per asset and disclosure level.
+## 3. Pilot sequence
 
-Aggregate export requires an authenticated researcher email included in the protected `RESEARCHER_EMAILS` hosting variable.
+- **Stage A — technical pilot:** 12 primary pairs, one pair in each information-condition × Williams-schedule cell.
+- **Stage B — variance-pilot specification, disabled:** a future 36-pair build with three pairs per cell. It requires a new cohort/build/cap after a full Stage-A release decision; the current allocator cannot launch it.
+- **Primary pair:** exactly one allocated Human slot and one allocated frozen `R-PRIMARY` Agent slot. A slot becomes started only when the server creates its canonical session.
+- Data from Stage A, Stage B, revised cohorts, and a later confirmatory sample must not be pooled.
+- Every stage involving real Human participants—including Stage A and Stage B pilots—requires the applicable institution’s prior ethics approval or written exemption and institution-approved full informed consent. The website checkbox records only that the separate consent process was completed; it is not and cannot replace informed consent. A confirmatory study additionally requires preregistration, a Stage-B-based power simulation, and a newly frozen deployment.
 
-## 5. Requirement assessment
+## 4. Common task and controlled factors
 
-All current M1 requirements for experimental presentation, normalized change points, symmetric uncertainty intervals, response timing, device metadata, immediate database persistence, completion checks, and tabular export are satisfied.
+Both actors receive the same participant-facing briefing, synthetic practice item, chart geometry, response controls, transition pages, asset pages, neutral rest pages, and completion rules. Future disclosure topics are rendered as “?” until they become available.
 
-The broader Research Roadmap still contains post-collection tasks that are not part of the current website release:
+DI3 and DI4 show two event sets selected by frozen source-priority bands, but participants see neutral “event information 1/2” framing, no P1–P5 badge, and the same marker/card styling. Priority remains analysis metadata rather than a visual cue. Event titles and descriptions are frozen in English. Human eligibility therefore requires a prior out-of-band English financial-news reading screen (`m1-en-financial-reading-v1`); the website records only the screening version and confirmation time, not the instrument, score, or cutoff. This restricts generalizability to Chinese users who can independently read short English financial-event descriptions.
 
-- Hartigan’s dip test and PCA projection;
-- mixed-effects variance decomposition;
-- Spearman uncertainty–consensus analysis;
-- human-equivalence percentiles;
-- Kolmogorov–Smirnov testing and tester-blocked bootstrap;
-- formal revision and convergence analyses;
-- integration of the algorithm-generated boundary evaluation task;
-- a fully minimal Agent M1 path without the additional post-boundary annotation stage.
+The primary M1 task fixes:
 
-These remaining items concern the statistical analysis pipeline and future experimental modules. They do not prevent the current M1 system from collecting the required raw research data.
+- T2 three-stage judgment with two boundaries;
+- price series, weekly resolution, linear scale, and all available observations;
+- BTC, ETH, SOL, BNB, XRP, and DOGE;
+- continuous boundary positions and continuous symmetric uncertainty ranges;
+- previous-round boundaries as dashed references;
+- 1/3 and 2/3 starting anchors, explicitly defined as a common adjustment task rather than blank placement.
 
-## 6. Validation and release status
+Primary Human sessions use desktop Chrome, a 1440 × 900 viewport, DPR 1, 100% zoom, and a fine pointer. The server hard-checks the assignment-frozen Chrome major plus measurable viewport/DPR/pointer/orientation; zoom remains an external checklist item. The Agent uses the corresponding frozen browser environment and coordinate-only controller. DOM, accessibility tree, source code, network requests, stimulus JSON, database access, external search, and Human responses are prohibited during Agent judgment.
 
-- Production build: passed
-- Lint: passed with no errors
-- Website/API tests: 19/19 passed
-- Supporting module tests: 19/19 passed
-- Complete 42-response database lifecycle: passed
-- Session/device and response-table exports: passed
-- Sites version 23 production deployment: succeeded
-- Production release tag: `site-v23`
+## 5. Primary estimand
 
+For actor `q`, condition `c`, transition `l`, asset `a`, and boundary `k`, let `m[q,c,l,a,k]` be the expected absolute normalized boundary movement. The single primary estimand is:
+
+```text
+theta_abs = equal-weight mean over 6 transitions × 6 assets × 2 boundaries of
+  [(Agent staged − Agent control) − (Human staged − Human control)]
+```
+
+All 72 cells receive equal weight. The primary analysis uses complete matched pairs. Assets are fixed effects; pair is the allocation and clustering unit; session/run is nested within pair; transition slopes and session × asset heterogeneity are retained. Absolute movement uses a two-part hurdle model whose first part is any nonzero stored-ratio movement: ratios are stored to six decimal places, so `B = round(10^6 × b)` and `I(|delta B| >= 1)` deterministically implements `I(|delta b| > 0)` without an analyst-chosen tolerance; the positive part models `|delta b|`. Signed movement and the distinct grid-crossing outcome `I(|delta index| >= 1)` are secondary outcomes.
+
+All-available and protocol-eligible complete-pair analyses are sensitivity analyses. Because withdrawal, technical failure, and controller abort can be non-random, all-available observations cannot restore randomization or replace the complete-pair primary analysis.
+
+## 6. Data and integrity controls
+
+The database stores:
+
+- the assignment ledger, irreversible token hashes, claim timestamps/session links, and any server-recorded pre-start terminal disposition;
+- session status and termination code, actor, pair, schedule, condition, frozen cohort/build/profile identifiers, timestamped operational confirmations that institution-approved consent and the external English screen were completed, and device environment;
+- 42 server-generated expected-step tuples per session;
+- current and previous boundaries, uncertainty intervals, influence rating, timestamps, interaction latency, adjustment counts, hidden-page time, active response time, viewport, and protocol deviations;
+- one immutable server exposure clock per formal step;
+- for every Agent step, controller/model request metadata plus complete runtime-request, prompt, screenshot, output, action-trace, and server-response hashes, with retry/source-request linkage.
+
+The server enforces strict next-step submission, server-derived previous boundaries, idempotent identical retries, rejection of conflicting rewrites, and exact completion. Session creation atomically claims the token, occupies the pair slot, writes all 42 expected steps, and activates the session. Every complete session requires 42 server-issued exposures and 42 canonical responses. A complete Agent session additionally requires 42 unique submitted attempts linked one-to-one to those responses and 42 independently verified scientific-response hashes.
+
+Researcher CSV exports provide five linked tables: allocations, sessions/devices, responses, server step-exposures, and Agent attempts. Aggregate export is protected by the server-side researcher email allowlist.
+
+The formal Stage-A v3 audit does not trust exported convenience flags or researcher-written summaries. It reconstructs the 12 allocation cells, 24 primary slots, every real canonical session, canonical 42-step plans, boundary/date/index correspondence, uncertainty intervals, previous-boundary continuity, G0 default-anchor behavior, device deviations, Human exposure coverage, and Agent attempt/link/response hashes from the five raw CSVs. An unstarted slot is terminal only when its unclaimed token has one of four frozen dispositions (`declined-before-start`, `no-show-expired`, `withdrawn-before-start`, or `technical-cancel-before-start`) and the same server timestamp in `terminal_at` and `revoked_at`; this revokes the token but creates no session and never enters the started denominator. Every table carries one deployment ID and canonical deployment fingerprint. A server- or controlled-audit-service-signed v2 collection/export receipt binds collection closure, that deployment identity, one database snapshot, all five file hashes, and their ordered bundle hash. Closure follows the last authoritative database/server write, including allocation claim/terminal timestamps and Agent-attempt `created_at`; controller-supplied completion time is chronology-checked but cannot establish that an attempt was persisted before close. A separately signed external-evidence root binds ethics, consent, data management, English screening, withdrawal, the actual event-source archive, source/deployment bytes, controller/prompt/browser, and exactly one run artifact for every claimed R-PRIMARY allocation. A legitimate pre-start terminal Agent slot has no run artifact; an open unclaimed slot keeps the audit not evaluable. Deployment verification reads the archived JavaScript, CSS, font, worker, stimulus, prompt, source-manifest, and migration bytes, checks page/API route closure, and requires deployment creation to precede primary activity. Raw Agent validation uses closed runtime/action schemas, fully validates 1440×900 non-interlaced PNG screenshots, forbids cross-page screenshot/model-output reuse within a run, and closes each `m1-agent-model-output-v1` scientific payload over its session, step, model request, submitted-attempt hash, and exported response. The two HMAC trust roots must be at least 32 bytes and independently controlled; missing, equal, or invalid secrets cannot yield GO.
+
+The operational confirmation is not the consent record. The authoritative consent version, timestamp, withdrawal status, and necessary contact details remain in a separate access-restricted recruitment ledger linked only by an opaque token hash.
+
+Strict M1 does not persist raw User-Agent strings. The server transiently reduces the value to a coarse browser-major and operating-system summary; standard research CSVs and participant-local strict-M1 CSV/JSON exports exclude the raw string. Historical/development rows, hosting logs, and backups must still be audited and handled under the institution-approved data-management plan before recruitment.
+
+## 7. Frozen retry and failure rules
+
+- Maximum 180 server-wall-clock seconds per formal page, beginning when the unique exposure is created; acknowledgement network time and hidden-tab time count. Client timers are behavioral telemetry, not the timeout authority.
+- Maximum 20 controller-reported actions per formal page, audited against the external action trace.
+- At most two additional mechanical retries per action, without recalling the model.
+- At most two identical API retries only before the model returns any output.
+- Maximum 120 minutes per full Human session or Agent run.
+- Exceeding a limit aborts the run.
+- A failed side cannot be replaced within the original pair. The fixed 12-cell Stage-A cohort does not add replacement pairs. A restart is permitted only as a new, fully frozen cohort after `REVISE`; the original cohort remains separate and its invitation, started, and failure counts are retained.
+- Frozen termination families distinguish participant exit/withdrawal, page/run timeout, server-clock failure, model/mechanical retry limit, controller/network/operator failure, and attempt-protocol violation. Every aborted R-PRIMARY Agent run remains in the Agent-abort numerator; codes are reported by cause, not selectively excluded.
+
+## 8. Stage A decision rules
+
+**NOT EVALUABLE:** collection is not formally closed by a valid signed receipt tied to one snapshot and the five exact exports, the export/evidence signatures or hashes are invalid, there are fewer or more than the 12 unique condition × schedule cells, or any of the 24 primary allocation slots has neither a real `complete`/`aborted` session nor a valid pre-start terminal disposition. An open unclaimed token is not terminal. A confirmed STOP event overrides this state and stops collection immediately.
+
+**STOP:** any complete-session canonical/exposure/attempt/link/hash integrity below 100%, any confirmed response loss above zero, or any future-information leakage above zero.
+
+**REVISE and rerun a new Stage A cohort:** fewer than 10/12 complete matched pairs; fewer than 5/6 complete matched pairs in either information condition; either actor has complete/started below 80%; aborted R-PRIMARY Agent runs/started exceeds 10%; either actor has median completion time above 45 minutes or empirical nearest-rank P95 above 75 minutes; started-session device/per-response protocol deviations exceed 10%; or either actor accepts both default G0 anchors without interaction in more than 50% of available G0 judgments. Equality at each threshold passes.
+
+**GO PENDING EXTERNAL GATES:** quantitative STOP/REVISE checks pass, but any ethics/consent/data-plan/English-screening/withdrawal/raw-UA audit, executable controller, complete prompt package, model/API, browser, deployment/source manifest, signed evidence root, or raw run-artifact gate is missing. `proceedToStageB=false`.
+
+**GO:** quantitative checks and every external release gate pass. This authorizes only a new Stage-B freeze; Stage B remains disabled in the current build.
+
+## 9. Current readiness boundary
+
+The repository now freezes the Human and Agent pages, pairing allocator, canonical state machine, server clocks, database audit chain, five-table exports, runner contract, cohort Agent-profile hash, deterministic Stage-A v3 audit/normalizer/evidence verifier, one hashed system-prompt component, and default-off collection gates. Formal collection requires primary and Human gates to be explicitly enabled, the development-pilot gate to remain disabled, and a frozen deployment ID/fingerprint; diagnostic quota launches require the opposite development flag and are excluded. Disabling the formal gates stops further strict-session writes, but the repository still does **not** include the executable screenshot-to-model-to-coordinate controller, complete runtime prompt package, restricted raw run artifacts, the production service that atomically and persistently closes collection and signs an export receipt from the same database snapshot, independently governed audit signing, or a real deployment archive. Those are external blockers for paired Agent Stage A. Institutional ethics approval or written exemption, approved full consent materials, the frozen English-screening instrument and screening records, restricted recruitment/withdrawal ledger, and verified treatment of historical raw User-Agent values are separate blockers for real-Human recruitment.
+
+Accordingly, the current build is suitable only for synthetic or non-research developer validation and supervised Agent feasibility work excluded from Stage A. It is not ready for real-Human recruitment, paired Agent Stage A, Stage B collection, or confirmatory claims. The build ID is bound to a deterministic source manifest, but source identity is not deployment identity: a full Git object ID, deployment ID, and the actual JS/CSS bundle manifest must still be frozen and signed into the external evidence chain before data collection. HMAC is an implementable pilot trust root rather than a perfect institutional attestation; production should separate custody of the two keys, and a later confirmatory deployment should prefer KMS-backed or asymmetric signing and provider-issued execution receipts where available.
+
+The normative Chinese method specification is `docs/M1_ISOMORPHIC_HUMAN_AGENT_METHOD_ZH.md`; the machine-readable Agent contract is `public/data/m1-agent-runner-protocol.json`.

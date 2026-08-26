@@ -1,0 +1,289 @@
+{
+  "schemaVersion": "m1-agent-browser-runner-v1",
+  "experimentProtocol": "m1-isomorphic-v1",
+  "entryPath": "/agent",
+  "launchTokenPolicy": {
+    "queryParameter": "launch",
+    "opaqueBits": 256,
+    "serverAssignedFields": [
+      "actorType",
+      "pairId",
+      "participantCode",
+      "replicateId",
+      "scheduleId",
+      "informationCondition"
+    ],
+    "rawAssignmentFieldsInUrl": false,
+    "idempotentSessionRecovery": true
+  },
+  "primaryContextPolicy": "persistent",
+  "modelContextStartsAt": "common-briefing",
+  "metadataEntryActor": "researcher-or-controller-operator",
+  "promptArtifact": {
+    "repositorySystemPromptPath": "/data/m1-agent-system-prompt-v1.txt",
+    "repositorySystemPromptSha256": "9bb751053f6adab759323983c9358089fdf0906ef9217ef7627cd94586974647",
+    "apiPromptSha256Semantics": "repository-system-prompt-component-only",
+    "runtimePromptPackageStillRequired": true,
+    "runtimePromptPackageSha256RecordedInExternalRunManifest": true,
+    "runtimePackageIncludes": [
+      "system-prompt",
+      "developer-or-controller-wrapper",
+      "action-output-schema",
+      "assembly-order"
+    ]
+  },
+  "pilotPlan": {
+    "stageA": {
+      "purpose": "technical-pilot",
+      "runtimeEnabled": true,
+      "primaryPairs": 12,
+      "allocationCells": 12,
+      "pairsPerCell": 1
+    },
+    "stageB": {
+      "purpose": "variance-pilot",
+      "runtimeEnabled": false,
+      "startsOnlyAfterStageAGo": true,
+      "primaryPairs": 36,
+      "allocationCells": 12,
+      "pairsPerCell": 3
+    },
+    "poolAcrossStagesOrRevisions": false
+  },
+  "primaryPairPolicy": {
+    "humanPrimarySlots": 1,
+    "agentPrimaryRuns": 1,
+    "agentPrimaryReplicateId": "R-PRIMARY",
+    "frozenModelSystemRequired": true,
+    "replacementWithinPair": false,
+    "technicalRestartRequiresNewPair": true,
+    "retainFailedPairInFlowDenominators": true
+  },
+  "primaryCohortProfilePolicy": {
+    "launcherEnvironmentBindings": [
+      "M1_AGENT_PROFILE_SHA256",
+      "M1_PRIMARY_CHROME_MAJOR",
+      "M1_DEPLOYMENT_ID",
+      "M1_DEPLOYMENT_FINGERPRINT_SHA256"
+    ],
+    "assignmentFields": [
+      "agent_profile_sha256",
+      "primary_browser_major",
+      "implementation_build_id",
+      "deployment_id",
+      "deployment_fingerprint_sha256"
+    ],
+    "sessionRecomputesCanonicalProfileHash": true,
+    "profileMismatchRejected": true,
+    "sourceManifestPath": "/data/m1-source-manifest.json",
+    "sourceManifestBoundBuildId": true
+  },
+  "expectedFormalJudgments": 42,
+  "expectedPracticeJudgments": 1,
+  "stimulusSha256": "c941b59446774c62e848f5fc3431d555a05ab07e6ec416b489c4bc98d014074e",
+  "eventSourceSha256": "cc9d1f5d06fa2aeb447c57abeb1c42c560195967d33e7a4f90629333c3bc9438",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "devicePixelRatio": 1,
+    "zoomPercent": 100
+  },
+  "allowedObservation": [
+    "current-browser-screenshot"
+  ],
+  "rawScreenshotEvidence": {
+    "format": "png",
+    "width": 1440,
+    "height": 900,
+    "interlaced": false,
+    "verification": "signature-chunk-order-crc-idat-inflate-and-scanline-length"
+  },
+  "rawModelOutputEvidence": {
+    "schemaVersion": "m1-agent-model-output-v1",
+    "closedSchema": true,
+    "topLevelFields": [
+      "schemaVersion",
+      "sessionId",
+      "stepOrder",
+      "modelRequestId",
+      "responseSha256",
+      "scientificResponse"
+    ],
+    "scientificResponseFields": [
+      "trialId",
+      "disclosureIndex",
+      "boundaries",
+      "previousBoundaries",
+      "boundaryIntervals",
+      "influenceRating",
+      "noChangeConfirmed",
+      "singleStageConfirmed"
+    ],
+    "binding": "sessionId + stepOrder + unique modelRequestId + recomputed scientific response SHA-256 must match the submitted attempt and exported response"
+  },
+  "allowedActions": [
+    "coordinate-click",
+    "coordinate-drag",
+    "scroll"
+  ],
+  "forbiddenChannels": [
+    "dom",
+    "accessibility-tree",
+    "page-source",
+    "network-requests",
+    "stimulus-json",
+    "database",
+    "external-search",
+    "code-execution-during-judgment",
+    "human-responses"
+  ],
+  "requiredSessionMetadata": [
+    "provider",
+    "modelName",
+    "modelSnapshot",
+    "apiVersion",
+    "controllerVersion",
+    "controllerArtifactSha256",
+    "runtimePromptPackageSha256",
+    "contextPolicy",
+    "imageDetail",
+    "promptSha256",
+    "browserEngine",
+    "browserMajor",
+    "replicateId"
+  ],
+  "recommendedNullableSessionMetadata": [
+    "temperature",
+    "topP",
+    "seed",
+    "reasoningEffort"
+  ],
+  "attemptLogEndpoint": "/api/agent-attempts",
+  "formalPageExposureEndpoint": "/api/m1-step-exposures",
+  "formalPageExposurePolicy": {
+    "createdAutomaticallyBySharedBrowserPage": true,
+    "oneImmutableServerClockPerSessionStep": true,
+    "stimulusHiddenUntilClockAcknowledged": true,
+    "requiredBeforeAttemptOrResponse": true,
+    "serverReceiveTimeIsAuthoritative": true
+  },
+  "attemptLogPolicy": {
+    "storeRawScreenshot": false,
+    "storeRawPrompt": false,
+    "storeChainOfThought": false,
+    "storeHashesAndRequestMetadata": true,
+    "requiredBeforeEachFormalResponse": true,
+    "requiredSubmittedAttemptPerStep": true,
+    "oneFinalSubmittedAttemptPerStep": true,
+    "currentStepOnly": true,
+    "currentStepOrderRule": "stepOrder === savedCanonicalResponseCount",
+    "modelRequestIdUniqueWithinSession": true,
+    "serverLinksAttemptToResponse": true,
+    "serverResponseHash": "canonical-scientific-answer-sha256-v1",
+    "submittedAttemptRequires": [
+      "sessionId",
+      "stepOrder",
+      "attemptNumber",
+      "modelApiAttemptNumber",
+      "mechanicalActionId",
+      "mechanicalRetryNumber",
+      "status",
+      "controllerVersion",
+      "modelRequestId",
+      "sourceModelRequestId",
+      "promptSha256",
+      "runtimeRequestSha256",
+      "screenshotSha256",
+      "outputSha256",
+      "actionTraceSha256",
+      "startedAt",
+      "completedAt",
+      "errorCode"
+    ],
+    "submittedAttemptFieldRules": {
+      "status": "required-literal-submitted",
+      "modelApiAttemptNumber": "one-based index of the successful model API call on this page",
+      "mechanicalActionId": "required empty string on submitted",
+      "mechanicalRetryNumber": "required zero on submitted",
+      "sourceModelRequestId": "required empty string on submitted; mechanical rows reference the successful submitted modelRequestId",
+      "runtimeRequestSha256": "SHA-256 of the complete canonical runtime request envelope, including every prompt component and image reference",
+      "startedAt": "required-valid-ISO-8601",
+      "completedAt": "required-valid-ISO-8601-and-not-before-startedAt",
+      "errorCode": "required-empty-string"
+    },
+    "allowedStatuses": [
+      "submitted",
+      "mechanical-retry",
+      "model-error",
+      "controller-error",
+      "aborted"
+    ],
+    "ledgerRules": {
+      "attemptNumbers": "contiguous one-based within each page",
+      "startedAt": "common page-start timestamp shared by every ledger row on the page",
+      "modelRetryInput": "promptSha256, runtimeRequestSha256, and screenshotSha256 are identical across all model API retries and the successful output",
+      "modelRetryTiming": "model-error is allowed only before any model output",
+      "mechanicalOutputBinding": "controller-error and mechanical-retry reference one successful modelRequestId and preserve its outputSha256",
+      "perPageRawEvidence": "screenshotSha256 and outputSha256 may be shared by same-page mechanical retries but must not be reused across different stepOrder values in one run",
+      "mechanicalRetryLimit": "two additional retries per mechanicalActionId",
+      "toolCalls": "incremental controller actions represented by each ledger row; the page sum may not exceed 20",
+      "terminalStates": ["submitted", "aborted", "model-api-retry-limit", "mechanical-retry-limit"],
+      "attemptAfterTerminal": false
+    }
+  },
+  "executionLimits": {
+    "formalPageWallClockSeconds": 180,
+    "formalPageClockStartsAt": "server exposure is created before browser acknowledgement; the stimulus remains hidden until acknowledgement, and acknowledgement network time counts toward the 180-second limit",
+    "maxControllerActionsPerFormalPage": 20,
+    "maxAdditionalMechanicalRetriesPerAction": 2,
+    "maxAdditionalModelApiRetriesBeforeAnyOutput": 2,
+    "fullRunWallClockMinutes": 120,
+    "fullRunClockStartsAt": "canonical-session-created",
+    "onAnyLimitExceeded": "abort-current-run",
+    "serverClockAuthoritative": true
+  },
+  "retryRules": {
+    "mechanicalActionRetryDoesNotRecallModel": true,
+    "identicalModelRequestRetryOnlyBeforeOutput": true,
+    "noModelResamplingAfterAnyOutput": true,
+    "researcherMayEditModelAnswer": false,
+    "restartWithinOriginalPair": false,
+    "technicalRestartRequiresNewPairIdAndNewPrimarySlots": true,
+    "failedPairRemainsInInvitationAndFailureDenominators": true
+  },
+  "formalCompletionRequires": [
+    "42-canonical-responses",
+    "42-unique-submitted-attempts",
+    "42-attempt-response-links",
+    "42-server-verified-response-sha256",
+    "42-server-issued-page-clocks",
+    "practice-completed",
+    "session-active"
+  ],
+  "externalArtifactsRequiredBeforePairedPilot": [
+    "versioned-executable-screenshot-and-coordinate-controller",
+    "complete-versioned-runtime-prompt-package-with-independent-sha256-in-external-run-manifest",
+    "frozen-model-snapshot-and-api-version",
+    "frozen-browser-runtime-and-execution-manifest",
+    "end-to-end-controller-validation-record",
+    "same-snapshot-collection-close-export-receipt-signed-by-controlled-service",
+    "independently-signed-external-evidence-root",
+    "frozen-event-source-archive-whose-bytes-hash-equals-event-source-sha256",
+    "source-git-deployment-and-complete-production-bundle-manifests-with-actual-bytes",
+    "all-twelve-r-primary-raw-runtime-requests-screenshots-outputs-and-coordinate-action-traces"
+  ],
+  "collectionGatePolicy": {
+    "default": "all-disabled",
+    "formalStageA": {
+      "M1_STAGE_A_PRIMARY_COLLECTION_ENABLED": true,
+      "M1_HUMAN_COLLECTION_ENABLED": true,
+      "M1_DEVELOPMENT_PILOT_ENABLED": false
+    },
+    "diagnosticQuotaManualRequiresDevelopmentPilot": true,
+    "formalAndDevelopmentModesMutuallyExclusive": true,
+    "disableFormalGatesBeforeSnapshotClose": true,
+    "persistentAtomicCloseAndReceiptSignerStillExternal": true
+  },
+  "pairedAgentStageABlockedUntilExternalArtifactsFrozen": true,
+  "implementationBoundary": "This repository freezes the source-manifest-bound browser implementation, runner contract, API audit chain, five-table normalizer, signed-evidence verifier, cohort profile hash, and a hashed system-prompt component. The executable controller, complete runtime prompt package originals, restricted run artifacts, production collection-close/export receipt signer, independently governed evidence signer, deployment/bundle manifest, and end-to-end validation remain external blocking artifacts before paired Agent stage A. Stage B is specification-only and disabled in this build."
+}

@@ -1,5 +1,22 @@
+import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
 import { ensureExperimentSchema, getDb } from "@/db";
-import { modularResponses } from "@/db/schema";
+import { m1SessionMutationGateResponse } from "@/lib/m1-collection-gates";
+import {
+  agentRunAttempts,
+  experimentExpectedSteps,
+  experimentSessions,
+  experimentStepExposures,
+  modularResponses,
+} from "@/db/schema";
+import { isStrictM1Arm, M1_PROTOCOL_VERSION } from "@/lib/m1-protocol";
+import { hashM1ScientificResponse } from "@/lib/m1-response-integrity";
+import {
+  type M1AttemptLedgerRow,
+  M1_FORMAL_PAGE_LIMIT_MS,
+  M1_FULL_RUN_LIMIT_SECONDS,
+  m1AttemptLedgerIsSubmitted,
+  strictM1ResponseDurationViolation,
+} from "@/lib/m1-execution-limits";
 
 const MODULES = new Set(["disclosure", "framing", "cross-series", "robustness"]);
 const TASKS = new Set(["T1", "T2", "T3"]);
@@ -9,7 +26,7 @@ const RESOLUTIONS = new Set(["daily", "weekly", "monthly", "yearly"]);
 const SCALES = new Set(["linear", "log"]);
 const WINDOWS = new Set(["whole", "truncated"]);
 const DISCLOSURES = new Set(["G0", "GI1", "GI2", "DI1", "DI2", "DI3", "DI4", "FULL"]);
-const RESPONSE_VERSIONS = new Set(["v4", "v4.1", "v4.2", "v4.3", "pre-v4", "agent-v1", "agent-v2"]);
+const RESPONSE_VERSIONS = new Set(["v4", "v4.1", "v4.2", "v4.3", "pre-v4", "agent-v1", "agent-v2", "m1-isomorphic-v1"]);
 const V4_CUES_V1 = new Set([
   "curve_trend_slope",
   "curve_level_shift",
@@ -165,6 +182,146 @@ function errorMessage(error: unknown) {
   return messages[0] ?? "Unexpected database error";
 }
 
+function isUniqueConstraint(error: unknown) {
+  let cursor: unknown = error;
+  for (let depth = 0; depth < 6 && cursor; depth += 1) {
+    if (cursor instanceof Error && /UNIQUE constraint failed|SQLITE_CONSTRAINT_UNIQUE/i.test(cursor.message)) {
+      return true;
+    }
+    cursor = typeof cursor === "object" && cursor !== null && "cause" in cursor
+      ? (cursor as { cause?: unknown }).cause
+      : null;
+  }
+  return false;
+}
+
+function sameJson(left: string, right: unknown) {
+  try {
+    return JSON.stringify(JSON.parse(left)) === JSON.stringify(right);
+  } catch {
+    return false;
+  }
+}
+
+function sameBoundaryPositions(left: Boundary[], right: Boundary[]) {
+  return left.length === right.length && left.every((boundary, index) =>
+    finiteNumber(boundary.ratio) &&
+    finiteNumber(right[index]?.ratio) &&
+    Math.abs((boundary.ratio ?? 0) - (right[index]?.ratio ?? 0)) <= 0.00001,
+  );
+}
+
+function intervalHalfWidths(value: BoundaryInterval[]) {
+  return value.map((interval) => interval.halfWidthRatio ?? Number.NaN);
+}
+
+function sameNumberList(left: number[], right: number[]) {
+  return left.length === right.length && left.every((value, index) =>
+    Number.isFinite(value) && Number.isFinite(right[index]) && Math.abs(value - right[index]) <= 0.00001,
+  );
+}
+
+function sameScientificAnswer(
+  existing: typeof modularResponses.$inferSelect,
+  candidate: {
+    boundaries: Boundary[];
+    previousBoundaries: Boundary[];
+    boundaryIntervals: BoundaryInterval[];
+    singleStageConfirmed: boolean;
+    influenceRating: number | null;
+    noChangeConfirmed: boolean;
+    cueTags: string[];
+    rationale: string;
+  },
+) {
+  return sameJson(existing.boundariesJson, candidate.boundaries) &&
+    sameJson(existing.previousBoundariesJson, candidate.previousBoundaries) &&
+    sameJson(existing.boundaryIntervalsJson, candidate.boundaryIntervals) &&
+    existing.singleStageConfirmed === candidate.singleStageConfirmed &&
+    existing.influenceRating === candidate.influenceRating &&
+    existing.noChangeConfirmed === candidate.noChangeConfirmed &&
+    sameJson(existing.cueTags, candidate.cueTags) &&
+    existing.rationale === candidate.rationale;
+}
+
+async function linkSubmittedAgentAttempt(
+  response: typeof modularResponses.$inferSelect,
+  stepOrder: number,
+) {
+  const [attempt] = await getDb()
+    .select()
+    .from(agentRunAttempts)
+    .where(and(
+      eq(agentRunAttempts.sessionId, response.sessionId),
+      eq(agentRunAttempts.stepOrder, stepOrder),
+      eq(agentRunAttempts.status, "submitted"),
+    ))
+    .limit(1);
+  if (!attempt) return false;
+  const responseSha256 = await hashM1ScientificResponse({
+    sessionId: response.sessionId,
+    stepOrder,
+    trialId: response.trialId,
+    disclosureIndex: response.disclosureIndex,
+    boundariesJson: response.boundariesJson,
+    previousBoundariesJson: response.previousBoundariesJson,
+    boundaryIntervalsJson: response.boundaryIntervalsJson,
+    influenceRating: response.influenceRating,
+    noChangeConfirmed: response.noChangeConfirmed,
+    singleStageConfirmed: response.singleStageConfirmed,
+  });
+  if (attempt.responseId !== null) {
+    if (attempt.responseId !== response.id || attempt.responseSha256 !== responseSha256) {
+      throw new Error("Submitted Agent attempt is already linked to another scientific response");
+    }
+    return true;
+  }
+  await getDb()
+    .update(agentRunAttempts)
+    .set({ responseId: response.id, responseSha256 })
+    .where(and(eq(agentRunAttempts.id, attempt.id), isNull(agentRunAttempts.responseId)));
+  const [linked] = await getDb()
+    .select({ responseId: agentRunAttempts.responseId, responseSha256: agentRunAttempts.responseSha256 })
+    .from(agentRunAttempts)
+    .where(eq(agentRunAttempts.id, attempt.id))
+    .limit(1);
+  if (linked?.responseId !== response.id || linked.responseSha256 !== responseSha256) {
+    throw new Error("Agent attempt could not be linked to the saved scientific response");
+  }
+  return true;
+}
+
+function responseMatchesExpected(
+  payload: {
+    trialId?: string;
+    trialOrder?: number;
+    moduleKey?: string;
+    taskType?: string;
+    stimulusType?: string;
+    assetId?: string;
+    metricType?: string;
+    resolution?: string;
+    scaleMode?: string;
+    windowMode?: string;
+    disclosureIndex?: number;
+    disclosureKey?: string;
+  },
+  expected: typeof experimentExpectedSteps.$inferSelect,
+) {
+  return payload.trialId === expected.trialId &&
+    payload.trialOrder === expected.trialOrder &&
+    payload.moduleKey === expected.moduleKey &&
+    payload.taskType === expected.taskType &&
+    payload.stimulusType === expected.stimulusType &&
+    payload.assetId === expected.assetId &&
+    payload.metricType === expected.metricType &&
+    payload.resolution === expected.resolution &&
+    payload.scaleMode === expected.scaleMode &&
+    payload.windowMode === expected.windowMode &&
+    payload.disclosureIndex === expected.disclosureIndex &&
+    payload.disclosureKey === expected.disclosureKey;
+}
+
 export async function POST(request: Request) {
   try {
     const payload = (await request.json()) as {
@@ -211,8 +368,8 @@ export async function POST(request: Request) {
       activeElapsedMs?: number;
     };
     const responseVersion = payload.responseVersion ?? "pre-v4";
-    const isStructuredResponse = ["v4", "v4.1", "v4.2", "v4.3", "agent-v1", "agent-v2"].includes(responseVersion);
-    const isTelemetryResponse = responseVersion === "v4.3";
+    const isStructuredResponse = ["v4", "v4.1", "v4.2", "v4.3", "agent-v1", "agent-v2", "m1-isomorphic-v1"].includes(responseVersion);
+    const isTelemetryResponse = responseVersion === "v4.3" || responseVersion === "m1-isomorphic-v1";
 
     if (
       !payload.sessionId ||
@@ -305,7 +462,7 @@ export async function POST(request: Request) {
     const influenceRequired = payload.moduleKey === "disclosure" && payload.disclosureIndex > 0;
     const cueTags = Array.isArray(payload.cueTags) ? payload.cueTags : [];
     const cueSchema = payload.cueSchemaVersion ?? "";
-    const cueCollectionDisabled = (responseVersion === "v4.2" || responseVersion === "v4.3") && cueSchema === "none";
+    const cueCollectionDisabled = (responseVersion === "v4.2" || responseVersion === "v4.3" || responseVersion === "m1-isomorphic-v1") && cueSchema === "none";
     const activeV2Cues = V4_CUES_V2_BY_DISCLOSURE[payload.disclosureKey];
     const hasV2NoEffect = cueTags.some((tag) => typeof tag === "string" && tag.endsWith("_no_effect"));
     const invalidV4Cues = isStructuredResponse && !cueCollectionDisabled && (
@@ -337,9 +494,238 @@ export async function POST(request: Request) {
     }
 
     await ensureExperimentSchema();
-    const [response] = await getDb()
-      .insert(modularResponses)
-      .values({
+    const [session] = await getDb()
+      .select({
+        id: experimentSessions.id,
+        status: experimentSessions.status,
+        experimentalArm: experimentSessions.experimentalArm,
+        studyConfigJson: experimentSessions.studyConfigJson,
+        practiceCompletedAt: experimentSessions.practiceCompletedAt,
+      })
+      .from(experimentSessions)
+      .where(eq(experimentSessions.id, payload.sessionId))
+      .limit(1);
+    if (!session) return Response.json({ error: "Session not found" }, { status: 404 });
+    let sessionProtocolArchitecture = "";
+    let sessionConfig: Record<string, unknown> = {};
+    try {
+      sessionConfig = JSON.parse(session.studyConfigJson) as Record<string, unknown>;
+      sessionProtocolArchitecture = String(sessionConfig.protocolArchitecture ?? "");
+    } catch {
+      sessionProtocolArchitecture = "";
+    }
+    // The arm name existed before the isomorphic protocol.  Gate strict behavior on
+    // the frozen architecture marker so unfinished legacy sessions remain readable.
+    const isStrictM1Session = isStrictM1Arm(session.experimentalArm) &&
+      sessionProtocolArchitecture === M1_PROTOCOL_VERSION;
+    if (isStrictM1Session) {
+      const collectionGateResponse = m1SessionMutationGateResponse(session.experimentalArm, sessionConfig);
+      if (collectionGateResponse) return collectionGateResponse;
+    }
+    if (isStrictM1Session && !session.practiceCompletedAt) {
+      return Response.json({ error: "The common practice must be completed before formal responses", code: "PRACTICE_REQUIRED" }, { status: 409 });
+    }
+
+    const [expected] = await getDb()
+      .select()
+      .from(experimentExpectedSteps)
+      .where(and(
+        eq(experimentExpectedSteps.sessionId, payload.sessionId),
+        eq(experimentExpectedSteps.trialId, payload.trialId),
+        eq(experimentExpectedSteps.disclosureIndex, payload.disclosureIndex),
+      ))
+      .limit(1);
+    if (isStrictM1Session && !expected) {
+      return Response.json({ error: "The session does not have a valid canonical M1 step" }, { status: 409 });
+    }
+    if (expected && !responseMatchesExpected(payload, expected)) {
+      return Response.json(
+        { error: "Submitted condition does not match the assigned experiment step", code: "STEP_CONDITION_MISMATCH" },
+        { status: 409 },
+      );
+    }
+    if (isStrictM1Session && responseVersion !== M1_PROTOCOL_VERSION) {
+      return Response.json({ error: "M1 response protocol version mismatch" }, { status: 409 });
+    }
+    if (isStrictM1Session && (cueSchema !== "none" || cueTags.length || (payload.rationale ?? "").trim())) {
+      return Response.json({ error: "Matched M1 does not collect cue tags or rationale" }, { status: 400 });
+    }
+
+    const [existing] = await getDb()
+      .select()
+      .from(modularResponses)
+      .where(and(
+        eq(modularResponses.sessionId, payload.sessionId),
+        eq(modularResponses.trialId, payload.trialId),
+        eq(modularResponses.disclosureIndex, payload.disclosureIndex),
+      ))
+      .limit(1);
+    if (existing) {
+      if (sameScientificAnswer(existing, {
+        boundaries,
+        previousBoundaries,
+        boundaryIntervals,
+        singleStageConfirmed: payload.singleStageConfirmed === true,
+        influenceRating: payload.influenceRating ?? null,
+        noChangeConfirmed: payload.noChangeConfirmed === true,
+        cueTags: cueTags.map(String),
+        rationale: (payload.rationale ?? "").trim().slice(0, 1000),
+      })) {
+        if (isStrictM1Session && session.experimentalArm === "agent-m1-main" && expected) {
+          const linked = await linkSubmittedAgentAttempt(existing, expected.stepOrder);
+          if (!linked) {
+            return Response.json(
+              { error: "A submitted Agent attempt is required for this response", code: "AGENT_ATTEMPT_REQUIRED" },
+              { status: 409 },
+            );
+          }
+        }
+        return Response.json(
+          { response: { id: existing.id, createdAt: existing.createdAt }, idempotent: true },
+          { status: 200 },
+        );
+      }
+      return Response.json(
+        { error: "This experiment step was already finalized with a different answer", code: "STEP_ALREADY_FINALIZED" },
+        { status: 409 },
+      );
+    }
+    if (session.status !== "active") {
+      return Response.json({ error: "Session is not active" }, { status: 409 });
+    }
+
+    let canonicalPreviousBoundaries = previousBoundaries;
+    if (expected) {
+      const [submittedTotal] = await getDb()
+        .select({ value: count() })
+        .from(modularResponses)
+        .where(eq(modularResponses.sessionId, payload.sessionId));
+      if ((submittedTotal?.value ?? 0) !== expected.stepOrder) {
+        return Response.json(
+          { error: "Responses must be submitted in the assigned order", code: "OUT_OF_ORDER_STEP", expectedStepOrder: submittedTotal?.value ?? 0 },
+          { status: 409 },
+        );
+      }
+      if (isStrictM1Session && session.experimentalArm === "agent-m1-main") {
+        const attemptLedger = await getDb()
+          .select()
+          .from(agentRunAttempts)
+          .where(and(
+            eq(agentRunAttempts.sessionId, payload.sessionId),
+            eq(agentRunAttempts.stepOrder, expected.stepOrder),
+          ))
+          .orderBy(asc(agentRunAttempts.attemptNumber));
+        if (!m1AttemptLedgerIsSubmitted(attemptLedger as M1AttemptLedgerRow[])) {
+          return Response.json(
+            {
+              error: "A protocol-compliant Agent controller attempt is required before this response",
+              code: "AGENT_ATTEMPT_REQUIRED",
+              stepOrder: expected.stepOrder,
+            },
+            { status: 409 },
+          );
+        }
+      }
+      if (isStrictM1Session) {
+        const [serverClock] = await getDb()
+          .select({
+            runElapsedSeconds: sql<number>`unixepoch('now') - unixepoch(${experimentSessions.startedAt})`,
+            pageElapsedMs: sql<number>`CAST((julianday('now') - julianday(${experimentStepExposures.startedAt})) * 86400000 AS INTEGER)`,
+          })
+          .from(experimentSessions)
+          .leftJoin(experimentStepExposures, and(
+            eq(experimentStepExposures.sessionId, experimentSessions.id),
+            eq(experimentStepExposures.stepOrder, expected.stepOrder),
+          ))
+          .where(eq(experimentSessions.id, payload.sessionId))
+          .limit(1);
+        if (serverClock?.pageElapsedMs === null || serverClock?.pageElapsedMs === undefined) {
+          return Response.json(
+            { error: "The current formal page does not have a server-issued clock", code: "PAGE_EXPOSURE_REQUIRED" },
+            { status: 409 },
+          );
+        }
+        if ((serverClock.runElapsedSeconds ?? M1_FULL_RUN_LIMIT_SECONDS + 1) > M1_FULL_RUN_LIMIT_SECONDS) {
+          await getDb()
+            .update(experimentSessions)
+            .set({ status: "aborted", completedAt: new Date().toISOString(), terminationCode: "RUN_TIME_LIMIT_EXCEEDED" })
+            .where(and(eq(experimentSessions.id, payload.sessionId), eq(experimentSessions.status, "active")));
+          return Response.json(
+            { error: "The frozen 120-minute session limit was exceeded", code: "RUN_TIME_LIMIT_EXCEEDED" },
+            { status: 409 },
+          );
+        }
+        if (serverClock.pageElapsedMs < 0 || serverClock.pageElapsedMs > M1_FORMAL_PAGE_LIMIT_MS) {
+          await getDb()
+            .update(experimentSessions)
+            .set({ status: "aborted", completedAt: new Date().toISOString(), terminationCode: "FORMAL_PAGE_TIME_LIMIT" })
+            .where(and(eq(experimentSessions.id, payload.sessionId), eq(experimentSessions.status, "active")));
+          return Response.json(
+            { error: "The formal page exceeded the frozen 180-second server limit", code: "FORMAL_PAGE_TIME_LIMIT" },
+            { status: 409 },
+          );
+        }
+        if (strictM1ResponseDurationViolation({
+          elapsedMs: payload.elapsedMs ?? 0,
+          activeElapsedMs: payload.activeElapsedMs ?? 0,
+          clientStartedAt: payload.clientStartedAt,
+          clientSubmittedAt: payload.clientSubmittedAt,
+        })) {
+          return Response.json(
+            { error: "Client timing telemetry is missing or inconsistent", code: "CLIENT_TIMING_INVALID" },
+            { status: 400 },
+          );
+        }
+      }
+    }
+
+    if (payload.moduleKey === "disclosure" && payload.disclosureIndex > 0 && expected) {
+      const [prior] = await getDb()
+        .select({
+          boundariesJson: modularResponses.boundariesJson,
+          boundaryIntervalsJson: modularResponses.boundaryIntervalsJson,
+        })
+        .from(modularResponses)
+        .where(and(
+          eq(modularResponses.sessionId, payload.sessionId),
+          eq(modularResponses.trialId, payload.trialId),
+          eq(modularResponses.disclosureIndex, payload.disclosureIndex - 1),
+        ))
+        .limit(1);
+      if (!prior) {
+        return Response.json({ error: "The prior disclosure response is required", code: "PRIOR_DISCLOSURE_REQUIRED" }, { status: 409 });
+      }
+      let parsedPriorBoundaries: Boundary[] = [];
+      let parsedPriorIntervals: BoundaryInterval[] = [];
+      try {
+        parsedPriorBoundaries = JSON.parse(prior.boundariesJson) as Boundary[];
+        parsedPriorIntervals = JSON.parse(prior.boundaryIntervalsJson) as BoundaryInterval[];
+      } catch {
+        return Response.json({ error: "Stored prior response is invalid" }, { status: 500 });
+      }
+      if (!sameJson(prior.boundariesJson, previousBoundaries)) {
+        return Response.json(
+          { error: "Previous boundaries do not match the stored prior response", code: "STALE_PREVIOUS_BOUNDARIES", canonicalPreviousBoundaries: parsedPriorBoundaries },
+          { status: 409 },
+        );
+      }
+      canonicalPreviousBoundaries = parsedPriorBoundaries;
+      const unchanged = sameBoundaryPositions(boundaries, parsedPriorBoundaries) &&
+        sameNumberList(
+          intervalHalfWidths(boundaryIntervals),
+          intervalHalfWidths(parsedPriorIntervals),
+        );
+      if (unchanged !== (payload.noChangeConfirmed === true)) {
+        return Response.json(
+          { error: unchanged ? "An unchanged answer must be explicitly confirmed" : "The unchanged flag cannot be used after modifying a boundary or range", code: "NO_CHANGE_CONFIRMATION_MISMATCH" },
+          { status: 400 },
+        );
+      }
+    } else if (payload.noChangeConfirmed === true) {
+      return Response.json({ error: "The baseline step cannot be marked unchanged" }, { status: 400 });
+    }
+
+    const responseValues: typeof modularResponses.$inferInsert = {
         sessionId: payload.sessionId.slice(0, 80),
         trialId: payload.trialId.slice(0, 180),
         trialOrder: payload.trialOrder,
@@ -359,7 +745,7 @@ export async function POST(request: Request) {
         cueSchemaVersion: (payload.cueSchemaVersion ?? "legacy-cues-v1").slice(0, 80),
         boundaryCount: boundaries.length,
         boundariesJson: JSON.stringify(boundaries),
-        previousBoundariesJson: JSON.stringify(previousBoundaries),
+        previousBoundariesJson: JSON.stringify(canonicalPreviousBoundaries),
         boundaryIntervalsJson: JSON.stringify(boundaryIntervals),
         singleStageConfirmed: payload.singleStageConfirmed === true,
         confidence: isStructuredResponse ? 0 : Math.trunc(payload.confidence ?? 0),
@@ -399,8 +785,66 @@ export async function POST(request: Request) {
         responseOrientation: (payload.responseOrientation ?? "unknown").slice(0, 40) || "unknown",
         pageHiddenMs: Math.trunc(payload.pageHiddenMs ?? 0),
         activeElapsedMs: Math.trunc(payload.activeElapsedMs ?? payload.elapsedMs ?? 0),
-      })
-      .returning({ id: modularResponses.id, createdAt: modularResponses.createdAt });
+      };
+    let response: { id: number; createdAt: string };
+    try {
+      const [inserted] = await getDb()
+        .insert(modularResponses)
+        .values(responseValues)
+        .returning({ id: modularResponses.id, createdAt: modularResponses.createdAt });
+      response = inserted;
+    } catch (insertError) {
+      if (!isUniqueConstraint(insertError)) throw insertError;
+      const [winner] = await getDb()
+        .select()
+        .from(modularResponses)
+        .where(and(
+          eq(modularResponses.sessionId, payload.sessionId),
+          eq(modularResponses.trialId, payload.trialId),
+          eq(modularResponses.disclosureIndex, payload.disclosureIndex),
+        ))
+        .limit(1);
+      if (!winner) throw insertError;
+      if (sameScientificAnswer(winner, {
+        boundaries,
+        previousBoundaries: canonicalPreviousBoundaries,
+        boundaryIntervals,
+        singleStageConfirmed: payload.singleStageConfirmed === true,
+        influenceRating: payload.influenceRating ?? null,
+        noChangeConfirmed: payload.noChangeConfirmed === true,
+        cueTags: cueTags.map(String),
+        rationale: (payload.rationale ?? "").trim().slice(0, 1000),
+      })) {
+        if (isStrictM1Session && session.experimentalArm === "agent-m1-main" && expected) {
+          const linked = await linkSubmittedAgentAttempt(winner, expected.stepOrder);
+          if (!linked) {
+            return Response.json(
+              { error: "A submitted Agent attempt is required for this response", code: "AGENT_ATTEMPT_REQUIRED" },
+              { status: 409 },
+            );
+          }
+        }
+        return Response.json(
+          { response: { id: winner.id, createdAt: winner.createdAt }, idempotent: true },
+          { status: 200 },
+        );
+      }
+      return Response.json(
+        { error: "This experiment step was already finalized with a different answer", code: "STEP_ALREADY_FINALIZED" },
+        { status: 409 },
+      );
+    }
+
+    if (isStrictM1Session && session.experimentalArm === "agent-m1-main" && expected) {
+      const [savedResponse] = await getDb()
+        .select()
+        .from(modularResponses)
+        .where(eq(modularResponses.id, response.id))
+        .limit(1);
+      if (!savedResponse || !(await linkSubmittedAgentAttempt(savedResponse, expected.stepOrder))) {
+        throw new Error("Saved Agent response is missing its submitted controller attempt");
+      }
+    }
 
     return Response.json({ response }, { status: 201 });
   } catch (error) {

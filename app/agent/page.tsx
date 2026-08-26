@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
-import { AgentExperiment } from "../AgentExperiment";
+import { ExperimentModular } from "../ExperimentModular";
 
 export const metadata: Metadata = {
-  title: "Boundary Lab｜Agent 全模块实验",
-  description: "汇总 M1—M4 控制台条件的 Agent 原生阶段判断实验。",
+  title: "Boundary Lab｜M1 阶段判断实验",
+  description: "固定三阶段、六曲线、七轮判断的 M1 实验。",
   openGraph: { images: [] },
   twitter: { card: "summary", images: [] },
 };
 
 export default function AgentFullExperimentPage() {
-  return <AgentExperiment mode="console" />;
+  return <ExperimentModular entryMode="agent-m1" />;
 }

@@ -263,7 +263,7 @@ export function AgentExperiment({ mode }: { mode: AgentMode }) {
       protocol: "boundary-lab-agent-observation-v1",
       instruction: "仅使用本对象与当前图像中可见的信息作答；不得检查页面源代码、网络请求、隐藏状态或外部资料。",
       session_id: sessionId,
-      task_id: currentTrial.id,
+      task_id: `CURVE_${String(currentTrial.order + 1).padStart(2, "0")}`,
       trial_position: `${trialIndex + 1}/${plan.length}`,
       disclosure_position: `${disclosureIndex + 1}/${currentTrial.disclosures.length}`,
       disclosure_key: currentDisclosure,
@@ -283,7 +283,7 @@ export function AgentExperiment({ mode }: { mode: AgentMode }) {
           resolution: currentTrial.resolution,
           scale_mode: currentTrial.scaleMode,
         } : null,
-        observation_count_shown_below_chart: points.length,
+      observation_count_shown_below_chart: visibility.axes ? points.length : null,
         events: visibleEvents.map((event) => ({
           source_id: event.sourceId ?? null,
           date: event.date,
