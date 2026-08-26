@@ -1,0 +1,467 @@
+:root {
+  --lai-paper: #fff7dc;
+  --lai-gold: #ffd36a;
+  --lai-cyan: #62eadb;
+}
+
+* { box-sizing: border-box; }
+html, body { min-height: 100%; margin: 0; background: #080b19; }
+button, a { -webkit-tap-highlight-color: transparent; }
+
+.lai-shell {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  color: var(--lai-paper);
+  background: radial-gradient(circle at 50% 10%, #3d3b79, #090c1d 64%);
+  font-family: var(--font-geist-sans), "Microsoft YaHei", sans-serif;
+}
+
+.lai-game {
+  position: relative;
+  width: min(100vw, 480px);
+  height: min(100svh, 920px);
+  min-height: 640px;
+  overflow: hidden;
+  isolation: isolate;
+  background: #17152c;
+  box-shadow: 0 0 64px #000b;
+}
+
+.lai-game::after {
+  content: "";
+  position: absolute;
+  z-index: 80;
+  inset: 0;
+  pointer-events: none;
+  opacity: .13;
+  background: repeating-linear-gradient(0deg, transparent 0 3px, #ffffff12 3px 4px);
+  mix-blend-mode: soft-light;
+}
+
+.lai-cover {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.lai-cover-world {
+  position: absolute;
+  inset: 0;
+  background: #362253;
+}
+
+.lai-cover-world::before {
+  content: "";
+  position: absolute;
+  inset: -24px;
+  opacity: .8;
+  background: url("/tim-adventure/cover-sunset-campus.webp") center / cover no-repeat;
+  filter: blur(17px) saturate(1.15) brightness(.72);
+  transform: scale(1.08);
+}
+
+.lai-cover-world > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  image-rendering: pixelated;
+}
+
+.lai-cover::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(#171334b8 0, transparent 31%, transparent 62%, #090e27df 100%);
+}
+
+.lai-cover-copy {
+  position: absolute;
+  z-index: 4;
+  top: max(54px, calc(env(safe-area-inset-top) + 34px));
+  right: 16px;
+  left: 16px;
+  text-align: center;
+  text-shadow: 4px 5px 0 #201536, 0 8px 22px #160c2c;
+}
+
+.lai-cover-copy h1 {
+  margin: 0;
+  color: #ffd66f;
+  background: linear-gradient(180deg, #fff4a8 0%, #ffd05f 48%, #e58a27 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-size: clamp(44px, 12.5vw, 59px);
+  line-height: 1;
+  letter-spacing: -.07em;
+  filter: drop-shadow(4px 5px 0 #5c2d24) drop-shadow(0 8px 18px #160c2c);
+}
+
+.lai-cover-copy p {
+  display: inline-block;
+  margin: 12px 0 0;
+  padding: 6px 11px 7px;
+  border: 1px solid #ffe7a9c9;
+  border-radius: 999px;
+  color: #fffdf4;
+  background: #08142dcc;
+  box-shadow: 0 6px 16px #03081770;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.5;
+  letter-spacing: .08em;
+  text-shadow: 0 2px 3px #02050ceb;
+}
+
+.lai-primary {
+  min-width: 210px;
+  min-height: 52px;
+  padding: 0 22px;
+  border: 2px solid #fff1ad;
+  border-radius: 15px;
+  color: #20294c;
+  background: linear-gradient(#fff0a9, #ffae51);
+  box-shadow: inset 0 2px #fffbd9, 0 6px 0 #93424a, 0 12px 28px #11182a99;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.lai-primary:active {
+  transform: translateY(4px);
+  box-shadow: inset 0 2px #fffbd9, 0 2px 0 #93424a;
+}
+
+.lai-cover > .lai-primary {
+  position: absolute;
+  z-index: 5;
+  right: 18px;
+  bottom: calc(26px + env(safe-area-inset-bottom));
+  left: 18px;
+  width: calc(100% - 36px);
+  font-size: 17px;
+  letter-spacing: .08em;
+}
+
+.lai-journey-screen {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  background: #0b1028;
+}
+
+.lai-journey-stage {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  background: #2a2545;
+}
+
+.lai-journey-world {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  background: #332a55;
+}
+
+.lai-journey-world::before {
+  content: "";
+  position: absolute;
+  inset: -24px;
+  opacity: .68;
+  background: url("/tim-adventure/journey-campuses.webp") center / cover no-repeat;
+  filter: blur(18px) saturate(1.15) brightness(.7);
+  transform: scale(1.08);
+}
+
+.lai-journey-world > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  image-rendering: pixelated;
+}
+
+.lai-journey-world::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(#10152f42 0, transparent 20%, transparent 78%, #0a0f275c 100%);
+}
+
+.lai-corner-back {
+  position: absolute;
+  z-index: 22;
+  top: max(10px, env(safe-area-inset-top));
+  left: 10px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid #ffffff47;
+  border-radius: 11px;
+  color: #fff;
+  background: #0b123088;
+  text-decoration: none;
+  font-size: 18px;
+  font-weight: 900;
+  backdrop-filter: blur(5px);
+}
+
+.lai-life-avatar {
+  position: absolute;
+  z-index: 16;
+  height: auto;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 8px 6px #070a1999);
+  transform: translateX(-50%);
+  transform-origin: 50% 100%;
+  transition: left .56s cubic-bezier(.2, .8, .35, 1), bottom .56s cubic-bezier(.2, .8, .35, 1), width .56s ease;
+  will-change: left, bottom, transform;
+}
+
+.lai-life-avatar.lai-life-step-0 { left: clamp(88px, 22%, 106px); bottom: 3%; width: 172px; }
+.lai-life-avatar.lai-life-step-1 { left: 53%; bottom: 19%; width: 208px; }
+.lai-life-avatar.lai-life-step-2 { left: 48%; bottom: 52%; width: 168px; }
+.lai-life-avatar.lai-life-step-3 { left: 50%; bottom: 68%; width: 156px; }
+.lai-life-avatar.is-jumping { animation: lai-life-leap .56s ease-in-out both; }
+
+@keyframes lai-life-leap {
+  0% { transform: translateX(-50%) translateY(0) scale(1); }
+  48% { transform: translateX(-50%) translateY(-28px) scale(1.08) rotate(-2deg); }
+  100% { transform: translateX(-50%) translateY(0) scale(1); }
+}
+
+.lai-jump-console {
+  position: relative;
+  z-index: 24;
+  padding: 8px 14px calc(9px + env(safe-area-inset-bottom));
+  border-top: 1px solid #fff1a13d;
+  color: #eef3ff;
+  background: linear-gradient(#111a3e, #090f28 72%);
+}
+
+.lai-target-row,
+.lai-power-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.lai-target-row > span { display: flex; align-items: baseline; gap: 8px; }
+.lai-target-row small { color: #95a7ce; font-size: 8px; }
+.lai-target-row b { color: #fff0a2; font-size: 14px; }
+.lai-target-row em { color: #72e6d8; font-size: 9px; font-style: normal; font-weight: 900; }
+.lai-power-row { margin: 4px 0 2px; color: #aebcdf; font-size: 8px; }
+.lai-power-row b { color: #ffdc7c; font-size: 10px; }
+
+.lai-power-track {
+  position: relative;
+  height: 13px;
+  overflow: hidden;
+  border: 2px solid #080d20;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #be3f5d, #e79050 50%, #bd3f5f);
+  box-shadow: inset 0 2px 5px #0009;
+}
+
+.lai-power-track i {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  min-width: 2px;
+  height: 100%;
+  border-inline: 1px solid #efffdc;
+  background: #31e3a8e8;
+  box-shadow: 0 0 9px #6bffd2;
+}
+
+.lai-power-track > span {
+  position: relative;
+  z-index: 3;
+  display: block;
+  height: 100%;
+  border-right: 3px solid #fff;
+  background: #ffffff30;
+  box-shadow: 4px 0 10px #fff4ab;
+}
+
+.lai-jump-console > p {
+  min-height: 14px;
+  margin: 4px 0;
+  color: #b8c5e4;
+  font-size: 8px;
+  text-align: center;
+}
+
+.lai-jump-console > p.is-charging { color: #ffe287; }
+
+.lai-charge {
+  width: 100%;
+  min-height: 50px;
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  grid-template-rows: 1fr 1fr;
+  align-items: center;
+  border: 2px solid #fff0b0;
+  border-radius: 13px;
+  color: #253055;
+  background: linear-gradient(#fff0a2, #ffac50);
+  box-shadow: inset 0 2px #fffbd1, 0 4px 0 #8f4350;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.lai-charge > span { grid-row: 1 / 3; font-size: 22px; }
+.lai-charge b { align-self: end; font-size: 14px; }
+.lai-charge small { align-self: start; font-size: 7px; opacity: .68; }
+.lai-charge.is-charging { transform: translateY(3px); filter: brightness(1.06); box-shadow: inset 0 4px 12px #d3754e, 0 1px 0 #8f4350; }
+.lai-charge:disabled { cursor: wait; filter: saturate(.75); }
+
+.lai-failure-overlay {
+  position: absolute;
+  z-index: 60;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #080c20c7;
+  backdrop-filter: blur(7px);
+  animation: lai-failure-fade .18s ease-out both;
+}
+
+.lai-failure-dialog {
+  width: min(100%, 330px);
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 25px 20px 22px;
+  border: 2px solid #ffe4a0;
+  border-radius: 19px;
+  color: #eef3ff;
+  text-align: center;
+  background: linear-gradient(145deg, #26365cf5, #121a39fa);
+  box-shadow: inset 0 0 0 3px #ffffff0d, 0 18px 50px #040611cc;
+}
+
+.lai-failure-dialog > span { color: #ffb46b; font-size: 8px; font-weight: 950; letter-spacing: .16em; }
+.lai-failure-dialog h2 { margin: 0; color: #fff0ae; font-size: 31px; }
+.lai-failure-dialog p { margin: 0 0 6px; color: #bcc9e7; font-size: 11px; line-height: 1.75; }
+.lai-failure-dialog .lai-primary { width: 100%; }
+
+@keyframes lai-failure-fade {
+  from { opacity: 0; }
+}
+
+.lai-complete {
+  position: absolute;
+  z-index: 7;
+  inset: 0;
+  overflow: hidden;
+  background: #11152e;
+}
+
+.lai-complete::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  background: linear-gradient(#10142b35, #0c1028a3 46%, #090e25f2 72%);
+}
+
+.lai-complete-avatar {
+  position: absolute;
+  z-index: 8;
+  top: 9%;
+  left: 50%;
+  width: 190px;
+  height: 285px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 12px 10px #080a1da8);
+  transform: translateX(-50%);
+  animation: lai-complete-arrive .7s cubic-bezier(.2, .8, .35, 1) both;
+}
+
+@keyframes lai-complete-arrive {
+  from { opacity: 0; transform: translateX(-50%) translateY(36px) scale(.8); }
+}
+
+.lai-complete-panel {
+  position: absolute;
+  z-index: 10;
+  right: 14px;
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  left: 14px;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 18px 16px 15px;
+  border: 2px solid #ffe39b;
+  border-radius: 18px;
+  text-align: center;
+  background: linear-gradient(145deg, #18264bf2, #10162ff5);
+  box-shadow: inset 0 0 0 3px #ffffff0d, 0 14px 38px #050715b8;
+  backdrop-filter: blur(10px);
+}
+
+.lai-complete-panel > p { margin: 0; color: #78ebdc; font-size: 8px; font-weight: 950; letter-spacing: .2em; }
+.lai-complete-panel h2 { margin: 0; color: #fff3c0; font-size: 28px; }
+.lai-complete-stars { color: #ffd25f; font-size: 27px; letter-spacing: .14em; text-shadow: 0 0 12px #ff9b4d; }
+.lai-complete-panel > span { color: #f0e7d0; font-size: 10px; font-weight: 850; }
+.lai-complete-panel > span i { color: #ffb75f; font-style: normal; }
+.lai-complete-panel > small { max-width: 330px; color: #aebcdc; font-size: 9px; line-height: 1.6; }
+.lai-complete-panel .lai-primary { width: 100%; min-height: 46px; margin-top: 2px; }
+
+.lai-secondary {
+  color: #9eeae1;
+  font-size: 9px;
+  text-decoration: none;
+  border-bottom: 1px solid #9eeae166;
+}
+
+.lai-primary:focus-visible,
+.lai-charge:focus-visible,
+.lai-corner-back:focus-visible,
+.lai-secondary:focus-visible {
+  outline: 3px solid #70e8dc;
+  outline-offset: 3px;
+}
+
+@media (max-width: 520px) {
+  .lai-game { height: 100svh; max-height: none; }
+}
+
+@media (max-height: 700px) {
+  .lai-game { min-height: 580px; }
+  .lai-cover-copy { top: 42px; }
+  .lai-cover-copy h1 { font-size: 44px; }
+  .lai-cover-copy p { margin-top: 8px; }
+  .lai-jump-console { padding-top: 6px; }
+  .lai-jump-console > p { margin: 2px 0; }
+  .lai-charge { min-height: 46px; }
+  .lai-life-avatar.lai-life-step-0 { width: 150px; }
+  .lai-life-avatar.lai-life-step-3 { bottom: 62%; }
+  .lai-complete-avatar { top: 6%; width: 150px; height: 225px; }
+  .lai-complete-panel { gap: 5px; padding: 12px; }
+  .lai-complete-panel h2 { font-size: 23px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lai-life-avatar,
+  .lai-primary { transition: none; }
+  .lai-life-avatar.is-jumping,
+  .lai-complete-avatar,
+  .lai-failure-overlay { animation: none; }
+}

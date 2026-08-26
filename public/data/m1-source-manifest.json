@@ -366,8 +366,8 @@
     },
     {
       "path": "package.json",
-      "sha256": "cfa4feea6dd5071217e0d2fc5503a7f68e1746125ef397720d33499b940229cf",
-      "bytes": 2106
+      "sha256": "23045b2c554c9fdfaffcfc199b82686e2a2f6d0c09568f1f7695268bfc488b5e",
+      "bytes": 2389
     },
     {
       "path": "postcss.config.mjs",
@@ -431,8 +431,8 @@
     },
     {
       "path": "tests/rendered-html.test.mjs",
-      "sha256": "7ed0be72ef6a1b5cd2579ad4f41586063bdfa770ed99efe861d00f484ece8cab",
-      "bytes": 91707
+      "sha256": "97dfffb448f147539d467abba545cc5210260b4b3869a62c64adae7e3d0d565d",
+      "bytes": 94494
     },
     {
       "path": "tsconfig.json",

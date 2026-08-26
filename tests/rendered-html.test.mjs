@@ -150,7 +150,7 @@ test("server-renders the modular research platform", async () => {
   assert.doesNotMatch(html, /codex-preview|starter loading skeleton/i);
 });
 
-test("server-renders Tim Classroom with six course tracks, Go training, and Xiangqi", async () => {
+test("server-renders Tim Classroom with six course tracks, board games, and Li Lai Adventure", async () => {
   const response = await render("/tim-classroom");
   assert.equal(response.status, 200);
   const html = await response.text();
@@ -159,21 +159,76 @@ test("server-renders Tim Classroom with six course tracks, Go training, and Xian
     "utf8",
   );
 
-  assert.match(html, /<title>Tim小课堂｜六门课程、围棋与象棋AI对弈<\/title>/i);
-  assert.match(html, /六门课程，多档挑战/);
+  assert.match(html, /<title>Tim小课堂｜六门课程、双棋 AI 与李来历险记<\/title>/i);
+  assert.match(html, /六门课程与一场校园冒险/);
   assert.match(html, /运动小课堂/);
   assert.match(html, /图论小课堂/);
   assert.match(html, /凸函数小课堂/);
   assert.match(html, /恋爱小课堂/);
   assert.match(html, /围棋小课堂/);
   assert.match(html, /象棋小课堂/);
-  assert.match(html, /12(?:<!-- -->)? 套能力题库 \+ 围棋 10 级 \+ 象棋竞技场/);
+  assert.match(html, /李来历险记/);
+  assert.match(html, /北大 → 普林斯顿 → MIT/);
+  assert.match(html, /12(?:<!-- -->)? 套能力题库 \+ 双棋竞技场 \+ 李来历险记/);
   assert.match(html, /840(?:<!-- -->)? 题池/);
   assert.match(html, /og-tim-classroom-v2\.png/);
   assert.match(html, /class="tim-classroom" data-screen="home"/);
   assert.doesNotMatch(html, /五门课程|四门课程|三门课程|540 题池|240 题池|180 题池/);
   assert.match(classroomCss, /url\("\/tim-classroom\/home-background\.png"\)/);
   assert.match(classroomCss, /\.tim-phone\[data-screen="home"\]/);
+  assert.match(classroomCss, /\.tim-course-adventure/);
+});
+
+test("server-renders Li Lai Adventure as one vertical three-campus jump stage", async () => {
+  const response = await render("/tim-adventure");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  const component = await readFile(
+    new URL("../app/tim-adventure/LiLaiAdventure.tsx", import.meta.url),
+    "utf8",
+  );
+  const adventureCss = await readFile(
+    new URL("../app/tim-adventure/li-lai-adventure.css", import.meta.url),
+    "utf8",
+  );
+  const jumpEngine = await readFile(
+    new URL("../app/tim-adventure/jumpEngine.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(html, /<title>李来历险记｜北大、普林斯顿与 MIT 人生三跃<\/title>/i);
+  assert.match(html, /人生/);
+  assert.match(html, /三跃/);
+  assert.match(html, /北大/);
+  assert.match(html, /普林斯顿/);
+  assert.match(html, /MIT/);
+  assert.match(html, /cover-sunset-campus\.webp/);
+  assert.match(html, /劝君惜取金缕衣，劝君惜取少年时/);
+  assert.match(html, /一路向前！/);
+  assert.match(component, /journey-campuses\.webp/);
+  assert.match(component, /tim-middle-school\.png/);
+  assert.match(component, /tim-pku-basketball\.png/);
+  assert.match(component, /tim-princeton-student\.png/);
+  assert.match(component, /tim-mit-scholar\.png/);
+  assert.match(component, /setPointerCapture/);
+  assert.match(component, /advancePower/);
+  assert.match(jumpEngine, /rawNext % 100/);
+  assert.match(component, /不破不立！/);
+  assert.match(component, /屡败屡战！/);
+  assert.match(component, /继续向前！/);
+  assert.match(component, /收拾行装，重整旗鼓/);
+  assert.doesNotMatch(component, /这一次蓄力还不够|这一次用力过头|回到中学校园/);
+  assert.doesNotMatch(component, /lai-level-head|lai-campus-marker|lai-spark-trail/);
+  assert.match(adventureCss, /object-fit:\s*contain/);
+  assert.match(adventureCss, /grid-template-rows:\s*minmax\(0, 1fr\) auto/);
+  assert.match(adventureCss, /\.lai-cover-copy h1\s*\{[^}]*color:\s*#ffd66f/s);
+  assert.match(adventureCss, /\.lai-cover-copy h1\s*\{[^}]*#fff4a8 0%, #ffd05f 48%, #e58a27 100%/s);
+  assert.doesNotMatch(adventureCss.match(/\.lai-cover-copy h1\s*\{[^}]*\}/s)?.[0] ?? "", /text-stroke/);
+  assert.match(adventureCss, /\.lai-cover-copy p\s*\{[^}]*background:\s*#08142dcc/s);
+  assert.match(adventureCss, /\.lai-life-avatar\.lai-life-step-0\s*\{[^}]*width:\s*172px/s);
+  assert.match(adventureCss, /\.lai-life-avatar\.lai-life-step-1\s*\{[^}]*width:\s*208px/s);
+  assert.match(component, /sizes="220px"/);
+  assert.match(adventureCss, /\.lai-failure-dialog/);
 });
 
 test("server-renders a standalone fixed M1 pilot without the researcher console", async () => {
@@ -353,7 +408,7 @@ test("fails closed until primary, Human, and development collection gates are ex
           allocation_mode, agent_profile_sha256, primary_browser_major
         ) VALUES (?, 'm1-isomorphic-v1', 1, 'staged', ?, ?, 'balanced-random-v1',
           'm1-technical-pilot-a2-2026', 'technical-pilot', 'm1-pilot-prereg-v2',
-          'm1-pilot-analysis-v2', 'm1-stage-a2-6d1a0f5d304b9fca', ?, ?, 'balanced-random-v1', ?, 140)`)
+          'm1-pilot-analysis-v2', 'm1-stage-a2-51f63bee55d19f0c', ?, ?, 'balanced-random-v1', ?, 140)`)
         .bind(
           "M1-GATE-TERMINAL",
           "a".repeat(64),
@@ -658,7 +713,7 @@ test("atomically balances M1 launches without counting quota-manual assignments"
       study_phase: "technical-pilot",
       preregistration_version: "m1-pilot-prereg-v2",
       analysis_set_version: "m1-pilot-analysis-v2",
-      implementation_build_id: "m1-stage-a2-6d1a0f5d304b9fca",
+      implementation_build_id: "m1-stage-a2-51f63bee55d19f0c",
       deployment_id: TEST_DEPLOYMENT_ID,
       deployment_fingerprint_sha256: TEST_DEPLOYMENT_FINGERPRINT_SHA256,
       allocation_mode: "quota-manual",
@@ -1734,7 +1789,7 @@ test("enforces the matched Human-Agent M1 state machine, resume contract, and pa
       allocationCsv,
       /assignment_version,cohort_id,study_phase,preregistration_version,analysis_set_version,implementation_build_id,deployment_id,deployment_fingerprint_sha256,allocation_mode,agent_profile_sha256,primary_browser_major,protocol_architecture/,
     );
-    assert.match(allocationCsv, new RegExp(`m1-technical-pilot-a2-2026,technical-pilot,m1-pilot-prereg-v2,m1-pilot-analysis-v2,m1-stage-a2-6d1a0f5d304b9fca,${TEST_DEPLOYMENT_ID},${TEST_DEPLOYMENT_FINGERPRINT_SHA256},balanced-random-v1,${TEST_AGENT_PROFILE_SHA256},140,m1-isomorphic-v1`));
+    assert.match(allocationCsv, new RegExp(`m1-technical-pilot-a2-2026,technical-pilot,m1-pilot-prereg-v2,m1-pilot-analysis-v2,m1-stage-a2-51f63bee55d19f0c,${TEST_DEPLOYMENT_ID},${TEST_DEPLOYMENT_FINGERPRINT_SHA256},balanced-random-v1,${TEST_AGENT_PROFILE_SHA256},140,m1-isomorphic-v1`));
     assert.match(allocationCsv, /M1-PAIR-E2E-001/);
     assert.doesNotMatch(allocationCsv, new RegExp(humanLaunchToken));
     assert.doesNotMatch(allocationCsv, new RegExp(agentLaunchToken));

@@ -220,6 +220,7 @@
   border-radius: 18px;
   color: white;
   text-align: left;
+  text-decoration: none;
   cursor: pointer;
   box-shadow: inset 0 1px rgba(255,255,255,0.07), 0 14px 35px rgba(0,0,0,0.22);
   transition: transform 170ms ease, filter 170ms ease, border-color 170ms ease;
@@ -241,6 +242,7 @@
 .tim-course-love { background: linear-gradient(115deg, #b137b8, #f04f91); }
 .tim-course-go { background: linear-gradient(115deg, #087f78, #255cb1 58%, #6047a8); }
 .tim-course-xiangqi { background: linear-gradient(115deg, #7c2d28, #a95337 55%, #71542d); }
+.tim-course-adventure { background: linear-gradient(115deg, #cf3e4f, #7d4aca 54%, #177e9a); }
 
 .tim-course::after {
   content: "";
