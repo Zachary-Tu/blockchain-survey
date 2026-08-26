@@ -21,8 +21,8 @@
     },
     {
       "path": "app/ExperimentModular.tsx",
-      "sha256": "b3d8291aeb1c0544352d5aeba7beb5815934bc903fe5d699a0cb4572c0406056",
-      "bytes": 192147
+      "sha256": "ce36f51c386b95ae16ce3064a37fcc060ddb76b103139c1a86bd3123e2cb0d17",
+      "bytes": 198281
     },
     {
       "path": "app/agent.css",
@@ -61,8 +61,8 @@
     },
     {
       "path": "app/api/sessions/route.ts",
-      "sha256": "e6e1820cf5331e1c30985c6eb2a3ce41e8f68dfc6a07b0634250adfcba4dd189",
-      "bytes": 62658
+      "sha256": "3fdf8f9718dc55e9aa8ac69484ec383c65ebd94570fc3d990fb3025c0c955473",
+      "bytes": 63630
     },
     {
       "path": "app/globals.css",
@@ -91,13 +91,13 @@
     },
     {
       "path": "app/research/m1-launch/M1LaunchClient.tsx",
-      "sha256": "056ce73d703b3adb9f62dbdf6886279e30fe84e8c11ed9e23b556d419dc22e6b",
-      "bytes": 5955
+      "sha256": "a8d42645d144c872a7668902ac469bce272f5bfec069cd201fece6cbe35516da",
+      "bytes": 6712
     },
     {
       "path": "app/research/m1-launch/page.tsx",
-      "sha256": "6301b794ec20ec277a5de11e55a92005bf130c6531013203af3beda8bcebcf65",
-      "bytes": 1812
+      "sha256": "b6dcade06bdc074b8f126225619c292db1a2517a8aceb98942e8728884e6c6ba",
+      "bytes": 2136
     },
     {
       "path": "app/research/results/page.tsx",
@@ -431,8 +431,8 @@
     },
     {
       "path": "tests/rendered-html.test.mjs",
-      "sha256": "3cd32ab11de28748af3a5dba5699d66bd9cec7d6c24d7e5c969ce89676f3248e",
-      "bytes": 90962
+      "sha256": "7ed0be72ef6a1b5cd2579ad4f41586063bdfa770ed99efe861d00f484ece8cab",
+      "bytes": 91707
     },
     {
       "path": "tsconfig.json",

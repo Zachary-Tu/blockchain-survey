@@ -52,14 +52,14 @@ const TEST_AGENT_PROFILE_SHA256 = createHash("sha256").update(JSON.stringify(TES
 const TEST_DEPLOYMENT_ID = "m1-test-deployment-2026-08-26";
 const TEST_DEPLOYMENT_FINGERPRINT_SHA256 = "e".repeat(64);
 
-async function render(pathname = "/") {
+async function render(pathname = "/", extraHeaders = {}) {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
 
   return worker.fetch(
     new Request(`http://localhost${pathname}`, {
-      headers: { accept: "text/html" },
+      headers: { accept: "text/html", ...extraHeaders },
     }),
     {
       ASSETS: {
@@ -278,7 +278,13 @@ test("server-renders the researcher CSV export hub", async () => {
 });
 
 test("server-renders the paired launcher and frozen M1 methods architecture", async () => {
-  const launcher = await render("/research/m1-launch");
+  const unauthenticatedLauncher = await render("/research/m1-launch");
+  assert.equal(unauthenticatedLauncher.status, 307);
+  assert.match(unauthenticatedLauncher.headers.get("location") ?? "", /\/signin-with-chatgpt/);
+  const launcher = await render("/research/m1-launch", {
+    "oai-authenticated-user-id": "researcher-test-user",
+    "oai-authenticated-user-email": "researcher@example.com",
+  });
   assert.equal(launcher.status, 200);
   const launcherHtml = await launcher.text();
   assert.match(launcherHtml, /为同一实验计划/);
@@ -347,7 +353,7 @@ test("fails closed until primary, Human, and development collection gates are ex
           allocation_mode, agent_profile_sha256, primary_browser_major
         ) VALUES (?, 'm1-isomorphic-v1', 1, 'staged', ?, ?, 'balanced-random-v1',
           'm1-technical-pilot-a2-2026', 'technical-pilot', 'm1-pilot-prereg-v2',
-          'm1-pilot-analysis-v2', 'm1-stage-a2-742fc2b137cc2510', ?, ?, 'balanced-random-v1', ?, 140)`)
+          'm1-pilot-analysis-v2', 'm1-stage-a2-6d1a0f5d304b9fca', ?, ?, 'balanced-random-v1', ?, 140)`)
         .bind(
           "M1-GATE-TERMINAL",
           "a".repeat(64),
@@ -652,7 +658,7 @@ test("atomically balances M1 launches without counting quota-manual assignments"
       study_phase: "technical-pilot",
       preregistration_version: "m1-pilot-prereg-v2",
       analysis_set_version: "m1-pilot-analysis-v2",
-      implementation_build_id: "m1-stage-a2-742fc2b137cc2510",
+      implementation_build_id: "m1-stage-a2-6d1a0f5d304b9fca",
       deployment_id: TEST_DEPLOYMENT_ID,
       deployment_fingerprint_sha256: TEST_DEPLOYMENT_FINGERPRINT_SHA256,
       allocation_mode: "quota-manual",
@@ -1379,7 +1385,7 @@ test("enforces the matched Human-Agent M1 state machine, resume contract, and pa
     assert.equal(duplicateHumanPayload.idempotent, true);
     assert.equal(duplicateHumanPayload.session.id, human.session.id);
     assert.equal(duplicateHumanPayload.expectedResponseCount, 42);
-    const recoveredHuman = await api(`/api/sessions?sessionId=${human.session.id}`);
+    const recoveredHuman = await api(`/api/sessions?sessionId=${human.session.id}&launch=${humanLaunchToken}`);
     assert.equal(recoveredHuman.status, 200);
     const recoveredHumanPayload = await recoveredHuman.json();
     assert.equal(recoveredHumanPayload.session.status, "active");
@@ -1449,7 +1455,11 @@ test("enforces the matched Human-Agent M1 state machine, resume contract, and pa
     assert.equal(conflictingResponse.status, 409);
     assert.equal((await conflictingResponse.json()).code, "STEP_ALREADY_FINALIZED");
 
-    const resume = await api(`/api/sessions?sessionId=${human.session.id}`);
+    const resumeWithoutToken = await api(`/api/sessions?sessionId=${human.session.id}`);
+    assert.equal(resumeWithoutToken.status, 403);
+    const resumeWithWrongToken = await api(`/api/sessions?sessionId=${human.session.id}&launch=${agentLaunchToken}`);
+    assert.equal(resumeWithWrongToken.status, 403);
+    const resume = await api(`/api/sessions?sessionId=${human.session.id}&launch=${humanLaunchToken}`);
     assert.equal(resume.status, 200);
     const resumeState = await resume.json();
     assert.deepEqual(resumeState.progress, { responseCount: 1, expectedResponseCount: 42, nextStepOrder: 1, complete: false });
@@ -1724,7 +1734,7 @@ test("enforces the matched Human-Agent M1 state machine, resume contract, and pa
       allocationCsv,
       /assignment_version,cohort_id,study_phase,preregistration_version,analysis_set_version,implementation_build_id,deployment_id,deployment_fingerprint_sha256,allocation_mode,agent_profile_sha256,primary_browser_major,protocol_architecture/,
     );
-    assert.match(allocationCsv, new RegExp(`m1-technical-pilot-a2-2026,technical-pilot,m1-pilot-prereg-v2,m1-pilot-analysis-v2,m1-stage-a2-742fc2b137cc2510,${TEST_DEPLOYMENT_ID},${TEST_DEPLOYMENT_FINGERPRINT_SHA256},balanced-random-v1,${TEST_AGENT_PROFILE_SHA256},140,m1-isomorphic-v1`));
+    assert.match(allocationCsv, new RegExp(`m1-technical-pilot-a2-2026,technical-pilot,m1-pilot-prereg-v2,m1-pilot-analysis-v2,m1-stage-a2-6d1a0f5d304b9fca,${TEST_DEPLOYMENT_ID},${TEST_DEPLOYMENT_FINGERPRINT_SHA256},balanced-random-v1,${TEST_AGENT_PROFILE_SHA256},140,m1-isomorphic-v1`));
     assert.match(allocationCsv, /M1-PAIR-E2E-001/);
     assert.doesNotMatch(allocationCsv, new RegExp(humanLaunchToken));
     assert.doesNotMatch(allocationCsv, new RegExp(agentLaunchToken));

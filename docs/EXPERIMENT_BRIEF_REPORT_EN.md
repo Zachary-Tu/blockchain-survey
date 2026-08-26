@@ -6,7 +6,7 @@
 
 **Cohort:** `m1-technical-pilot-a2-2026`
 
-**Build:** `m1-stage-a2-742fc2b137cc2510` (source-manifest-bound)
+**Build:** `m1-stage-a2-6d1a0f5d304b9fca` (source-manifest-bound)
 **Status:** Stage-A implementation frozen; Stage-B specification disabled in this build; not ready for Human recruitment or paired Agent Stage A. Every real-Human activity first requires applicable institutional ethics approval or written exemption, institution-approved full informed-consent materials, a frozen out-of-band English financial-news reading screen, and verified data-minimization/withdrawal controls. Paired Agent Stage A also remains blocked by the external executable controller, complete runtime prompt package, restricted run artifacts, a production collection-close/export receipt signer, independently controlled audit-evidence signing, and deployment evidence described below.
 
 ## 1. Research objective

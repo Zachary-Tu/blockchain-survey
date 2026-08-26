@@ -1190,6 +1190,7 @@ export async function POST(request: Request) {
         assignment: isStrictM1Arm(experimentalArm) ? {
           scheduleId: storedStudyConfig.scheduleId,
           informationCondition: storedStudyConfig.informationCondition,
+          allocationMode: storedStudyConfig.allocationMode,
         } : null,
         expectedResponseCount: expectedRows.length,
       },
@@ -1202,7 +1203,8 @@ export async function POST(request: Request) {
 
 export async function GET(request: Request) {
   try {
-    const sessionId = new URL(request.url).searchParams.get("sessionId")?.trim();
+    const requestUrl = new URL(request.url);
+    const sessionId = requestUrl.searchParams.get("sessionId")?.trim();
     if (!sessionId) return Response.json({ error: "sessionId is required" }, { status: 400 });
     await ensureExperimentSchema();
     const [session] = await getDb()
@@ -1211,6 +1213,25 @@ export async function GET(request: Request) {
       .where(eq(experimentSessions.id, sessionId))
       .limit(1);
     if (!session) return Response.json({ error: "Session not found" }, { status: 404 });
+    if (isStrictM1Arm(session.experimentalArm)) {
+      const launchToken = requestUrl.searchParams.get("launch")?.trim() ?? "";
+      if (!SHA256.test(launchToken)) {
+        return Response.json({ error: "A valid launch token is required to resume this M1 session" }, { status: 403 });
+      }
+      const launchTokenHash = await hashM1LaunchToken(launchToken);
+      const [matchingLaunch] = await getDb()
+        .select({ tokenHash: m1LaunchTokens.tokenHash })
+        .from(m1LaunchTokens)
+        .where(and(
+          eq(m1LaunchTokens.tokenHash, launchTokenHash),
+          eq(m1LaunchTokens.claimedSessionId, session.id),
+          eq(m1LaunchTokens.actorType, session.actorType),
+        ))
+        .limit(1);
+      if (!matchingLaunch) {
+        return Response.json({ error: "The launch token does not belong to this M1 session" }, { status: 403 });
+      }
+    }
     const responses = await getDb()
       .select()
       .from(modularResponses)

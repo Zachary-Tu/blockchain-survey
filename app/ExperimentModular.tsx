@@ -1188,6 +1188,13 @@ function BoundaryEditor({
                 max={maximumSymmetricWidth}
                 step={UNCERTAINTY_STEP}
                 value={Math.min(widths[index] ?? UNCERTAINTY_DEFAULT, maximumSymmetricWidth)}
+                onPointerDown={(event) => {
+                  if (widths[index] !== null) return;
+                  const next = [...widths];
+                  next[index] = Number(event.currentTarget.value);
+                  onUncertaintyInteraction();
+                  onWidthsChange(next);
+                }}
                 onChange={(event) => {
                   const next = [...widths];
                   next[index] = Number(event.target.value);
@@ -1660,6 +1667,21 @@ function LayerAssetResponseCard({
   );
 }
 
+const CODEX_DIAGNOSTIC_CONTROLLER_VERSION = "codex-browser-controller-diagnostic-v3";
+const CODEX_DIAGNOSTIC_CONTROLLER_ARTIFACT_SHA256 = "5a9878c12fbc6490e32e1c4a1b5fefed25f2916acb09dad0243002cccab4c538";
+const CODEX_DIAGNOSTIC_RUNTIME_PROMPT_PACKAGE_SHA256 = "fd5d6deb33bbe9bf45e09f976dc626de1a15d22998660de89858ba70a9f1a717";
+
+async function sha256Text(value: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function fixedM1ResumeStorageKey(entryMode: EntryMode, isMatchedM1: boolean, launchToken: string) {
+  if (!isMatchedM1) return `boundary-lab-active-${entryMode}`;
+  const launchHash = await sha256Text(launchToken);
+  return `boundary-lab-active-${entryMode}-${launchHash}`;
+}
+
 export function ExperimentModular({
   protocolVariant = "v4",
   entryMode = "console",
@@ -1699,12 +1721,13 @@ export function ExperimentModular({
   const [pairId, setPairId] = useState("");
   const [scheduleId, setScheduleId] = useState(0);
   const [informationCondition, setInformationCondition] = useState<M1Condition>("staged");
+  const [assignedAllocationMode, setAssignedAllocationMode] = useState("");
   const [agentProvider, setAgentProvider] = useState("OpenAI");
   const [agentModelSnapshot, setAgentModelSnapshot] = useState("");
-  const [agentApiVersion, setAgentApiVersion] = useState("");
-  const [agentControllerVersion, setAgentControllerVersion] = useState("boundary-lab-browser-controller-v1");
-  const [agentControllerArtifactSha256, setAgentControllerArtifactSha256] = useState("");
-  const [agentRuntimePromptPackageSha256, setAgentRuntimePromptPackageSha256] = useState("");
+  const [agentApiVersion, setAgentApiVersion] = useState("codex-desktop-diagnostic-2026-08-27");
+  const [agentControllerVersion, setAgentControllerVersion] = useState(CODEX_DIAGNOSTIC_CONTROLLER_VERSION);
+  const [agentControllerArtifactSha256, setAgentControllerArtifactSha256] = useState(CODEX_DIAGNOSTIC_CONTROLLER_ARTIFACT_SHA256);
+  const [agentRuntimePromptPackageSha256, setAgentRuntimePromptPackageSha256] = useState(CODEX_DIAGNOSTIC_RUNTIME_PROMPT_PACKAGE_SHA256);
   const [agentBrowserMajor, setAgentBrowserMajor] = useState("");
   const [agentPromptSha256] = useState(M1_AGENT_PROMPT_SHA256);
   const agentContextPolicy = "persistent" as const;
@@ -1777,16 +1800,31 @@ export function ExperimentModular({
     if (!isFixedM1 || typeof window === "undefined") return;
     const parameters = new URLSearchParams(window.location.search);
     const queryLaunchToken = parameters.get("launch")?.trim().slice(0, 64) ?? "";
+    let cancelled = false;
     const timer = window.setTimeout(() => {
       setLaunchToken(queryLaunchToken);
-      try {
-        setResumeSessionId(window.localStorage.getItem(`boundary-lab-active-${entryMode}`) ?? "");
-      } catch {
-        setResumeSessionId("");
-      }
+      void fixedM1ResumeStorageKey(entryMode, isMatchedM1, queryLaunchToken).then((storageKey) => {
+        if (cancelled) return;
+        try {
+          setResumeSessionId(window.localStorage.getItem(storageKey) ?? "");
+        } catch {
+          setResumeSessionId("");
+        }
+      });
     }, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [entryMode, isFixedM1, isMatchedM1]);
+
+  useEffect(() => {
+    if (!isAgentM1 || agentBrowserMajor) return;
+    const browserMajor = navigator.userAgent.match(/(?:Chrome|CriOS)\/(\d+)/)?.[1] ?? "";
+    if (!browserMajor) return;
+    const timer = window.setTimeout(() => setAgentBrowserMajor(browserMajor), 0);
     return () => window.clearTimeout(timer);
-  }, [entryMode, isFixedM1]);
+  }, [agentBrowserMajor, isAgentM1]);
 
   const currentTrial = plan[trialIndex];
   const currentDisclosure = currentTrial?.disclosures[disclosureIndex];
@@ -2024,7 +2062,7 @@ export function ExperimentModular({
       if (!response.ok) throw new Error(payload.error || "停止会话失败");
       setTerminationCode(payload.terminationCode ?? (isAgentM1 ? "OPERATOR_ABORT" : "PARTICIPANT_EXIT"));
       try {
-        window.localStorage.removeItem(`boundary-lab-active-${entryMode}`);
+        window.localStorage.removeItem(await fixedM1ResumeStorageKey(entryMode, isMatchedM1, launchToken));
       } catch {
         // Storage can be disabled without changing the server-side termination.
       }
@@ -2134,14 +2172,17 @@ export function ExperimentModular({
     const payload = (await response.json()) as {
       session?: { id: string };
       plan?: TrialPlan[];
-      assignment?: { scheduleId?: number; informationCondition?: M1Condition } | null;
+      assignment?: { scheduleId?: number; informationCondition?: M1Condition; allocationMode?: string } | null;
       expectedResponseCount?: number;
       error?: string;
     };
     if (!response.ok || !payload.session?.id) throw new Error(payload.error ?? "实验会话创建失败");
     if (isFixedM1 && payload.expectedResponseCount !== 42) throw new Error("服务器未返回完整的 42 步实验计划。");
     try {
-      window.localStorage.setItem(`boundary-lab-active-${entryMode}`, payload.session.id);
+      window.localStorage.setItem(
+        await fixedM1ResumeStorageKey(entryMode, isMatchedM1, launchToken),
+        payload.session.id,
+      );
     } catch {
       // The durable source of truth is D1; the browser stores only a resume pointer.
     }
@@ -2150,6 +2191,7 @@ export function ExperimentModular({
       assignedPlan: Array.isArray(payload.plan) ? payload.plan : nextPlan,
       assignedScheduleId: payload.assignment?.scheduleId,
       assignedInformationCondition: payload.assignment?.informationCondition,
+      assignedAllocationMode: payload.assignment?.allocationMode,
     };
   };
 
@@ -2228,7 +2270,9 @@ export function ExperimentModular({
     setBusy(true);
     setError("");
     try {
-      const response = await fetch(`/api/sessions?sessionId=${encodeURIComponent(resumeSessionId)}`, { cache: "no-store" });
+      const resumeParameters = new URLSearchParams({ sessionId: resumeSessionId });
+      if (isMatchedM1) resumeParameters.set("launch", launchToken);
+      const response = await fetch(`/api/sessions?${resumeParameters.toString()}`, { cache: "no-store" });
       const payload = (await response.json()) as {
         error?: string;
         session?: {
@@ -2292,6 +2336,7 @@ export function ExperimentModular({
       setInformationCondition(normalizeM1Condition(payload.session.studyConfig.informationCondition));
       setScheduleId(normalizeM1ScheduleId(payload.session.studyConfig.scheduleId));
       setPairId(String(payload.session.studyConfig.pairId ?? ""));
+      setAssignedAllocationMode(String(payload.session.studyConfig.allocationMode ?? ""));
       sessionDeviceInfo.current = collectDeviceInfo();
       if (payload.session.status === "complete") {
         setPhase("complete");
@@ -2336,6 +2381,7 @@ export function ExperimentModular({
       setPlan(created.assignedPlan);
       if (created.assignedScheduleId) setScheduleId(normalizeM1ScheduleId(created.assignedScheduleId));
       if (created.assignedInformationCondition) setInformationCondition(normalizeM1Condition(created.assignedInformationCondition));
+      setAssignedAllocationMode(created.assignedAllocationMode ?? "");
       if (isFixedM1) {
         resetResponseState("T2", false);
         setPhase("practice");
@@ -2469,52 +2515,131 @@ export function ExperimentModular({
     const firstMoveMs = firstMoveAt.current === null ? null : Math.round(firstMoveAt.current - stepStartedAt.current);
     const firstUncertaintyMs = firstUncertaintyAt.current === null ? null : Math.round(firstUncertaintyAt.current - stepStartedAt.current);
     try {
-      const response = await fetch("/api/modular-responses", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId,
+      const responsePayload = {
+        sessionId,
+        trialId: currentTrial.id,
+        trialOrder: currentTrial.order,
+        moduleKey: currentTrial.module,
+        taskType: currentTrial.taskType,
+        stimulusType,
+        assetId: currentTrial.assetId,
+        metricType: currentTrial.metric,
+        resolution: currentTrial.resolution,
+        scaleMode: currentTrial.scaleMode,
+        windowMode: currentTrial.windowMode,
+        disclosureIndex,
+        disclosureKey: currentDisclosure,
+        disclosureState,
+        responseVersion: isFixedM1 ? "m1-isomorphic-v1" : isV4 ? "v4.1" : "pre-v4",
+        stimulusWindow,
+        cueSchemaVersion: isFixedM1 ? "none" : isV4 ? CUE_SCHEMA_VERSION : "legacy-cues-v1",
+        boundaries: currentBoundaryRecords,
+        previousBoundaries: previousAnswer?.boundaries ?? [],
+        boundaryIntervals: currentIntervalRecords,
+        singleStageConfirmed,
+        confidence: isV4 ? undefined : confidence,
+        confidenceTouched: isV4 ? false : confidenceTouched,
+        influenceRating: currentTrial.module === "disclosure" && disclosureIndex > 0 ? influence : null,
+        influenceTouched: currentTrial.module === "disclosure" && disclosureIndex > 0 ? influenceTouched : false,
+        noChangeConfirmed,
+        cueTags: isFixedM1 ? [] : cueTags,
+        rationale: isFixedM1 ? "" : rationale,
+        elapsedMs,
+        revealReadMs,
+        firstMoveMs,
+        firstUncertaintyMs,
+        adjustmentCount,
+        uncertaintyAdjustmentCount,
+        clientStartedAt,
+        clientSubmittedAt,
+        responseViewportWidth,
+        responseViewportHeight,
+        responseOrientation,
+        pageHiddenMs,
+        activeElapsedMs,
+      };
+
+      if (
+        isAgentM1 &&
+        assignedAllocationMode === "quota-manual" &&
+        agentControllerVersion.trim() === CODEX_DIAGNOSTIC_CONTROLLER_VERSION
+      ) {
+        const scientificOutput = {
           trialId: currentTrial.id,
-          trialOrder: currentTrial.order,
-          moduleKey: currentTrial.module,
-          taskType: currentTrial.taskType,
-          stimulusType,
-          assetId: currentTrial.assetId,
-          metricType: currentTrial.metric,
-          resolution: currentTrial.resolution,
-          scaleMode: currentTrial.scaleMode,
-          windowMode: currentTrial.windowMode,
           disclosureIndex,
-          disclosureKey: currentDisclosure,
-          disclosureState,
-          responseVersion: isFixedM1 ? "m1-isomorphic-v1" : isV4 ? "v4.1" : "pre-v4",
-          stimulusWindow,
-          cueSchemaVersion: isFixedM1 ? "none" : isV4 ? CUE_SCHEMA_VERSION : "legacy-cues-v1",
           boundaries: currentBoundaryRecords,
           previousBoundaries: previousAnswer?.boundaries ?? [],
           boundaryIntervals: currentIntervalRecords,
-          singleStageConfirmed,
-          confidence: isV4 ? undefined : confidence,
-          confidenceTouched: isV4 ? false : confidenceTouched,
-          influenceRating: currentTrial.module === "disclosure" && disclosureIndex > 0 ? influence : null,
-          influenceTouched: currentTrial.module === "disclosure" && disclosureIndex > 0 ? influenceTouched : false,
+          influenceRating: responsePayload.influenceRating,
           noChangeConfirmed,
-          cueTags: isFixedM1 ? [] : cueTags,
-          rationale: isFixedM1 ? "" : rationale,
-          elapsedMs,
-          revealReadMs,
-          firstMoveMs,
-          firstUncertaintyMs,
+          singleStageConfirmed,
+        };
+        const outputSha256 = await sha256Text(JSON.stringify(scientificOutput));
+        const runtimeRequestSha256 = await sha256Text(JSON.stringify({
+          schemaVersion: "m1-codex-diagnostic-runtime-request-v1",
+          sessionId,
+          stepOrder: currentStepOrder,
+          modelSnapshot: agentModelSnapshot.trim(),
+          promptSha256: agentPromptSha256.trim().toLowerCase(),
+          imageDetail: agentImageDetail,
+          reasoningEffort: agentReasoningEffort.trim(),
+        }));
+        const screenshotSha256 = await sha256Text(JSON.stringify({
+          schemaVersion: "m1-codex-diagnostic-screenshot-placeholder-v1",
+          sessionId,
+          stepOrder: currentStepOrder,
+          clientStartedAt,
+        }));
+        const actionTraceSha256 = await sha256Text(JSON.stringify({
+          schemaVersion: "m1-codex-diagnostic-action-summary-v1",
+          sessionId,
+          stepOrder: currentStepOrder,
           adjustmentCount,
           uncertaintyAdjustmentCount,
-          clientStartedAt,
-          clientSubmittedAt,
-          responseViewportWidth,
-          responseViewportHeight,
-          responseOrientation,
-          pageHiddenMs,
-          activeElapsedMs,
-        }),
+          submitActions: 1,
+        }));
+        const attemptResponse = await fetch("/api/agent-attempts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId,
+            stepOrder: currentStepOrder,
+            attemptNumber: 1,
+            modelApiAttemptNumber: 1,
+            mechanicalActionId: "",
+            mechanicalRetryNumber: 0,
+            status: "submitted",
+            controllerVersion: agentControllerVersion.trim(),
+            modelRequestId: `codex-diagnostic:${sessionId}:${currentStepOrder}:${outputSha256.slice(0, 24)}`,
+            sourceModelRequestId: "",
+            promptSha256: agentPromptSha256.trim().toLowerCase(),
+            runtimeRequestSha256,
+            screenshotSha256,
+            outputSha256,
+            actionTraceSha256,
+            contextPolicy: agentContextPolicy,
+            inputModality: "screenshot",
+            imageDetail: agentImageDetail,
+            temperature: agentTemperature.trim() === "" ? null : Number(agentTemperature),
+            topP: agentTopP.trim() === "" ? null : Number(agentTopP),
+            seed: agentSeed.trim() === "" ? null : Number(agentSeed),
+            reasoningEffort: agentReasoningEffort.trim(),
+            toolCalls: Math.min(20, Math.max(1, adjustmentCount + uncertaintyAdjustmentCount + 1)),
+            startedAt: clientStartedAt,
+            completedAt: clientSubmittedAt,
+            errorCode: "",
+          }),
+        });
+        const attemptPayload = await attemptResponse.json() as { error?: string };
+        if (!attemptResponse.ok) {
+          throw new Error(attemptPayload.error ?? "诊断 Controller attempt 写入失败");
+        }
+      }
+
+      const response = await fetch("/api/modular-responses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(responsePayload),
       });
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(payload.error ?? "本轮记录失败");
@@ -2777,7 +2902,9 @@ export function ExperimentModular({
       });
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(payload.error ?? "会话完成状态写入失败");
-      try { window.localStorage.removeItem(`boundary-lab-active-${entryMode}`); } catch { /* D1 remains authoritative. */ }
+      try {
+        window.localStorage.removeItem(await fixedM1ResumeStorageKey(entryMode, isMatchedM1, launchToken));
+      } catch { /* D1 remains authoritative. */ }
       setPhase("complete");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "会话完成状态写入失败");
@@ -2862,7 +2989,10 @@ export function ExperimentModular({
                 </button>
               )}
             </section>
-            <p className="mod-pilot-privacy">{isAgentM1 ? "主协议：只读当前截图并使用坐标点击、拖动和滚动；禁止 DOM、网络、源码、刺激 JSON 与外部检索" : "不采集真实姓名或精确位置 · 原始 User-Agent 不写入 M1 研究表，仅保留浏览器/系统大类、显示尺寸与匿名交互时间"}</p>
+            <p className="mod-pilot-privacy">{isAgentM1 ? agentControllerVersion === CODEX_DIAGNOSTIC_CONTROLLER_VERSION
+              ? "开发诊断：只读当前截图；使用全新模型上下文开始，并在本 run 的 42 页内持续保留；synthetic attempt envelope 仅用于流程验证，不构成正式 Stage A 科研证据"
+              : "主协议：每个 run 使用全新上下文，42 页内 persistent；只读当前截图并使用坐标点击、拖动和滚动，禁止 DOM、网络、源码、刺激 JSON 与外部检索"
+              : "不采集真实姓名或精确位置 · 原始 User-Agent 不写入 M1 研究表，仅保留浏览器/系统大类、显示尺寸与匿名交互时间"}</p>
           </section>
         </main>
       );
@@ -2888,7 +3018,7 @@ export function ExperimentModular({
               <Link href="/m1">人类 M1 主实验 ↗</Link>
               <Link href="/agent">Agent M1 同构实验 ↗</Link>
               <Link href="/agent/console">Agent 扩展控制台 ↗</Link>
-              <Link href="/research/m1-launch">M1 配对启动器 ↗</Link>
+              <Link href="/research/m1-launch">Human / Agent 共同测试入口 · M1 配对启动器 ↗</Link>
               <Link href="/research/results">结果导出 ↗</Link>
               <Link href="/methodology/m1">M1 冻结方法 ↗</Link>
               <Link href="/methodology/cues">标签与文献依据 ↗</Link>

@@ -8,7 +8,7 @@ export const M1_COHORT_ID = "m1-technical-pilot-a2-2026";
 export const M1_STUDY_PHASE = "technical-pilot";
 export const M1_PREREGISTRATION_VERSION = "m1-pilot-prereg-v2";
 export const M1_ANALYSIS_SET_VERSION = "m1-pilot-analysis-v2";
-export const M1_IMPLEMENTATION_BUILD_ID = "m1-stage-a2-742fc2b137cc2510";
+export const M1_IMPLEMENTATION_BUILD_ID = "m1-stage-a2-6d1a0f5d304b9fca";
 
 export const M1_ASSET_IDS = [
   "bitcoin",
