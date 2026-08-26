@@ -1,4 +1,4 @@
-# M1 v4.4：恢复版、按披露层与六资产分页面推进的实验协议
+# M1 v4.5：恢复版、按披露层与六资产分页面推进的实验协议
 
 ## 1. 本版目的
 
@@ -36,7 +36,7 @@ G0 没有上一层答案，使用 1/3 与 2/3 的中性初始位置，但不确�
 
 ## 4. 连续不确定范围
 
-原来的五个预设宽度改为连续旋钮条。记录字段仍为 `halfWidthRatio`，允许范围为 0.005–0.200；人类界面的步进为 0.005。界面显示名义半宽（±百分比）与总宽度范围。Agent 接口接收同一数值区间的 JSON 浮点数，不再限定为五个离散值。
+原来的五个预设宽度改为连续旋钮条。记录字段仍为 `halfWidthRatio`，允许范围为 0.000–0.200；人类界面的步进为 0.005。`halfWidthRatio = 0` 表示参与者只提交当前点、不声明额外的不确定时间窗，并不表示其主观上绝对确定；此时 `lowerRatio = centerRatio = upperRatio`、`widthRatio = 0`，起止索引与日期也相同。界面显示名义半宽（±百分比）与总宽度范围。Agent 接口接收同一数值区间的 JSON 浮点数，不再限定为五个离散值。
 
 人类 M1 页面不再询问“划分主要依据了哪些线索”“还想补充什么”或“本次与上次不同的主要原因”。保留的响应内容只有分界点、连续不确定范围、层级更新后的影响评分，以及边界完全未变化时的显式确认。为兼容既有导出结构，`cue_tags` 与 `rationale` 字段仍保留，但在人类 M1 新记录中固定为空。
 
@@ -60,17 +60,22 @@ G0 没有上一层答案，使用 1/3 与 2/3 的中性初始位置，但不确�
 ## 6. 数据与版本标识
 
 - 刺激数据：`research-stimuli-modular-v8.json`
-- 数据协议：`boundary-lab-modular-v4.1`
-- 人类 M1：`m1-human-main-v4.4-restored-disclosure-safe`
+- 会话实验协议：`m1-human-main-v4.5-zero-width-enabled`
+- 刺激数据协议：`boundary-lab-modular-v4.1`（在会话配置的 `stimulusProtocolVersion` 中单独保存）
+- 人类 M1：`m1-human-main-v4.5-zero-width-enabled`
 - Agent 接口：`agent-native-json-v2-layer-major-six-assets`
 - 事件筛选：`events-20260527-priority-bands-even-spacing-v1`
-- 人类范围控件：`continuous-range-knob-v1`
+- 人类范围控件：`continuous-range-knob-zero-enabled-v2`
 - 人类层级呈现：`sequential-single-asset-pages-v1`
 - 人类问题集：`boundaries-uncertainty-influence-v1`
 - 单页计时：`step-start-to-submit-v1`；每条响应的 `elapsed_ms` 为进入当前资产页面到提交的时间。
-- 人类响应格式：`v4.4-disclosure-safe`；设备采集协议为 `session-device-environment-v1`，逐页可见时间协议为 `per-page-visible-time-v1`。
+- 人类响应格式：`v4.5-zero-width-enabled`；设备采集协议为 `session-device-environment-v1`，逐页可见时间协议为 `per-page-visible-time-v1`。
 
-v4.4 从已发布的 v4.3 人类 M1 基线恢复，并修复六项实验效度问题：GI2 前隐藏日期、频率与观测数量；GI1 使用无单位的序列类型描述；所有披露层固定同一绘图区；事件组及事件标记采用中性呈现；层间页面只显示保存状态与总体进度，不反馈边界移动或不确定范围。
+v4.4 从已发布的 v4.3 人类 M1 基线恢复，并修复六项实验效度问题：GI2 前隐藏日期、频率与观测数量；GI1 使用无单位的序列类型描述；所有披露层固定同一绘图区；事件组及事件标记采用中性呈现；层间页面只显示保存状态与总体进度，不反馈边界移动或不确定范围。v4.5 在不改变披露顺序和主要任务的前提下，把连续不确定范围的合法下限扩展为 0，并同步升级前端、API 校验、数据版本标识与生命周期测试。
+
+线性绘图对所有原始值非负的序列把纵轴下限限制为 0，避免 GI2 披露坐标后显示不可能的负价格；该上下界计算从 G0 起即用于所有层，因此披露坐标不会改变曲线几何。对数模式和包含负值的对照序列不应用这一限制。
+
+参与者说明页不再枚举未来将出现的信息类别；GI2 只显示日期轴、频率、数值刻度与单位，不向 M1 参与者额外披露 Open/聚合方法。当前分界标签绘制在 SVG 裁剪区之外，上一层位置使用较宽的橙色虚线轮廓，因此即使与当前线重合也仍可辨认。
 
 XRP 与 DOGE 的价格来自 Li Blockchain 项目中的 `xrp.tsv` 与 `dogecoin.tsv`。当前六资产扩展只为这两种新增资产纳入价格数据；其 active addresses 与 Google Trends 条件在数据包中显式标记为不可用，不会被通用控制台错误抽样。
 

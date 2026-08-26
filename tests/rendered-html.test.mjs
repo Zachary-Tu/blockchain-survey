@@ -264,7 +264,7 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
         participantCode: "SYSTEM-E2E",
         expertise: "none",
         experimentalArm: "m1-main",
-        protocolVersion: "boundary-lab-modular-v4.1",
+        protocolVersion: "m1-human-main-v4.5-zero-width-enabled",
         deviceInfo: {
           deviceType: "desktop",
           userAgent: "BoundaryLabTest/1.0",
@@ -280,7 +280,7 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
           pointerType: "fine",
           orientation: "landscape-primary",
         },
-        studyConfig: { entryMode: "m1", mainStudyProtocol: "m1-human-main-v4.4-restored-disclosure-safe", disclosureFlowOrder: "disclosure-major", layerPresentation: "sequential-single-asset-pages-v1", participantQuestionSet: "boundaries-uncertainty-influence-v1", randomizedPlan: plan },
+        studyConfig: { entryMode: "m1", mainStudyProtocol: "m1-human-main-v4.5-zero-width-enabled", disclosureFlowOrder: "disclosure-major", layerPresentation: "sequential-single-asset-pages-v1", participantQuestionSet: "boundaries-uncertainty-influence-v1", randomizedPlan: plan },
       }),
     });
     assert.equal(sessionResponse.status, 201);
@@ -292,7 +292,7 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
       { index: 20, ratio: 0.7, date: "2023-01-01" },
     ];
     const boundaryIntervals = [
-      { boundaryIndex: 0, centerRatio: 0.3, halfWidthRatio: 0.037, widthRatio: 0.074, lowerRatio: 0.263, upperRatio: 0.337, lowerIndex: 8, upperIndex: 12, lowerDate: "2020-10-01", upperDate: "2021-04-01" },
+      { boundaryIndex: 0, centerRatio: 0.3, halfWidthRatio: 0, widthRatio: 0, lowerRatio: 0.3, upperRatio: 0.3, lowerIndex: 10, upperIndex: 10, lowerDate: "2021-01-01", upperDate: "2021-01-01" },
       { boundaryIndex: 1, centerRatio: 0.7, halfWidthRatio: 0.037, widthRatio: 0.074, lowerRatio: 0.663, upperRatio: 0.737, lowerIndex: 18, upperIndex: 22, lowerDate: "2022-10-01", upperDate: "2023-04-01" },
     ];
     const cueByDisclosure = {
@@ -312,7 +312,7 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
           sessionId: session.id,
           trialId: trial.id,
           trialOrder: trial.order,
-          responseVersion: "v4.4-disclosure-safe",
+          responseVersion: "v4.5-zero-width-enabled",
           moduleKey: "disclosure",
           taskType: "T2",
           stimulusType: "crypto",
@@ -349,6 +349,14 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
           pageHiddenMs: 100,
           activeElapsedMs: 1100,
         };
+        if (disclosureIndex === 0 && trial.order === 0) {
+          const legacyZeroWidth = await api("/api/modular-responses", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ ...responsePayload, responseVersion: "v4.4-disclosure-safe" }),
+          });
+          assert.equal(legacyZeroWidth.status, 400, await legacyZeroWidth.text());
+        }
         const response = await api("/api/modular-responses", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -408,7 +416,7 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
     assert.doesNotMatch(csv, /包含,逗号与/);
     assert.match(csv, /m1-main/);
     assert.match(csv, /BoundaryLabTest\/1\.0/);
-    assert.match(csv, /v4\.4-disclosure-safe/);
+    assert.match(csv, /v4\.5-zero-width-enabled/);
     assert.doesNotMatch(csv, /AGENT-E2E-001/);
     assert.equal(csv.split("\r\n").length, 43);
 
@@ -556,23 +564,26 @@ test("implements a configuration-aware participant briefing without future discl
 
   assert.match(source, /phase === "briefing"/);
   assert.match(source, /PARTICIPANT BRIEFING · 正式实验尚未开始/);
-  assert.match(source, /本页不会说明资产名称、指标类型、真实日期、数值单位、图表尺度、时间窗口或事件/);
+  assert.match(source, /本页不会说明后续尚未呈现的信息类别或具体内容/);
+  assert.doesNotMatch(source, /本页不会说明资产名称、指标类型、真实日期、数值单位、图表尺度、时间窗口或事件/);
   assert.match(source, /我已了解，开始正式实验/);
   assert.match(source, /DISCLOSURE_PATHS\[disclosurePath\]\.length - 1/);
   assert.match(source, /participantBriefingVersion: isV4 \? "participant-briefing-v2-device-telemetry"/);
   assert.match(source, /experimentalArm: isM1Main \? "m1-main"/);
-  assert.match(source, /mainStudyProtocol: isM1Main \? "m1-human-main-v4\.4-restored-disclosure-safe"/);
+  assert.match(source, /mainStudyProtocol: isM1Main \? "m1-human-main-v4\.5-zero-width-enabled"/);
+  assert.match(source, /protocolVersion: isM1Main[\s\S]*?"m1-human-main-v4\.5-zero-width-enabled"/);
+  assert.match(source, /stimulusProtocolVersion: bundle\.protocolVersion/);
   assert.match(source, /disclosureFlowOrder: usesLayerMajorDisclosureFlow \? "disclosure-major"/);
   assert.match(source, /usesFixedM1SequentialPages[\s\S]*?"sequential-single-asset-pages-v1"/);
   assert.match(source, /participantQuestionSet: isFixedM1 \? "boundaries-uncertainty-influence-v1"/);
-  assert.match(source, /uncertaintyControl: isV4 \? "continuous-range-knob-v1"/);
+  assert.match(source, /uncertaintyControl: isFixedM1 \? "continuous-range-knob-zero-enabled-v2"/);
   assert.match(source, /NEW INFORMATION · 新信息已解锁/);
   assert.match(source, /phase === "experiment" && usesLayerMajorDisclosureFlow && !usesFixedM1SequentialPages/);
   assert.match(source, /!isFixedM1 && \(\(!isV4 \|\| responseShapeReady\)/);
   assert.match(source, /cueSchemaVersion: isFixedM1 \? "none"/);
   assert.match(source, /deviceTelemetryProtocol: isFixedM1 \? "session-device-environment-v1"/);
   assert.match(source, /responseTelemetryProtocol: isFixedM1 \? "per-page-visible-time-v1"/);
-  assert.match(source, /responseVersion: isFixedM1 \? "v4\.4-disclosure-safe"/);
+  assert.match(source, /responseVersion: isFixedM1 \? "v4\.5-zero-width-enabled"/);
   assert.match(source, /validityRepairVersion: isFixedM1 \? "early-disclosure-and-feedback-bias-v1"/);
   assert.match(source, /pageHiddenMs/);
   assert.match(source, /activeElapsedMs/);
@@ -585,7 +596,9 @@ test("keeps the restored human M1 disclosure sequence free of early semantic lea
   );
 
   assert.match(source, /margin: Object\.freeze\(\{ top: 72, right: 28, bottom: 72, left: 88 \}\)/);
-  assert.match(source, /metricDescriptionForDisclosure\(currentTrial\.metric, visibility\.axes, currentMetric\.definition\)/);
+  assert.match(source, /metricDescriptionForDisclosure\(currentTrial\.metric, visibility\.axes, currentMetric\.definition, isFixedM1\)/);
+  assert.match(source, /M1_AXIS_DISCLOSURE_COPY/);
+  assert.match(source, /纵轴单位为美元（USD）/);
   assert.match(source, /showDates=\{visibility\.axes\}/);
   assert.match(source, /showDates=\{context\.visibility\.axes\}/);
   assert.match(source, /visibility\.axes \? `\$\{points\.length\.toLocaleString\("zh-CN"\)\} 个\$\{RESOLUTION_LABEL\[resolution\]\}观测值` : "当前仅显示曲线形状"/);
@@ -593,6 +606,12 @@ test("keeps the restored human M1 disclosure sequence free of early semantic lea
   assert.match(source, /DI4: \{ title: "事件信息（二）"/);
   assert.match(source, /RESPONSES SAVED · 中性休息页/);
   assert.match(source, /这里不显示答案分析、边界移动或表现反馈/);
+  assert.match(source, /export const UNCERTAINTY_MIN = 0;/);
+  assert.match(source, /总宽度 0%/);
+  assert.match(source, /0% · 仅点估计/);
+  assert.match(source, /0% 只表示提交当前点，不等同于绝对确定/);
+  assert.match(source, /scaleMode === "linear" && minimum >= 0[\s\S]*?Math\.max\(0, minimum - range \* 0\.05\)/);
+  assert.match(source, /key=\{`boundary-label-\$\{index\}`\} pointerEvents="none"/);
   assert.doesNotMatch(source, /<span className=\{eventSourcePriority\(event\) <= 2 \? "is-high" : ""\}>P\{eventSourcePriority\(event\)\}<\/span>/);
 });
 

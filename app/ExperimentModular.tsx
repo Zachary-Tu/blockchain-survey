@@ -371,9 +371,20 @@ const M1_DISCLOSURE_SAFE_METRIC_COPY: Record<MetricKey, string> = Object.freeze(
   activeAddresses: "该曲线表示活跃地址数量数据。",
   googleTrends: "该曲线表示 Google 搜索热度指数。",
 });
+const M1_AXIS_DISCLOSURE_COPY: Record<MetricKey, string> = Object.freeze({
+  price: "该曲线表示价格数据；纵轴单位为美元（USD）。",
+  activeAddresses: "该曲线表示活跃地址数量；纵轴单位为地址数。",
+  googleTrends: "该曲线表示 Google 搜索热度指数；纵轴为相对热度指数。",
+});
 
-function metricDescriptionForDisclosure(metric: MetricKey, axesRevealed: boolean, fullDefinition: string) {
-  return axesRevealed ? fullDefinition : M1_DISCLOSURE_SAFE_METRIC_COPY[metric];
+function metricDescriptionForDisclosure(
+  metric: MetricKey,
+  axesRevealed: boolean,
+  fullDefinition: string,
+  disclosureSafe = false,
+) {
+  if (!axesRevealed) return M1_DISCLOSURE_SAFE_METRIC_COPY[metric];
+  return disclosureSafe ? M1_AXIS_DISCLOSURE_COPY[metric] : fullDefinition;
 }
 const LEGACY_CUES = ["趋势方向", "均值变化", "波动结构", "持续时间", "序列类型", "资产知识", "历史事件", "其他"];
 export const CUE_SCHEMA_VERSION = "disclosure-specific-cues-v2";
@@ -475,7 +486,7 @@ export const CUE_SETS: Record<DisclosureKey, CueSet> = {
     ],
   },
 };
-export const UNCERTAINTY_MIN = 0.005;
+export const UNCERTAINTY_MIN = 0;
 export const UNCERTAINTY_MAX = 0.2;
 export const UNCERTAINTY_STEP = 0.005;
 export const UNCERTAINTY_DEFAULT = 0.05;
@@ -869,7 +880,9 @@ export function ModularChart({
   const minimum = Math.min(...transformed);
   const maximum = Math.max(...transformed);
   const range = maximum - minimum || 1;
-  const paddedMinimum = minimum - range * 0.05;
+  const paddedMinimum = scaleMode === "linear" && minimum >= 0
+    ? Math.max(0, minimum - range * 0.05)
+    : minimum - range * 0.05;
   const paddedMaximum = maximum + range * 0.05;
   const paddedRange = paddedMaximum - paddedMinimum;
   const xAt = (ratio: number) => margin.left + ratio * plotWidth;
@@ -1013,7 +1026,7 @@ export function ModularChart({
 
           {previousBoundaries.map((ratio, index) => (
             <g key={`previous-${index}`}>
-              <line x1={xAt(ratio)} x2={xAt(ratio)} y1={margin.top} y2={margin.top + plotHeight} stroke="#c96d45" strokeWidth="3" strokeDasharray="8 8" opacity="0.92" />
+              <line x1={xAt(ratio)} x2={xAt(ratio)} y1={margin.top} y2={margin.top + plotHeight} stroke="#c96d45" strokeWidth="7" strokeDasharray="8 8" opacity="0.56" />
               <rect x={xAt(ratio) - 40} y={margin.top + 9} width="80" height="25" rx="12.5" fill="#fff4ed" stroke="#c96d45" />
               <text x={xAt(ratio)} y={margin.top + 26} textAnchor="middle" className="mod-prior-label">上一步 {index + 1}</text>
             </g>
@@ -1032,13 +1045,18 @@ export function ModularChart({
               } : undefined}
             >
               <line x1={xAt(ratio)} x2={xAt(ratio)} y1={margin.top} y2={margin.top + plotHeight} stroke="#153832" strokeWidth="3" strokeDasharray="7 6" />
-              <rect x={xAt(ratio) - 43} y={margin.top - 45} width="86" height="34" rx="17" fill="#153832" />
-              <text x={xAt(ratio)} y={margin.top - 23} textAnchor="middle" className="mod-boundary-label">分界点 {index + 1}</text>
               <circle cx={xAt(ratio)} cy={margin.top + plotHeight * 0.54} r="18" fill="#fffdf8" stroke="#153832" strokeWidth="4" />
               <circle cx={xAt(ratio)} cy={margin.top + plotHeight * 0.54} r="4" fill="#153832" />
             </g>
           ))}
         </g>
+
+        {boundaries.map((ratio, index) => (
+          <g key={`boundary-label-${index}`} pointerEvents="none">
+            <rect x={xAt(ratio) - 43} y={margin.top - 45} width="86" height="34" rx="17" fill="#153832" />
+            <text x={xAt(ratio)} y={margin.top - 23} textAnchor="middle" className="mod-boundary-label">分界点 {index + 1}</text>
+          </g>
+        ))}
 
         {visibility.axes && (
           <g className="mod-axis">
@@ -1180,7 +1198,7 @@ function BoundaryEditor({
             />
             <div className="mod-uncertainty-question">
               <span>你认为最佳分界线大致落在哪个范围？</span>
-              <small>拖动旋钮连续调整；范围越宽，表示位置越不确定</small>
+              <small>拖动旋钮连续调整；0% 只表示提交当前点，不等同于绝对确定；范围越宽，表示位置越不确定</small>
             </div>
             <div className={`mod-uncertainty-slider ${widths[index] === null ? "is-unset" : ""}`}>
               <div className="mod-uncertainty-readout">
@@ -1188,7 +1206,9 @@ function BoundaryEditor({
                 <output htmlFor={`mod-uncertainty-${index}`}>
                   {widths[index] === null
                     ? "请拖动确认"
-                    : `±${((widths[index] ?? 0) * 100).toFixed(1)}% 时间窗`}
+                    : widths[index] === 0
+                      ? "0% · 仅点估计"
+                      : `±${((widths[index] ?? 0) * 100).toFixed(1)}% 时间窗`}
                 </output>
                 <span>更宽泛</span>
               </div>
@@ -1208,7 +1228,7 @@ function BoundaryEditor({
                 }}
               />
               <div className="mod-uncertainty-scale" aria-hidden="true">
-                <span>总宽度 1%</span><i /><span>总宽度 {(maximumSymmetricWidth * 200).toFixed(1)}%</span>
+                <span>总宽度 0%</span><i /><span>总宽度 {(maximumSymmetricWidth * 200).toFixed(1)}%</span>
               </div>
             </div>
           </article>
@@ -1929,7 +1949,11 @@ export function ExperimentModular({
         participantCode,
         expertise,
         experimentalArm: isM1Main ? "m1-main" : isPilot ? "pilot-m1" : moduleKey,
-        protocolVersion: bundle.protocolVersion,
+        protocolVersion: isM1Main
+          ? "m1-human-main-v4.5-zero-width-enabled"
+          : isPilot
+            ? "m1-pilot-v4.5-zero-width-enabled"
+            : bundle.protocolVersion,
         modelName: actorType === "agent" ? modelName : null,
         deviceInfo,
         studyConfig: {
@@ -1948,8 +1972,8 @@ export function ExperimentModular({
           cueSchemaVersion: isFixedM1 ? "none" : isV4 ? CUE_SCHEMA_VERSION : "legacy-cues-v1",
           cueTaxonomyUrl: isFixedM1 ? null : isV4 ? "/data/cue-taxonomy-v4-v2.json" : null,
           entryMode,
-          pilotProtocol: isPilot ? "m1-pilot-v4.4-restored-disclosure-safe" : null,
-          mainStudyProtocol: isM1Main ? "m1-human-main-v4.4-restored-disclosure-safe" : null,
+          pilotProtocol: isPilot ? "m1-pilot-v4.5-zero-width-enabled" : null,
+          mainStudyProtocol: isM1Main ? "m1-human-main-v4.5-zero-width-enabled" : null,
           validityRepairVersion: isFixedM1 ? "early-disclosure-and-feedback-bias-v1" : null,
           disclosureFlowOrder: usesLayerMajorDisclosureFlow ? "disclosure-major" : "asset-major",
           layerPresentation: usesFixedM1SequentialPages
@@ -1961,7 +1985,9 @@ export function ExperimentModular({
           deviceTelemetryProtocol: isFixedM1 ? "session-device-environment-v1" : null,
           responseTelemetryProtocol: isFixedM1 ? "per-page-visible-time-v1" : null,
           participantQuestionSet: isFixedM1 ? "boundaries-uncertainty-influence-v1" : "full-annotation-v2",
-          uncertaintyControl: isV4 ? "continuous-range-knob-v1" : "preset-widths-v1",
+          uncertaintyControl: isFixedM1 ? "continuous-range-knob-zero-enabled-v2" : isV4 ? "continuous-range-knob-v1" : "preset-widths-v1",
+          stimulusProtocolVersion: bundle.protocolVersion,
+          stimulusDatasetVersion: isV4 ? "research-stimuli-modular-v8" : "research-stimuli-modular-v6",
           eventSelectionProtocol: isV4 ? EVENT_SELECTION_PROTOCOL : null,
           maximumNewEventsPerDisclosure: isV4 ? MAX_EVENTS_PER_DISCLOSURE : null,
           eventPriorityBands: isV4 ? { DI3: [1, 2], DI4: [3, 4, 5] } : null,
@@ -2139,7 +2165,7 @@ export function ExperimentModular({
           disclosureIndex,
           disclosureKey: currentDisclosure,
           disclosureState,
-          responseVersion: isFixedM1 ? "v4.4-disclosure-safe" : isV4 ? "v4.1" : "pre-v4",
+          responseVersion: isFixedM1 ? "v4.5-zero-width-enabled" : isV4 ? "v4.1" : "pre-v4",
           stimulusWindow,
           cueSchemaVersion: isFixedM1 ? "none" : isV4 ? CUE_SCHEMA_VERSION : "legacy-cues-v1",
           boundaries: currentBoundaryRecords,
@@ -2744,7 +2770,7 @@ export function ExperimentModular({
         }
       : TASKS[taskType];
     const moduleBriefing: Record<ModuleKey, string> = {
-      disclosure: "本次研究关注：同一条曲线在获得新信息后，你是否会修正原来的阶段边界。",
+      disclosure: "本次研究关注：你如何在不同可见信息状态下判断同一条曲线的阶段边界。",
       framing: "本次研究关注：不同任务表述是否会改变你对阶段结构的判断。",
       "cross-series": "本次研究关注：同一研究对象的不同时间序列是否呈现相似的阶段结构。",
       robustness: "本次研究关注：图表呈现方式或对照序列是否会改变阶段判断。",
@@ -2792,7 +2818,7 @@ export function ExperimentModular({
             <article className="mod-briefing-card">
               <span>05 · 信息隔离</span>
               <h2>后续信息不会提前出现</h2>
-              <p>本页不会说明资产名称、指标类型、真实日期、数值单位、图表尺度、时间窗口或事件；若它们属于本次实验条件，只会在预定步骤显示。</p>
+              <p>本页不会说明后续尚未呈现的信息类别或具体内容；相关信息只会在预定步骤显示。</p>
             </article>
             <article className="mod-briefing-card">
               <span>06 · 记录方式</span>
@@ -2856,7 +2882,7 @@ export function ExperimentModular({
             </div>
             <div className="mod-transition-notice">
               <b>本层包含 {plan.length} 个连续页面</b>
-              <p>每页只显示一条曲线；虚线会保留该资产上一层的位置，便于判断是否需要移动。</p>
+              <p>每页只显示一条曲线；虚线会保留该资产上一层的位置，作为当前判断的参照。</p>
             </div>
             <button className="mod-start mod-transition-start" type="button" onClick={enterCurrentDisclosureLayer}>我已了解，进入本层第 1 条曲线<span>→</span></button>
           </div>
@@ -3120,7 +3146,7 @@ export function ExperimentModular({
               <p>{visibility.intro
                 ? displayIntro
                 : visibility.metric
-                  ? metricDescriptionForDisclosure(currentTrial.metric, visibility.axes, currentMetric.definition)
+                  ? metricDescriptionForDisclosure(currentTrial.metric, visibility.axes, currentMetric.definition, isFixedM1)
                   : "请只根据当前可见的信息判断阶段结构。"}</p>
             </div>
             <div className="mod-condition-chips">

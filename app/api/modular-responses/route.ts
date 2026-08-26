@@ -10,7 +10,7 @@ const RESOLUTIONS = new Set(["daily", "weekly", "monthly", "yearly"]);
 const SCALES = new Set(["linear", "log"]);
 const WINDOWS = new Set(["whole", "truncated"]);
 const DISCLOSURES = new Set(["G0", "GI1", "GI2", "DI1", "DI2", "DI3", "DI4", "FULL"]);
-const RESPONSE_VERSIONS = new Set(["v4", "v4.1", "v4.2", "v4.3", "v4.4-disclosure-safe", "pre-v4", "agent-v1", "agent-v2"]);
+const RESPONSE_VERSIONS = new Set(["v4", "v4.1", "v4.2", "v4.3", "v4.4-disclosure-safe", "v4.5-zero-width-enabled", "pre-v4", "agent-v1", "agent-v2"]);
 const V4_CUES_V1 = new Set([
   "curve_trend_slope",
   "curve_level_shift",
@@ -40,7 +40,8 @@ const V4_CUES_V2_BY_DISCLOSURE: Record<string, Set<string>> = {
   FULL: new Set(["full_curve_structure", "full_axes_time", "full_metric_type", "full_asset_context", "full_events"]),
 };
 const V4_CUE_SCHEMAS = new Set(["visual-cpd-event-segmentation-v1", "disclosure-specific-cues-v2"]);
-const UNCERTAINTY_HALF_WIDTH_MIN = 0.005;
+const UNCERTAINTY_HALF_WIDTH_MIN = 0;
+const LEGACY_UNCERTAINTY_HALF_WIDTH_MIN = 0.005;
 const UNCERTAINTY_HALF_WIDTH_MAX = 0.2;
 
 type Boundary = {
@@ -108,7 +109,11 @@ function validBoundaries(value: unknown, maximum = 5): value is Boundary[] {
   });
 }
 
-function validIntervals(value: unknown, boundaries: Boundary[]): value is BoundaryInterval[] {
+function validIntervals(
+  value: unknown,
+  boundaries: Boundary[],
+  minimumHalfWidth = LEGACY_UNCERTAINTY_HALF_WIDTH_MIN,
+): value is BoundaryInterval[] {
   if (!Array.isArray(value) || value.length !== boundaries.length) return false;
   return value.every((item, index) => {
     if (!item || typeof item !== "object") return false;
@@ -121,7 +126,7 @@ function validIntervals(value: unknown, boundaries: Boundary[]): value is Bounda
       finiteNumber(center) &&
       Math.abs(interval.centerRatio - center) <= 0.002 &&
       finiteNumber(interval.halfWidthRatio) &&
-      interval.halfWidthRatio >= UNCERTAINTY_HALF_WIDTH_MIN &&
+      interval.halfWidthRatio >= minimumHalfWidth &&
       interval.halfWidthRatio <= UNCERTAINTY_HALF_WIDTH_MAX &&
       finiteNumber(interval.widthRatio) &&
       finiteNumber(interval.lowerRatio) &&
@@ -130,7 +135,7 @@ function validIntervals(value: unknown, boundaries: Boundary[]): value is Bounda
       interval.upperRatio <= 1 &&
       interval.lowerRatio <= interval.centerRatio &&
       interval.upperRatio >= interval.centerRatio &&
-      interval.widthRatio > 0 &&
+      interval.widthRatio >= 0 &&
       Math.abs(interval.lowerRatio - (interval.centerRatio - interval.halfWidthRatio)) <= 0.002 &&
       Math.abs(interval.upperRatio - (interval.centerRatio + interval.halfWidthRatio)) <= 0.002 &&
       Math.abs(interval.widthRatio - 2 * interval.halfWidthRatio) <= 0.002 &&
@@ -212,8 +217,8 @@ export async function POST(request: Request) {
       activeElapsedMs?: number;
     };
     const responseVersion = payload.responseVersion ?? "pre-v4";
-    const isStructuredResponse = ["v4", "v4.1", "v4.2", "v4.3", "v4.4-disclosure-safe", "agent-v1", "agent-v2"].includes(responseVersion);
-    const isTelemetryResponse = responseVersion === "v4.3" || responseVersion === "v4.4-disclosure-safe";
+    const isStructuredResponse = ["v4", "v4.1", "v4.2", "v4.3", "v4.4-disclosure-safe", "v4.5-zero-width-enabled", "agent-v1", "agent-v2"].includes(responseVersion);
+    const isTelemetryResponse = responseVersion === "v4.3" || responseVersion === "v4.4-disclosure-safe" || responseVersion === "v4.5-zero-width-enabled";
 
     if (
       !payload.sessionId ||
@@ -286,7 +291,10 @@ export async function POST(request: Request) {
     if (!validBoundaries(boundaries) || !validBoundaries(previousBoundaries)) {
       return Response.json({ error: "Invalid boundary list" }, { status: 400 });
     }
-    if (!validIntervals(boundaryIntervals, boundaries)) {
+    const minimumHalfWidth = responseVersion === "v4.5-zero-width-enabled" || responseVersion === "agent-v2"
+      ? UNCERTAINTY_HALF_WIDTH_MIN
+      : LEGACY_UNCERTAINTY_HALF_WIDTH_MIN;
+    if (!validIntervals(boundaryIntervals, boundaries, minimumHalfWidth)) {
       return Response.json({ error: "Invalid uncertainty interval list" }, { status: 400 });
     }
 
@@ -306,7 +314,7 @@ export async function POST(request: Request) {
     const influenceRequired = payload.moduleKey === "disclosure" && payload.disclosureIndex > 0;
     const cueTags = Array.isArray(payload.cueTags) ? payload.cueTags : [];
     const cueSchema = payload.cueSchemaVersion ?? "";
-    const cueCollectionDisabled = (responseVersion === "v4.2" || responseVersion === "v4.3" || responseVersion === "v4.4-disclosure-safe") && cueSchema === "none";
+    const cueCollectionDisabled = (responseVersion === "v4.2" || responseVersion === "v4.3" || responseVersion === "v4.4-disclosure-safe" || responseVersion === "v4.5-zero-width-enabled") && cueSchema === "none";
     const activeV2Cues = V4_CUES_V2_BY_DISCLOSURE[payload.disclosureKey];
     const hasV2NoEffect = cueTags.some((tag) => typeof tag === "string" && tag.endsWith("_no_effect"));
     const invalidV4Cues = isStructuredResponse && !cueCollectionDisabled && (
