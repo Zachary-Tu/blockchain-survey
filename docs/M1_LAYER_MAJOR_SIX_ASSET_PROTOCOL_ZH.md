@@ -1,4 +1,4 @@
-# M1 v4.5：恢复版、按披露层与六资产分页面推进的实验协议
+# M1 v4.6：无预设基线、按披露层与六资产分页面推进的实验协议
 
 ## 1. 本版目的
 
@@ -32,7 +32,7 @@ XRP 与 DOGE 的加入旨在增加机制与语义类别差异；稳定币不纳�
 5. 当前资产提交后立即锁定并进入同层下一资产；
 6. 六种资产全部完成后显示层级反馈页，再进入下一信息层。
 
-G0 没有上一层答案，使用 1/3 与 2/3 的中性初始位置，但不确定范围必须由参与者主动确认。
+G0 没有上一层答案，也不显示任何预设分界点。参与者必须直接在主图上点击两个位置；系统在完成后按从左到右编号为分界点 1 和分界点 2。第一点放置后，绘图区仍保持统一底色，不提前用阶段色块暗示第二点位置。两个点都放置完成后，界面才显示三个阶段底色及相应的不确定范围旋钮。两个边界只需落在不同的观测位置；系统不会静默移动参与者的点击。GI1–DI4 仍从同一资产上一层已提交的答案开始，并以橙色虚线保留上一层位置，因为这些层测量的是相对于既有判断的修正。
 
 ## 4. 连续不确定范围
 
@@ -60,18 +60,21 @@ G0 没有上一层答案，使用 1/3 与 2/3 的中性初始位置，但不确�
 ## 6. 数据与版本标识
 
 - 刺激数据：`research-stimuli-modular-v8.json`
-- 会话实验协议：`m1-human-main-v4.5-zero-width-enabled`
+- 会话实验协议：`m1-human-main-v4.6-blank-baseline`
 - 刺激数据协议：`boundary-lab-modular-v4.1`（在会话配置的 `stimulusProtocolVersion` 中单独保存）
-- 人类 M1：`m1-human-main-v4.5-zero-width-enabled`
+- 人类 M1：`m1-human-main-v4.6-blank-baseline`
 - Agent 接口：`agent-native-json-v2-layer-major-six-assets`
 - 事件筛选：`events-20260527-priority-bands-even-spacing-v1`
 - 人类范围控件：`continuous-range-knob-zero-enabled-v2`
+- 基线放置协议：`blank-two-click-placement-v1`
 - 人类层级呈现：`sequential-single-asset-pages-v1`
 - 人类问题集：`boundaries-uncertainty-influence-v1`
 - 单页计时：`step-start-to-submit-v1`；每条响应的 `elapsed_ms` 为进入当前资产页面到提交的时间。
-- 人类响应格式：`v4.5-zero-width-enabled`；设备采集协议为 `session-device-environment-v1`，逐页可见时间协议为 `per-page-visible-time-v1`。
+- 人类响应格式：`v4.6-blank-baseline`；设备采集协议为 `session-device-environment-v1`，逐页可见时间协议为 `per-page-visible-time-v1`。
 
-v4.4 从已发布的 v4.3 人类 M1 基线恢复，并修复六项实验效度问题：GI2 前隐藏日期、频率与观测数量；GI1 使用无单位的序列类型描述；所有披露层固定同一绘图区；事件组及事件标记采用中性呈现；层间页面只显示保存状态与总体进度，不反馈边界移动或不确定范围。v4.5 在不改变披露顺序和主要任务的前提下，把连续不确定范围的合法下限扩展为 0，并同步升级前端、API 校验、数据版本标识与生命周期测试。
+G0 的 `adjustment_count` 包含两次必要的初始放置，不能与后续层的原始调整次数直接比较。每条 v4.6 响应的 `disclosure_state_json.boundaryInteractionSemantics` 因此同时保存 `initialPlacementCount` 与扣除初始放置后的 `revisionAdjustmentCount`；G0 的 `first_move_ms` 应解释为第一次放置延迟，后续层才解释为首次修正延迟。
+
+v4.4 从已发布的 v4.3 人类 M1 基线恢复，并修复六项实验效度问题：GI2 前隐藏日期、频率与观测数量；GI1 使用无单位的序列类型描述；所有披露层固定同一绘图区；事件组及事件标记采用中性呈现；层间页面只显示保存状态与总体进度，不反馈边界移动或不确定范围。v4.5 在不改变披露顺序和主要任务的前提下，把连续不确定范围的合法下限扩展为 0，并同步升级前端、API 校验、数据版本标识与生命周期测试。v4.6 删除六条资产 G0 页面中的 1/3、2/3 默认位置，改为无预设的两次点击放置，并单独记录 `baselinePlacementProtocol`，避免与 v4.5 数据混合。
 
 线性绘图对所有原始值非负的序列把纵轴下限限制为 0，避免 GI2 披露坐标后显示不可能的负价格；该上下界计算从 G0 起即用于所有层，因此披露坐标不会改变曲线几何。对数模式和包含负值的对照序列不应用这一限制。
 

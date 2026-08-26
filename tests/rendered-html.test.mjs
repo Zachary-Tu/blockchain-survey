@@ -264,7 +264,7 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
         participantCode: "SYSTEM-E2E",
         expertise: "none",
         experimentalArm: "m1-main",
-        protocolVersion: "m1-human-main-v4.5-zero-width-enabled",
+        protocolVersion: "m1-human-main-v4.6-blank-baseline",
         deviceInfo: {
           deviceType: "desktop",
           userAgent: "BoundaryLabTest/1.0",
@@ -280,7 +280,7 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
           pointerType: "fine",
           orientation: "landscape-primary",
         },
-        studyConfig: { entryMode: "m1", mainStudyProtocol: "m1-human-main-v4.5-zero-width-enabled", disclosureFlowOrder: "disclosure-major", layerPresentation: "sequential-single-asset-pages-v1", participantQuestionSet: "boundaries-uncertainty-influence-v1", randomizedPlan: plan },
+        studyConfig: { entryMode: "m1", mainStudyProtocol: "m1-human-main-v4.6-blank-baseline", baselinePlacementProtocol: "blank-two-click-placement-v1", disclosureFlowOrder: "disclosure-major", layerPresentation: "sequential-single-asset-pages-v1", participantQuestionSet: "boundaries-uncertainty-influence-v1", randomizedPlan: plan },
       }),
     });
     assert.equal(sessionResponse.status, 201);
@@ -305,6 +305,7 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
       DI4: "di4_boundary_refinement",
     };
 
+    let lastHumanResponsePayload;
     for (let disclosureIndex = 0; disclosureIndex < disclosureKeys.length; disclosureIndex += 1) {
       const disclosureKey = disclosureKeys[disclosureIndex];
       for (const trial of plan) {
@@ -312,7 +313,7 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
           sessionId: session.id,
           trialId: trial.id,
           trialOrder: trial.order,
-          responseVersion: "v4.5-zero-width-enabled",
+          responseVersion: "v4.6-blank-baseline",
           moduleKey: "disclosure",
           taskType: "T2",
           stimulusType: "crypto",
@@ -349,6 +350,7 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
           pageHiddenMs: 100,
           activeElapsedMs: 1100,
         };
+        lastHumanResponsePayload = responsePayload;
         if (disclosureIndex === 0 && trial.order === 0) {
           const legacyZeroWidth = await api("/api/modular-responses", {
             method: "POST",
@@ -356,6 +358,13 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
             body: JSON.stringify({ ...responsePayload, responseVersion: "v4.4-disclosure-safe" }),
           });
           assert.equal(legacyZeroWidth.status, 400, await legacyZeroWidth.text());
+
+          const mismatchedVersion = await api("/api/modular-responses", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ ...responsePayload, responseVersion: "v4.5-zero-width-enabled" }),
+          });
+          assert.equal(mismatchedVersion.status, 409, await mismatchedVersion.text());
         }
         const response = await api("/api/modular-responses", {
           method: "POST",
@@ -395,6 +404,13 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
       expectedResponseCount: 42,
     });
 
+    const postCompletionWrite = await api("/api/modular-responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...lastHumanResponsePayload, trialId: "post-completion-extra" }),
+    });
+    assert.equal(postCompletionWrite.status, 409, await postCompletionWrite.text());
+
     const forbiddenExport = await api("/api/research-export?scope=human-m1", {
       headers: { "oai-authenticated-user-email": "participant@example.com" },
     });
@@ -416,7 +432,7 @@ test("completes human M1 main and Agent console lifecycles with isolated CSV exp
     assert.doesNotMatch(csv, /包含,逗号与/);
     assert.match(csv, /m1-main/);
     assert.match(csv, /BoundaryLabTest\/1\.0/);
-    assert.match(csv, /v4\.5-zero-width-enabled/);
+    assert.match(csv, /v4\.6-blank-baseline/);
     assert.doesNotMatch(csv, /AGENT-E2E-001/);
     assert.equal(csv.split("\r\n").length, 43);
 
@@ -570,8 +586,15 @@ test("implements a configuration-aware participant briefing without future discl
   assert.match(source, /DISCLOSURE_PATHS\[disclosurePath\]\.length - 1/);
   assert.match(source, /participantBriefingVersion: isV4 \? "participant-briefing-v2-device-telemetry"/);
   assert.match(source, /experimentalArm: isM1Main \? "m1-main"/);
-  assert.match(source, /mainStudyProtocol: isM1Main \? "m1-human-main-v4\.5-zero-width-enabled"/);
-  assert.match(source, /protocolVersion: isM1Main[\s\S]*?"m1-human-main-v4\.5-zero-width-enabled"/);
+  assert.match(source, /mainStudyProtocol: isM1Main \? "m1-human-main-v4\.6-blank-baseline"/);
+  assert.match(source, /sessionProtocolVersion = isM1Main[\s\S]*?"m1-human-main-v4\.6-blank-baseline"/);
+  assert.match(source, /protocolVersion: isFixedM1 \? sessionProtocolVersion : bundle\.protocolVersion/);
+  assert.match(source, /baselinePlacementProtocol = isFixedM1 \? "blank-two-click-placement-v1"/);
+  assert.match(source, /initialPlacementCount: disclosureIndex === 0 \? Math\.min\(adjustmentCount, 2\) : 0/);
+  assert.match(source, /revisionAdjustmentCount: disclosureIndex === 0 \? Math\.max\(0, adjustmentCount - 2\) : adjustmentCount/);
+  assert.match(source, /session_protocol_version/);
+  assert.match(source, /stimulus_protocol_version/);
+  assert.match(source, /baseline_placement_protocol/);
   assert.match(source, /stimulusProtocolVersion: bundle\.protocolVersion/);
   assert.match(source, /disclosureFlowOrder: usesLayerMajorDisclosureFlow \? "disclosure-major"/);
   assert.match(source, /usesFixedM1SequentialPages[\s\S]*?"sequential-single-asset-pages-v1"/);
@@ -583,7 +606,7 @@ test("implements a configuration-aware participant briefing without future discl
   assert.match(source, /cueSchemaVersion: isFixedM1 \? "none"/);
   assert.match(source, /deviceTelemetryProtocol: isFixedM1 \? "session-device-environment-v1"/);
   assert.match(source, /responseTelemetryProtocol: isFixedM1 \? "per-page-visible-time-v1"/);
-  assert.match(source, /responseVersion: isFixedM1 \? "v4\.5-zero-width-enabled"/);
+  assert.match(source, /activeResponseVersion = isFixedM1 \? "v4\.6-blank-baseline"/);
   assert.match(source, /validityRepairVersion: isFixedM1 \? "early-disclosure-and-feedback-bias-v1"/);
   assert.match(source, /pageHiddenMs/);
   assert.match(source, /activeElapsedMs/);
@@ -610,6 +633,19 @@ test("keeps the restored human M1 disclosure sequence free of early semantic lea
   assert.match(source, /总宽度 0%/);
   assert.match(source, /0% · 仅点估计/);
   assert.match(source, /0% 只表示提交当前点，不等同于绝对确定/);
+  assert.match(source, /initialBoundaries\(task: TaskType, startBlank = false\)/);
+  assert.match(source, /initialBoundaries\("T2", isFixedM1\)/);
+  assert.match(source, /initialBoundaries\(nextTask, isFixedM1\)/);
+  assert.match(source, /taskType !== "T1" && boundaries\.length < 2/);
+  assert.match(source, /当前没有预设位置/);
+  assert.match(source, /请直接点击左侧主图的两个位置；完成后系统会按从左到右编号/);
+  assert.match(source, /先放置第二个分界点，再分别设置两个不确定范围/);
+  assert.match(source, /taskType !== "T1" && boundaries\.length < 2[\s\S]*?\? \[0, 1\]/);
+  assert.match(source, /两个分界点不能落在同一个观测位置/);
+  assert.doesNotMatch(source, /Math\.abs\(boundaries\[0\] - placementRatio\) < 0\.02/);
+  assert.match(source, /if \(!isWithinPlot\(event\.clientX, event\.clientY\)\) return/);
+  assert.match(source, /请在绘图区内点击，放置第一个分界点/);
+  assert.match(source, /请在绘图区内点击另一个位置，完成两个分界点/);
   assert.match(source, /scaleMode === "linear" && minimum >= 0[\s\S]*?Math\.max\(0, minimum - range \* 0\.05\)/);
   assert.match(source, /key=\{`boundary-label-\$\{index\}`\} pointerEvents="none"/);
   assert.doesNotMatch(source, /<span className=\{eventSourcePriority\(event\) <= 2 \? "is-high" : ""\}>P\{eventSourcePriority\(event\)\}<\/span>/);

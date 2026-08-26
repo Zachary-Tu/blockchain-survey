@@ -1,5 +1,5 @@
 import { ensureExperimentSchema, getDb } from "@/db";
-import { modularResponses } from "@/db/schema";
+import { experimentSessions, modularResponses } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 
 const MODULES = new Set(["disclosure", "framing", "cross-series", "robustness"]);
@@ -10,7 +10,7 @@ const RESOLUTIONS = new Set(["daily", "weekly", "monthly", "yearly"]);
 const SCALES = new Set(["linear", "log"]);
 const WINDOWS = new Set(["whole", "truncated"]);
 const DISCLOSURES = new Set(["G0", "GI1", "GI2", "DI1", "DI2", "DI3", "DI4", "FULL"]);
-const RESPONSE_VERSIONS = new Set(["v4", "v4.1", "v4.2", "v4.3", "v4.4-disclosure-safe", "v4.5-zero-width-enabled", "pre-v4", "agent-v1", "agent-v2"]);
+const RESPONSE_VERSIONS = new Set(["v4", "v4.1", "v4.2", "v4.3", "v4.4-disclosure-safe", "v4.5-zero-width-enabled", "v4.6-blank-baseline", "pre-v4", "agent-v1", "agent-v2"]);
 const V4_CUES_V1 = new Set([
   "curve_trend_slope",
   "curve_level_shift",
@@ -43,6 +43,10 @@ const V4_CUE_SCHEMAS = new Set(["visual-cpd-event-segmentation-v1", "disclosure-
 const UNCERTAINTY_HALF_WIDTH_MIN = 0;
 const LEGACY_UNCERTAINTY_HALF_WIDTH_MIN = 0.005;
 const UNCERTAINTY_HALF_WIDTH_MAX = 0.2;
+const RESPONSE_VERSION_BY_SESSION_PROTOCOL: Record<string, string> = {
+  "m1-human-main-v4.6-blank-baseline": "v4.6-blank-baseline",
+  "m1-pilot-v4.6-blank-baseline": "v4.6-blank-baseline",
+};
 
 type Boundary = {
   index?: number;
@@ -217,8 +221,8 @@ export async function POST(request: Request) {
       activeElapsedMs?: number;
     };
     const responseVersion = payload.responseVersion ?? "pre-v4";
-    const isStructuredResponse = ["v4", "v4.1", "v4.2", "v4.3", "v4.4-disclosure-safe", "v4.5-zero-width-enabled", "agent-v1", "agent-v2"].includes(responseVersion);
-    const isTelemetryResponse = responseVersion === "v4.3" || responseVersion === "v4.4-disclosure-safe" || responseVersion === "v4.5-zero-width-enabled";
+    const isStructuredResponse = ["v4", "v4.1", "v4.2", "v4.3", "v4.4-disclosure-safe", "v4.5-zero-width-enabled", "v4.6-blank-baseline", "agent-v1", "agent-v2"].includes(responseVersion);
+    const isTelemetryResponse = responseVersion === "v4.3" || responseVersion === "v4.4-disclosure-safe" || responseVersion === "v4.5-zero-width-enabled" || responseVersion === "v4.6-blank-baseline";
 
     if (
       !payload.sessionId ||
@@ -291,7 +295,7 @@ export async function POST(request: Request) {
     if (!validBoundaries(boundaries) || !validBoundaries(previousBoundaries)) {
       return Response.json({ error: "Invalid boundary list" }, { status: 400 });
     }
-    const minimumHalfWidth = responseVersion === "v4.5-zero-width-enabled" || responseVersion === "agent-v2"
+    const minimumHalfWidth = responseVersion === "v4.5-zero-width-enabled" || responseVersion === "v4.6-blank-baseline" || responseVersion === "agent-v2"
       ? UNCERTAINTY_HALF_WIDTH_MIN
       : LEGACY_UNCERTAINTY_HALF_WIDTH_MIN;
     if (!validIntervals(boundaryIntervals, boundaries, minimumHalfWidth)) {
@@ -314,7 +318,7 @@ export async function POST(request: Request) {
     const influenceRequired = payload.moduleKey === "disclosure" && payload.disclosureIndex > 0;
     const cueTags = Array.isArray(payload.cueTags) ? payload.cueTags : [];
     const cueSchema = payload.cueSchemaVersion ?? "";
-    const cueCollectionDisabled = (responseVersion === "v4.2" || responseVersion === "v4.3" || responseVersion === "v4.4-disclosure-safe" || responseVersion === "v4.5-zero-width-enabled") && cueSchema === "none";
+    const cueCollectionDisabled = (responseVersion === "v4.2" || responseVersion === "v4.3" || responseVersion === "v4.4-disclosure-safe" || responseVersion === "v4.5-zero-width-enabled" || responseVersion === "v4.6-blank-baseline") && cueSchema === "none";
     const activeV2Cues = V4_CUES_V2_BY_DISCLOSURE[payload.disclosureKey];
     const hasV2NoEffect = cueTags.some((tag) => typeof tag === "string" && tag.endsWith("_no_effect"));
     const invalidV4Cues = isStructuredResponse && !cueCollectionDisabled && (
@@ -356,6 +360,22 @@ export async function POST(request: Request) {
 
     await ensureExperimentSchema();
     const db = getDb();
+    const [session] = await db
+      .select({
+        id: experimentSessions.id,
+        status: experimentSessions.status,
+        protocolVersion: experimentSessions.protocolVersion,
+      })
+      .from(experimentSessions)
+      .where(eq(experimentSessions.id, payload.sessionId.slice(0, 80)))
+      .limit(1);
+    if (!session) {
+      return Response.json({ error: "Session not found" }, { status: 404 });
+    }
+    const requiredResponseVersion = RESPONSE_VERSION_BY_SESSION_PROTOCOL[session.protocolVersion];
+    if (requiredResponseVersion && responseVersion !== requiredResponseVersion) {
+      return Response.json({ error: "Response version does not match the session protocol" }, { status: 409 });
+    }
     const [existing] = await db
       .select()
       .from(modularResponses)
@@ -396,6 +416,10 @@ export async function POST(request: Request) {
         return Response.json({ error: "This answer is already finalized with different values." }, { status: 409 });
       }
       return Response.json({ response: { id: existing.id, createdAt: existing.createdAt }, idempotent: true }, { status: 200 });
+    }
+
+    if (session.status !== "active") {
+      return Response.json({ error: "This session is already complete" }, { status: 409 });
     }
 
     const [response] = await db

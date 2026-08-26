@@ -115,6 +115,7 @@ export type IntervalRecord = {
   upperDate: string;
 };
 type ModularAnswer = {
+  responseVersion: string;
   trialId: string;
   trialOrder: number;
   disclosureIndex: number;
@@ -535,8 +536,8 @@ export function selectDisclosureEvents(
   );
 }
 
-export function initialBoundaries(task: TaskType) {
-  return task === "T1" ? [] : [1 / 3, 2 / 3];
+export function initialBoundaries(task: TaskType, startBlank = false) {
+  return task === "T1" || startBlank ? [] : [1 / 3, 2 / 3];
 }
 
 function formatDate(value: string, resolution: Resolution) {
@@ -862,6 +863,7 @@ export function ModularChart({
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const dragIndex = useRef<number | null>(null);
+  const [placementWarning, setPlacementWarning] = useState("");
   const width = M1_CHART_FRAME.width;
   const height = M1_CHART_FRAME.height;
   // Keep the plotting frame identical across disclosures. GI2 reveals labels,
@@ -894,7 +896,10 @@ export function ModularChart({
       return `${index === 0 ? "M" : "L"}${xAt(ratio).toFixed(2)},${yAt(point.value).toFixed(2)}`;
     })
     .join(" ");
-  const stageEdges = [0, ...boundaries, 1];
+  const minimumBoundaryGap = 1 / Math.max(points.length - 1, 1);
+  const stageEdges = taskType !== "T1" && boundaries.length < 2
+    ? [0, 1]
+    : [0, ...boundaries, 1];
   const fills = ["#e8f0ec", "#f5efe0", "#f4e7e1", "#e6edf3", "#efe7f2", "#e8eee0"];
   const eventRows = events.map((event, index) => ({
     ...event,
@@ -907,20 +912,31 @@ export function ModularChart({
       const rect = svgRef.current?.getBoundingClientRect();
       if (!rect) return 0.5;
       const svgX = ((clientX - rect.left) / rect.width) * width;
-      return clamp((svgX - margin.left) / plotWidth, 0.015, 0.985);
+      const rawRatio = clamp((svgX - margin.left) / plotWidth, minimumBoundaryGap, 1 - minimumBoundaryGap);
+      const observationIndex = Math.round(rawRatio * Math.max(points.length - 1, 1));
+      return observationIndex / Math.max(points.length - 1, 1);
     },
-    [margin.left, plotWidth, width],
+    [margin.left, minimumBoundaryGap, plotWidth, points.length, width],
   );
+
+  const isWithinPlot = useCallback((clientX: number, clientY: number) => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return false;
+    const svgX = ((clientX - rect.left) / rect.width) * width;
+    const svgY = ((clientY - rect.top) / rect.height) * height;
+    return svgX >= margin.left && svgX <= width - margin.right &&
+      svgY >= margin.top && svgY <= margin.top + plotHeight;
+  }, [height, margin.left, margin.right, margin.top, plotHeight, width]);
 
   const updateBoundary = useCallback(
     (index: number, nextRatio: number) => {
-      const lower = index === 0 ? 0.015 : boundaries[index - 1] + 0.02;
-      const upper = index === boundaries.length - 1 ? 0.985 : boundaries[index + 1] - 0.02;
+      const lower = index === 0 ? minimumBoundaryGap : boundaries[index - 1] + minimumBoundaryGap;
+      const upper = index === boundaries.length - 1 ? 1 - minimumBoundaryGap : boundaries[index + 1] - minimumBoundaryGap;
       const next = [...boundaries];
       next[index] = clamp(nextRatio, lower, upper);
       onBoundariesChange(next);
     },
-    [boundaries, onBoundariesChange],
+    [boundaries, minimumBoundaryGap, onBoundariesChange],
   );
 
   const onPointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
@@ -937,7 +953,20 @@ export function ModularChart({
 
   const onCanvasPointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
     if (event.target !== event.currentTarget && (event.target as Element).closest("[data-boundary-handle]")) return;
+    if (!isWithinPlot(event.clientX, event.clientY)) return;
     const nextRatio = ratioFromEvent(event.clientX);
+    if (taskType !== "T1" && boundaries.length < 2) {
+      if (boundaries.length === 1 &&
+        Math.round(boundaries[0] * Math.max(points.length - 1, 1)) === Math.round(nextRatio * Math.max(points.length - 1, 1))) {
+        setPlacementWarning("两个分界点不能落在同一个观测位置，请在曲线上另选一个位置。");
+        return;
+      }
+      setPlacementWarning("");
+      onBoundaryInteraction();
+      onBoundariesChange([...boundaries, nextRatio].sort((first, second) => first - second));
+      return;
+    }
+    setPlacementWarning("");
     if (taskType === "T1") {
       if (boundaries.length === 0) {
         onBoundaryInteraction();
@@ -1071,8 +1100,15 @@ export function ModularChart({
           </g>
         )}
       </svg>
+      {placementWarning && <p className="mod-chart-placement-warning" role="alert">{placementWarning}</p>}
       <div className="mod-chart-footnote">
-        <span>{interactive ? "拖动分界线；点击曲线可快速移动最近的分界点" : "Agent 通过右侧 JSON 精确提交分界位置"}</span>
+        <span>{interactive
+          ? taskType !== "T1" && boundaries.length < 2
+            ? boundaries.length === 0
+              ? "请在绘图区内点击，放置第一个分界点"
+              : "请在绘图区内点击另一个位置，完成两个分界点"
+            : "拖动分界线；点击绘图区可快速移动最近的分界点"
+          : "Agent 通过右侧 JSON 精确提交分界位置"}</span>
         <span>{visibility.axes ? `${points.length.toLocaleString("zh-CN")} 个${RESOLUTION_LABEL[resolution]}观测值` : "当前仅显示曲线形状"}</span>
       </div>
     </div>
@@ -1104,6 +1140,7 @@ function BoundaryEditor({
   onUncertaintyInteraction: () => void;
   showDates: boolean;
 }) {
+  const minimumBoundaryGap = 1 / Math.max(points.length - 1, 1);
   const addBoundary = () => {
     if (boundaries.length >= 5) return;
     const ordered = boundaries
@@ -1139,8 +1176,8 @@ function BoundaryEditor({
   };
 
   const updateSlider = (index: number, value: number) => {
-    const lower = index === 0 ? 0.015 : boundaries[index - 1] + 0.02;
-    const upper = index === boundaries.length - 1 ? 0.985 : boundaries[index + 1] - 0.02;
+    const lower = index === 0 ? minimumBoundaryGap : boundaries[index - 1] + minimumBoundaryGap;
+    const upper = index === boundaries.length - 1 ? 1 - minimumBoundaryGap : boundaries[index + 1] - minimumBoundaryGap;
     const next = [...boundaries];
     next[index] = clamp(value, lower, upper);
     const maximumSymmetricWidth = Math.max(
@@ -1161,7 +1198,11 @@ function BoundaryEditor({
       <div className="mod-editor-heading">
         <div>
           <span className="mod-kicker">阶段结构</span>
-          <h3>{taskType === "T1" ? `当前划分：${boundaries.length + 1} 个阶段` : "请设置两个分界点"}</h3>
+          <h3>{taskType === "T1"
+            ? `当前划分：${boundaries.length + 1} 个阶段`
+            : boundaries.length < 2
+              ? `请在主图上点击两个分界位置（${boundaries.length}/2）`
+              : "调整两个分界点"}</h3>
         </div>
         {taskType === "T1" && (
           <button type="button" className="mod-small-action" onClick={addBoundary} disabled={boundaries.length >= 5}>＋ 增加分界点</button>
@@ -1172,6 +1213,13 @@ function BoundaryEditor({
         <div className="mod-confirm-row">
           <input id="mod-single-stage" type="checkbox" checked={singleStageConfirmed} onChange={(event) => onSingleStageConfirmed(event.target.checked)} />
           <label htmlFor="mod-single-stage"><strong>我判断整条曲线只有一个阶段</strong><small>如果你认为存在转折，请先增加分界点。</small></label>
+        </div>
+      )}
+
+      {taskType !== "T1" && boundaries.length < 2 && (
+        <div className="mod-placement-guide" role="status" aria-live="polite">
+          <strong>当前没有预设位置</strong>
+          <span>请直接点击左侧主图的两个位置；完成后系统会按从左到右编号。</span>
         </div>
       )}
 
@@ -1190,47 +1238,53 @@ function BoundaryEditor({
             <input
               aria-label={`调整分界点 ${index + 1}`}
               type="range"
-              min="0.015"
-              max="0.985"
-              step={1 / Math.max(points.length - 1, 1000)}
+              min={minimumBoundaryGap}
+              max={1 - minimumBoundaryGap}
+              step={minimumBoundaryGap}
               value={ratio}
               onChange={(event) => updateSlider(index, Number(event.target.value))}
             />
-            <div className="mod-uncertainty-question">
-              <span>你认为最佳分界线大致落在哪个范围？</span>
-              <small>拖动旋钮连续调整；0% 只表示提交当前点，不等同于绝对确定；范围越宽，表示位置越不确定</small>
-            </div>
-            <div className={`mod-uncertainty-slider ${widths[index] === null ? "is-unset" : ""}`}>
-              <div className="mod-uncertainty-readout">
-                <span>更精确</span>
-                <output htmlFor={`mod-uncertainty-${index}`}>
-                  {widths[index] === null
-                    ? "请拖动确认"
-                    : widths[index] === 0
-                      ? "0% · 仅点估计"
-                      : `±${((widths[index] ?? 0) * 100).toFixed(1)}% 时间窗`}
-                </output>
-                <span>更宽泛</span>
-              </div>
-              <input
-                id={`mod-uncertainty-${index}`}
-                aria-label={`调整分界点 ${index + 1} 的不确定范围`}
-                type="range"
-                min={UNCERTAINTY_MIN}
-                max={maximumSymmetricWidth}
-                step={UNCERTAINTY_STEP}
-                value={Math.min(widths[index] ?? UNCERTAINTY_DEFAULT, maximumSymmetricWidth)}
-                onChange={(event) => {
-                  const next = [...widths];
-                  next[index] = Number(event.target.value);
-                  onUncertaintyInteraction();
-                  onWidthsChange(next);
-                }}
-              />
-              <div className="mod-uncertainty-scale" aria-hidden="true">
-                <span>总宽度 0%</span><i /><span>总宽度 {(maximumSymmetricWidth * 200).toFixed(1)}%</span>
-              </div>
-            </div>
+            {taskType === "T1" || boundaries.length === 2 ? (
+              <>
+                <div className="mod-uncertainty-question">
+                  <span>你认为最佳分界线大致落在哪个范围？</span>
+                  <small>拖动旋钮连续调整；0% 只表示提交当前点，不等同于绝对确定；范围越宽，表示位置越不确定</small>
+                </div>
+                <div className={`mod-uncertainty-slider ${widths[index] === null ? "is-unset" : ""}`}>
+                  <div className="mod-uncertainty-readout">
+                    <span>更精确</span>
+                    <output htmlFor={`mod-uncertainty-${index}`}>
+                      {widths[index] === null
+                        ? "请拖动确认"
+                        : widths[index] === 0
+                          ? "0% · 仅点估计"
+                          : `±${((widths[index] ?? 0) * 100).toFixed(1)}% 时间窗`}
+                    </output>
+                    <span>更宽泛</span>
+                  </div>
+                  <input
+                    id={`mod-uncertainty-${index}`}
+                    aria-label={`调整分界点 ${index + 1} 的不确定范围`}
+                    type="range"
+                    min={UNCERTAINTY_MIN}
+                    max={maximumSymmetricWidth}
+                    step={UNCERTAINTY_STEP}
+                    value={Math.min(widths[index] ?? UNCERTAINTY_DEFAULT, maximumSymmetricWidth)}
+                    onChange={(event) => {
+                      const next = [...widths];
+                      next[index] = Number(event.target.value);
+                      onUncertaintyInteraction();
+                      onWidthsChange(next);
+                    }}
+                  />
+                  <div className="mod-uncertainty-scale" aria-hidden="true">
+                    <span>总宽度 0%</span><i /><span>总宽度 {(maximumSymmetricWidth * 200).toFixed(1)}%</span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p className="mod-boundary-pending">先放置第二个分界点，再分别设置两个不确定范围。</p>
+            )}
           </article>
         );
       })}
@@ -1297,9 +1351,16 @@ function downloadSessionCsv(
   sessionId: string,
   answers: ModularAnswer[],
   deviceInfo: DeviceInfo | null,
+  sessionProtocolVersion: string,
+  stimulusProtocolVersion: string,
+  baselinePlacementProtocol: string,
 ) {
   const csv = buildCsv(answers, [
     { key: "session_id", value: () => sessionId },
+    { key: "session_protocol_version", value: () => sessionProtocolVersion },
+    { key: "response_version", value: (row) => row.responseVersion },
+    { key: "stimulus_protocol_version", value: () => stimulusProtocolVersion },
+    { key: "baseline_placement_protocol", value: () => baselinePlacementProtocol },
     { key: "device_type", value: () => deviceInfo?.deviceType ?? "unknown" },
     { key: "screen_width", value: () => deviceInfo?.screenWidth ?? "" },
     { key: "screen_height", value: () => deviceInfo?.screenHeight ?? "" },
@@ -1700,6 +1761,13 @@ export function ExperimentModular({
   const isPilot = entryMode === "pilot";
   const isM1Main = entryMode === "m1";
   const isFixedM1 = isPilot || isM1Main;
+  const sessionProtocolVersion = isM1Main
+    ? "m1-human-main-v4.6-blank-baseline"
+    : isPilot
+      ? "m1-pilot-v4.6-blank-baseline"
+      : "";
+  const activeResponseVersion = isFixedM1 ? "v4.6-blank-baseline" : isV4 ? "v4.1" : "pre-v4";
+  const baselinePlacementProtocol = isFixedM1 ? "blank-two-click-placement-v1" : "preset-task-defaults-v1";
   const editionMark = isV4 ? "04" : "06";
   const [bundle, setBundle] = useState<Bundle | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -1725,7 +1793,7 @@ export function ExperimentModular({
   const [sessionId, setSessionId] = useState("");
   const [trialIndex, setTrialIndex] = useState(0);
   const [disclosureIndex, setDisclosureIndex] = useState(0);
-  const [boundaries, setBoundaries] = useState<number[]>(initialBoundaries("T2"));
+  const [boundaries, setBoundaries] = useState<number[]>(() => initialBoundaries("T2", isFixedM1));
   const [widths, setWidths] = useState<Array<number | null>>([null, null]);
   const [singleStageConfirmed, setSingleStageConfirmed] = useState(false);
   const [confidence, setConfidence] = useState(3);
@@ -1875,7 +1943,7 @@ export function ExperimentModular({
       ? seedAnswer.boundaries.map((boundary) => boundary.ratio)
       : preserve
         ? boundaries
-        : initialBoundaries(nextTask);
+        : initialBoundaries(nextTask, isFixedM1);
     const seededWidths = seedAnswer
       ? nextBoundaries.map((_, index) =>
           seedAnswer.boundaryIntervals.find((interval) => interval.boundaryIndex === index)?.halfWidthRatio ?? null,
@@ -1949,11 +2017,7 @@ export function ExperimentModular({
         participantCode,
         expertise,
         experimentalArm: isM1Main ? "m1-main" : isPilot ? "pilot-m1" : moduleKey,
-        protocolVersion: isM1Main
-          ? "m1-human-main-v4.5-zero-width-enabled"
-          : isPilot
-            ? "m1-pilot-v4.5-zero-width-enabled"
-            : bundle.protocolVersion,
+        protocolVersion: isFixedM1 ? sessionProtocolVersion : bundle.protocolVersion,
         modelName: actorType === "agent" ? modelName : null,
         deviceInfo,
         studyConfig: {
@@ -1972,8 +2036,8 @@ export function ExperimentModular({
           cueSchemaVersion: isFixedM1 ? "none" : isV4 ? CUE_SCHEMA_VERSION : "legacy-cues-v1",
           cueTaxonomyUrl: isFixedM1 ? null : isV4 ? "/data/cue-taxonomy-v4-v2.json" : null,
           entryMode,
-          pilotProtocol: isPilot ? "m1-pilot-v4.5-zero-width-enabled" : null,
-          mainStudyProtocol: isM1Main ? "m1-human-main-v4.5-zero-width-enabled" : null,
+          pilotProtocol: isPilot ? "m1-pilot-v4.6-blank-baseline" : null,
+          mainStudyProtocol: isM1Main ? "m1-human-main-v4.6-blank-baseline" : null,
           validityRepairVersion: isFixedM1 ? "early-disclosure-and-feedback-bias-v1" : null,
           disclosureFlowOrder: usesLayerMajorDisclosureFlow ? "disclosure-major" : "asset-major",
           layerPresentation: usesFixedM1SequentialPages
@@ -1986,6 +2050,7 @@ export function ExperimentModular({
           responseTelemetryProtocol: isFixedM1 ? "per-page-visible-time-v1" : null,
           participantQuestionSet: isFixedM1 ? "boundaries-uncertainty-influence-v1" : "full-annotation-v2",
           uncertaintyControl: isFixedM1 ? "continuous-range-knob-zero-enabled-v2" : isV4 ? "continuous-range-knob-v1" : "preset-widths-v1",
+          baselinePlacementProtocol,
           stimulusProtocolVersion: bundle.protocolVersion,
           stimulusDatasetVersion: isV4 ? "research-stimuli-modular-v8" : "research-stimuli-modular-v6",
           eventSelectionProtocol: isV4 ? EVENT_SELECTION_PROTOCOL : null,
@@ -2124,6 +2189,12 @@ export function ExperimentModular({
         ...(visibility.lowEvents ? ["low"] : []),
       ],
       visibleSourcePriorities: [...new Set(visibleEvents.map(eventSourcePriority))].sort((first, second) => first - second),
+      baselinePlacementProtocol,
+      boundaryInteractionSemantics: isFixedM1 ? {
+        initialPlacementCount: disclosureIndex === 0 ? Math.min(adjustmentCount, 2) : 0,
+        revisionAdjustmentCount: disclosureIndex === 0 ? Math.max(0, adjustmentCount - 2) : adjustmentCount,
+        firstBoundaryInteractionMeaning: disclosureIndex === 0 ? "initial-placement-latency" : "revision-latency",
+      } : null,
       eventProtocol: {
         version: EVENT_SELECTION_PROTOCOL,
         sourceDataset: "events_20260527.zip",
@@ -2165,7 +2236,7 @@ export function ExperimentModular({
           disclosureIndex,
           disclosureKey: currentDisclosure,
           disclosureState,
-          responseVersion: isFixedM1 ? "v4.5-zero-width-enabled" : isV4 ? "v4.1" : "pre-v4",
+          responseVersion: activeResponseVersion,
           stimulusWindow,
           cueSchemaVersion: isFixedM1 ? "none" : isV4 ? CUE_SCHEMA_VERSION : "legacy-cues-v1",
           boundaries: currentBoundaryRecords,
@@ -2197,6 +2268,7 @@ export function ExperimentModular({
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(payload.error ?? "本轮记录失败");
       const answer: ModularAnswer = {
+        responseVersion: activeResponseVersion,
         trialId: currentTrial.id,
         trialOrder: currentTrial.order,
         disclosureIndex,
@@ -2378,6 +2450,7 @@ export function ExperimentModular({
         if (!response.ok && !alreadyRecorded) throw new Error(payload.error ?? `曲线 ${trial.order + 1} 记录失败`);
 
         const answer: ModularAnswer = {
+          responseVersion: "v4.1",
           trialId: trial.id,
           trialOrder: trial.order,
           disclosureIndex,
@@ -2998,8 +3071,25 @@ export function ExperimentModular({
           <p>共记录 {answers.length} 次判断，覆盖 {plan.length} 条实验曲线。浏览器中的副本可以下载；服务器端已保存逐题答案、设备环境与响应时间。</p>
           <div className="mod-session-code"><span>SESSION ID</span><code>{sessionId}</code></div>
           <div className="mod-complete-actions">
-            <button type="button" onClick={() => downloadSessionCsv(sessionId, answers, sessionDeviceInfo.current)}>下载本次 CSV</button>
-            <button type="button" onClick={() => downloadJson(`boundary-lab-${sessionId}.json`, { protocolVersion: bundle.protocolVersion, sessionId, module: currentModule, deviceInfo: sessionDeviceInfo.current, plan, answers })}>下载本次 JSON</button>
+            <button type="button" onClick={() => downloadSessionCsv(
+              sessionId,
+              answers,
+              sessionDeviceInfo.current,
+              isFixedM1 ? sessionProtocolVersion : bundle.protocolVersion,
+              bundle.protocolVersion,
+              baselinePlacementProtocol,
+            )}>下载本次 CSV</button>
+            <button type="button" onClick={() => downloadJson(`boundary-lab-${sessionId}.json`, {
+              sessionProtocolVersion: isFixedM1 ? sessionProtocolVersion : bundle.protocolVersion,
+              responseVersion: activeResponseVersion,
+              stimulusProtocolVersion: bundle.protocolVersion,
+              baselinePlacementProtocol,
+              sessionId,
+              module: currentModule,
+              deviceInfo: sessionDeviceInfo.current,
+              plan,
+              answers,
+            })}>下载本次 JSON</button>
             <button type="button" onClick={() => window.location.reload()}>{isM1Main ? "返回 M1 主实验入口" : isPilot ? "返回初批入口" : "返回模块首页"}</button>
           </div>
         </section>
@@ -3159,6 +3249,7 @@ export function ExperimentModular({
           {currentTrial.taskType === "T3" && <div className="mod-definition"><span>统一阶段定义</span><p>{STAGE_DEFINITION}</p></div>}
 
           <ModularChart
+            key={`${currentTrial.id}-${disclosureIndex}`}
             points={points}
             metric={currentTrial.metric}
             unit={currentMetric.unit}
