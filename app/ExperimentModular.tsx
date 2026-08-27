@@ -154,6 +154,19 @@ type ModularAnswer = {
   activeElapsedMs?: number;
 };
 
+type ResumeSessionPayload = {
+  session?: {
+    id: string;
+    participantCode: string;
+    expertise: string;
+    status: string;
+    protocolVersion: string;
+    studyConfig: Record<string, unknown>;
+  };
+  answers?: ModularAnswer[];
+  error?: string;
+};
+
 type LayerAssetDraft = {
   boundaries: number[];
   widths: Array<number | null>;
@@ -1819,6 +1832,7 @@ export function ExperimentModular({
   const stepStartedWallAt = useRef("");
   const stepHiddenStartedAt = useRef<number | null>(null);
   const stepHiddenAccumulatedMs = useRef(0);
+  const resumeAttempted = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -1919,6 +1933,133 @@ export function ExperimentModular({
   const displayName = currentControl?.nameZh ?? currentAsset?.nameZh ?? "匿名序列";
   const displaySymbol = currentControl?.symbol ?? currentAsset?.symbol ?? "";
   const displayIntro = currentControl?.intro ?? currentAsset?.intro ?? "";
+
+  useEffect(() => {
+    if (!isM1Main || !bundle || resumeAttempted.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const resumeSessionId = params.get("resumeSession")?.trim() ?? "";
+    const resumeParticipantCode = params.get("participantCode")?.trim() ?? "";
+    if (!resumeSessionId && !resumeParticipantCode) return;
+    resumeAttempted.current = true;
+
+    const restore = async () => {
+      setBusy(true);
+      setError("");
+      try {
+        if (!resumeSessionId || !resumeParticipantCode) {
+          throw new Error("恢复链接缺少完整会话 ID 或参与者编号。");
+        }
+        const query = new URLSearchParams({
+          sessionId: resumeSessionId,
+          participantCode: resumeParticipantCode,
+        });
+        const response = await fetch(`/api/sessions?${query.toString()}`, { cache: "no-store" });
+        const payload = (await response.json()) as ResumeSessionPayload;
+        if (!response.ok || !payload.session || !Array.isArray(payload.answers)) {
+          throw new Error(payload.error ?? "会话恢复失败");
+        }
+        const restoredPlan = payload.session.studyConfig.randomizedPlan;
+        if (
+          !Array.isArray(restoredPlan) ||
+          !restoredPlan.length ||
+          restoredPlan.some((trial) =>
+            !trial ||
+            typeof trial !== "object" ||
+            typeof (trial as TrialPlan).id !== "string" ||
+            !Array.isArray((trial as TrialPlan).disclosures),
+          )
+        ) {
+          throw new Error("原会话的随机化计划无效，无法安全恢复。");
+        }
+
+        const nextPlan = restoredPlan as TrialPlan[];
+        const restoredAnswers = payload.answers;
+        const completedKeys = new Set(
+          restoredAnswers.map((answer) => `${answer.trialId}:${answer.disclosureIndex}`),
+        );
+        let nextPosition: { trialIndex: number; disclosureIndex: number } | null = null;
+        const disclosureCount = nextPlan.reduce(
+          (maximum, trial) => Math.max(maximum, trial.disclosures.length),
+          0,
+        );
+        for (let nextDisclosureIndex = 0; nextDisclosureIndex < disclosureCount && !nextPosition; nextDisclosureIndex += 1) {
+          for (let nextTrialIndex = 0; nextTrialIndex < nextPlan.length; nextTrialIndex += 1) {
+            const trial = nextPlan[nextTrialIndex];
+            if (
+              trial.disclosures[nextDisclosureIndex] &&
+              !completedKeys.has(`${trial.id}:${nextDisclosureIndex}`)
+            ) {
+              nextPosition = { trialIndex: nextTrialIndex, disclosureIndex: nextDisclosureIndex };
+              break;
+            }
+          }
+        }
+
+        const config = payload.session.studyConfig;
+        setModuleKey("disclosure");
+        setTaskType("T2");
+        setMetric("price");
+        setResolution("weekly");
+        setScaleMode("linear");
+        setWindowMode("whole");
+        setDisclosurePath((config.disclosurePath as DisclosurePath | undefined) ?? "combined");
+        setParticipantCode(payload.session.participantCode);
+        setExpertise(payload.session.expertise);
+        setPlan(nextPlan);
+        setSessionId(payload.session.id);
+        setAnswers(restoredAnswers);
+        setLayerDrafts({});
+        setLayerValidationErrors({});
+        setBatchProgress({ completed: 0, total: nextPlan.length });
+        sessionDeviceInfo.current = collectDeviceInfo();
+
+        if (!nextPosition) {
+          setTrialIndex(Math.max(0, nextPlan.length - 1));
+          setDisclosureIndex(Math.max(0, disclosureCount - 1));
+          setPhase("review");
+          return;
+        }
+
+        const nextTrial = nextPlan[nextPosition.trialIndex];
+        const seedAnswer = restoredAnswers
+          .filter((answer) =>
+            answer.trialId === nextTrial.id &&
+            answer.disclosureIndex < nextPosition!.disclosureIndex,
+          )
+          .sort((first, second) => second.disclosureIndex - first.disclosureIndex)[0];
+        const restoredBoundaries = seedAnswer
+          ? seedAnswer.boundaries.map((boundary) => boundary.ratio)
+          : initialBoundaries(nextTrial.taskType, true);
+        const restoredWidths = seedAnswer
+          ? restoredBoundaries.map((_, index) =>
+              seedAnswer.boundaryIntervals.find((interval) => interval.boundaryIndex === index)?.halfWidthRatio ?? null,
+            )
+          : Array(restoredBoundaries.length).fill(null);
+        setTrialIndex(nextPosition.trialIndex);
+        setDisclosureIndex(nextPosition.disclosureIndex);
+        setBoundaries(restoredBoundaries);
+        setWidths(restoredWidths);
+        setSingleStageConfirmed(seedAnswer?.singleStageConfirmed ?? false);
+        setInfluence(3);
+        setInfluenceTouched(false);
+        setNoChangeConfirmed(false);
+        setCueTags([]);
+        setRationale("");
+        setAdjustmentCount(0);
+        setUncertaintyAdjustmentCount(0);
+        firstMoveAt.current = null;
+        firstUncertaintyAt.current = null;
+        setPhase("experiment");
+        window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : "会话恢复失败");
+      } finally {
+        setBusy(false);
+      }
+    };
+
+    void restore();
+  }, [bundle, isM1Main]);
 
   const markBoundaryInteraction = () => {
     const now = performance.now();

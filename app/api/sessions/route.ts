@@ -1,4 +1,4 @@
-import { count, eq } from "drizzle-orm";
+import { and, asc, count, eq } from "drizzle-orm";
 import { ensureExperimentSchema, getDb } from "@/db";
 import { experimentSessions, modularResponses } from "@/db/schema";
 
@@ -37,6 +37,118 @@ function optionalRatio(value: unknown) {
 
 function message(error: unknown) {
   return error instanceof Error ? error.message : "Unexpected database error";
+}
+
+function parseJson<T>(value: string, fallback: T): T {
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+export async function GET(request: Request) {
+  try {
+    const url = new URL(request.url);
+    const sessionId = url.searchParams.get("sessionId")?.trim() ?? "";
+    const participantCode = url.searchParams.get("participantCode")?.trim() ?? "";
+    if (!sessionId || !participantCode || sessionId.length > 80 || participantCode.length > 64) {
+      return Response.json({ error: "Valid sessionId and participantCode are required" }, { status: 400 });
+    }
+
+    await ensureExperimentSchema();
+    const db = getDb();
+    const [session] = await db
+      .select({
+        id: experimentSessions.id,
+        participantCode: experimentSessions.participantCode,
+        expertise: experimentSessions.expertise,
+        experimentalArm: experimentSessions.experimentalArm,
+        protocolVersion: experimentSessions.protocolVersion,
+        status: experimentSessions.status,
+        studyConfigJson: experimentSessions.studyConfigJson,
+      })
+      .from(experimentSessions)
+      .where(and(
+        eq(experimentSessions.id, sessionId),
+        eq(experimentSessions.participantCode, participantCode),
+      ))
+      .limit(1);
+
+    if (!session) {
+      return Response.json({ error: "Session not found or participant code does not match" }, { status: 404 });
+    }
+    if (
+      session.experimentalArm !== "m1-main" ||
+      session.protocolVersion !== "m1-human-main-v4.6-blank-baseline"
+    ) {
+      return Response.json({ error: "Only Human M1 v4.6 sessions can be resumed here" }, { status: 409 });
+    }
+    if (session.status !== "active") {
+      return Response.json({ error: "Only active sessions can be resumed" }, { status: 409 });
+    }
+
+    const responses = await db
+      .select()
+      .from(modularResponses)
+      .where(eq(modularResponses.sessionId, session.id))
+      .orderBy(asc(modularResponses.disclosureIndex), asc(modularResponses.trialOrder));
+
+    return Response.json(
+      {
+        session: {
+          id: session.id,
+          participantCode: session.participantCode,
+          expertise: session.expertise,
+          status: session.status,
+          protocolVersion: session.protocolVersion,
+          studyConfig: parseJson<Record<string, unknown>>(session.studyConfigJson, {}),
+        },
+        answers: responses.map((row) => ({
+          responseVersion: row.responseVersion,
+          trialId: row.trialId,
+          trialOrder: row.trialOrder,
+          disclosureIndex: row.disclosureIndex,
+          disclosureKey: row.disclosureKey,
+          taskType: row.taskType,
+          assetId: row.assetId,
+          metric: row.metricType,
+          boundaries: parseJson(row.boundariesJson, []),
+          previousBoundaries: parseJson(row.previousBoundariesJson, []),
+          boundaryIntervals: parseJson(row.boundaryIntervalsJson, []),
+          singleStageConfirmed: row.singleStageConfirmed,
+          confidence: row.confidence,
+          influenceRating: row.influenceRating,
+          influenceTouched: row.influenceTouched,
+          noChangeConfirmed: row.noChangeConfirmed,
+          cueTags: parseJson(row.cueTags, []),
+          rationale: row.rationale,
+          stimulusType: row.stimulusType,
+          resolution: row.resolution,
+          scaleMode: row.scaleMode,
+          windowMode: row.windowMode,
+          disclosureState: parseJson(row.disclosureStateJson, {}),
+          stimulusWindow: parseJson(row.stimulusWindowJson, {}),
+          elapsedMs: row.elapsedMs,
+          revealReadMs: row.revealReadMs,
+          firstMoveMs: row.firstMoveMs,
+          firstUncertaintyMs: row.firstUncertaintyMs,
+          adjustmentCount: row.adjustmentCount,
+          uncertaintyAdjustmentCount: row.uncertaintyAdjustmentCount,
+          clientStartedAt: row.clientStartedAt ?? undefined,
+          clientSubmittedAt: row.clientSubmittedAt ?? undefined,
+          responseViewportWidth: row.responseViewportWidth ?? undefined,
+          responseViewportHeight: row.responseViewportHeight ?? undefined,
+          responseOrientation: row.responseOrientation,
+          pageHiddenMs: row.pageHiddenMs,
+          activeElapsedMs: row.activeElapsedMs,
+        })),
+      },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  } catch (error) {
+    return Response.json({ error: message(error) }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {
